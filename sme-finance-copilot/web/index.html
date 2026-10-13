@@ -70,10 +70,10 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:18px}
   <div class="controls">
     <select id="merchant" aria-label="Merchant"></select>
     <select id="role" aria-label="Role">
-      <option value="owner">Role: Business owner</option><option value="staff">Role: Staff</option><option value="coach">Role: Progression coach</option>
+      <option value="owner">Role: Business Owner</option><option value="staff">Role: Staff</option><option value="coach">Role: Progression coach</option>
       <option value="lender_analyst">Role: Financing Agent</option><option value="demo_guest">Role: Demo guest</option>
     </select>
-    <label class="chk"><input type="checkbox" id="consent" checked> Owner consent to share</label>
+    <label class="chk" id="demo-consent"><input type="checkbox" id="consent" checked> Demo consent</label><a id="consent-link" href="/consents" style="color:white" hidden>Financing consent</a><span id="account-name"></span><button class="btn" id="signout">Sign out</button>
   </div>
 </header>
 <nav id="tabs">
@@ -82,7 +82,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:18px}
   <button data-tab="cashflow">Cash flow</button>
   <button data-tab="dashboard">Dashboard</button>
   <button data-tab="payments">Payments sandbox</button>
-  <button data-tab="transactions">Transactions</button>
+  <button data-tab="transactions">Transactions</button><button data-tab="applications">Financing applications</button>
 </nav>
 <main>
 <section class="tab active" id="tab-copilot">
@@ -145,6 +145,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:18px}
     <div class="card"><h2>Payment request</h2><p class="sub">Sandbox only — QR codes are visual placeholders and no card data is ever collected.</p><div id="pout" class="muted">Create a payment to begin.</div></div>
   </div>
 </section>
+<section class="tab" id="tab-applications"><div class="card"><h2>Sandbox financing applications</h2><p class="sub">Owner-approved packets and assigned reviews. Simulated outcomes are not bank credit approvals.</p><div id="applications"></div></div></section>
 <section class="tab" id="tab-transactions">
   <div class="grid g2">
     <div class="card"><h2>Single transaction entry</h2><p class="sub">Record a sale or expense. The dashboard and forecast will use the new data.</p>
@@ -181,16 +182,20 @@ const CHL={qr_pay:"QR Pay",tap_pay:"Tap Pay",pay_link:"Pay Link",external_wallet
 const pct=v=>v==null?"n/a":(v*100).toFixed(1)+"%";
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const COLORS=["#0b3b5c","#127a8a","#38bdf8","#94a3b8","#f59e0b","#a3a3a3"];
+let SESSION=null;
+const can=permission=>SESSION?.demo ? ({owner:["use_copilot","view_financing","view_forecasts","view_dashboard","simulate_payments","view_transactions","create_transactions","bulk_import","manage_transactions","view_assessment","view_applications"],staff:["use_copilot","view_forecasts","view_dashboard","simulate_payments","view_transactions","create_transactions","bulk_import"],lender_analyst:["use_copilot","view_financing","view_forecasts"],coach:["use_copilot","view_financing","view_forecasts","view_dashboard","view_assessment"],demo_guest:["use_copilot","view_dashboard","simulate_payments"]}[$("#role").value]||[]).includes(permission) : SESSION?.permissions.includes(permission);
 async function api(path,opt={}){
-  const h={"Content-Type":"application/json","X-Demo-Role":$("#role").value,"X-Demo-Consent":$("#consent").checked?"yes":"no"};
+  const h={"Content-Type":"application/json","X-CSRF-Token":SESSION?.csrf_token||""};
+  if(SESSION?.demo){h["X-Demo-Role"]=$("#role").value;h["X-Demo-Consent"]=$("#consent").checked?"yes":"no"}
   const r=await fetch(path,{...opt,headers:h});const j=await r.json();
+  if(r.status===401){location.href="/login";throw Error("Sign in required")}
   if(r.status>=400) throw new Error(j.error||"Request failed");return {status:r.status,...(Array.isArray(j)?{list:j}:j)};
 }
 const q=extra=>`?merchant=${M.id}${extra||""}`;
 $$("#tabs button").forEach(b=>b.onclick=()=>{$$("#tabs button").forEach(x=>x.classList.remove("active"));b.classList.add("active");$$(".tab").forEach(t=>t.classList.remove("active"));$("#tab-"+b.dataset.tab).classList.add("active");loadTab(b.dataset.tab)});
 const active=()=>$("#tabs button.active").dataset.tab;
-function loadTab(t){({copilot:loadProgress,financing:loadFinancing,cashflow:loadCashflow,dashboard:loadDashboard,payments:loadPayments,transactions:loadTransactions})[t]().catch(e=>showErr(t,e))}
-function showErr(t,e){const el={copilot:"#progressbody",financing:"#matches",cashflow:"#cfalerts",dashboard:"#dkpis",payments:"#pout",transactions:"#tresult"}[t];$(el).innerHTML=`<div class="banner err">${esc(e.message)}</div>`}
+function loadTab(t){({copilot:loadProgress,financing:loadFinancing,cashflow:loadCashflow,dashboard:loadDashboard,payments:loadPayments,transactions:loadTransactions,applications:loadApplications})[t]().catch(e=>showErr(t,e))}
+function showErr(t,e){const el={copilot:"#progressbody",financing:"#matches",cashflow:"#cfalerts",dashboard:"#dkpis",payments:"#pout",transactions:"#tresult",applications:"#applications"}[t];$(el).innerHTML=`<div class="banner err">${esc(e.message)}</div>`}
 // ---------- COPILOT
 const CHIPS=["How am I doing?","What financing fits my business?","How much can I borrow with RBF?","Any cash-flow alerts?","Show my sales dashboard","Which incentive milestone am I on?","Generate a QR for 500","Submit a financing application","Approve my loan now"];
 function addMsg(t,who){const d=document.createElement("div");d.className="msg "+who;d.textContent=t;$("#chatlog").appendChild(d);$("#chatlog").scrollTop=1e9;return d}
@@ -213,6 +218,7 @@ $("#chips").innerHTML=CHIPS.map(c=>`<button class="chip">${esc(c)}</button>`).jo
 $$(".chip").forEach(c=>c.onclick=()=>send(c.textContent));
 $("#chatform").onsubmit=e=>{e.preventDefault();const v=$("#chatinput").value;$("#chatinput").value="";send(v)};
 async function loadProgress(){
+  if(!SESSION?.demo&&(!can("view_assessment")||$("#role").value==="lender_analyst")){$("#progressbody").textContent="Use Copilot and the tabs available to your account for authorized business information.";return}
   const c=await api("/api/cycle"+q());
   const names=["Survival","Striving","Steady","Opportunity","Expanding","Heir"];
   let h=`<div class="stages">${names.map((n,i)=>`<div class="stage ${i+1===c.stage?"on":i+1<c.stage?"done":""}">${i+1}. ${n}</div>`).join("")}</div>
@@ -307,10 +313,10 @@ $("#posclear").onclick=()=>{cart=[];renderCart()};
 let pendingRows=[], previewToken=null;
 async function loadTransactions(){
   pendingRows=[];previewToken=null;$("#tpreview").textContent="Choose a file to preview.";loadLedger();
-  const permitted=["owner","staff"].includes($("#role").value);
+  const permitted=can("create_transactions");
   $("#singleform").querySelectorAll("input,select,button").forEach(e=>e.disabled=!permitted);
-  $("#tfile").disabled=!permitted;
-  $("#timport").disabled=!permitted||!pendingRows.length;
+  $("#tfile").disabled=!can("bulk_import");
+  $("#timport").disabled=!can("bulk_import")||!pendingRows.length;
   $("#tdate").max="2026-09-30";
   if(!$("#tdate").value)$("#tdate").value="2026-09-30";
   $("#tresult").innerHTML=permitted?"":'<div class="banner note">Transaction input is restricted to business owners and staff.</div>';
@@ -349,8 +355,8 @@ $("#timport").onclick=async()=>{if(!previewToken||!confirm(`Save ${pendingRows.l
     previewToken=null;pendingRows=[];$("#tfile").value="";$("#tpreview").textContent=`Saved ${r.imported} transactions.`;loadLedger();
   }catch(e){$("#tresult").textContent=e.message}}
 async function loadLedger(){
-  const el=$("#tledger");if(!["owner","staff"].includes($("#role").value)){el.textContent="";return}
-  try{const r=await api("/api/transactions"+q());el.innerHTML=`<h2>Saved transactions</h2><div style="overflow:auto"><table><thead><tr>${columns.map(k=>`<th>${k}</th>`).join("")}<th>Manage</th></tr></thead><tbody>${r.transactions.map(t=>`<tr>${columns.map(k=>`<td>${esc(t[k])}</td>`).join("")}<td>${$("#role").value==="owner"?`<button data-edit="${t.id}">Edit</button><button data-delete="${t.id}">Delete</button>`:"Owner only"}</td></tr>`).join("")}</tbody></table></div>`;
+  const el=$("#tledger");if(!can("view_transactions")){el.textContent="";return}
+  try{const r=await api("/api/transactions"+q());el.innerHTML=`<h2>Saved transactions</h2><div style="overflow:auto"><table><thead><tr>${columns.map(k=>`<th>${k}</th>`).join("")}<th>Manage</th></tr></thead><tbody>${r.transactions.map(t=>`<tr>${columns.map(k=>`<td>${esc(t[k])}</td>`).join("")}<td>${can("manage_transactions")?`<button data-edit="${t.id}">Edit</button><button data-delete="${t.id}">Delete</button>`:"Owner only"}</td></tr>`).join("")}</tbody></table></div>`;
     el.querySelectorAll('[data-delete],[data-edit]').forEach(b=>b.onclick=async()=>{try{const t=r.transactions.find(t=>t.id===(b.dataset.edit||b.dataset.delete));let body={merchant:M.id,id:t.id,action:b.dataset.edit?"update":"delete"};
       if(b.dataset.edit){body.entry={};for(const k of columns){const v=prompt(k,t[k]);if(v===null)return;body.entry[k]=v}}
       else if(!confirm("Delete this transaction?"))return;
@@ -362,12 +368,23 @@ async function loadLedger(){
 async function selectMerchant(){M=merchants.find(m=>m.id==$("#merchant").value);cart=[];chatHistory=[];$("#chatlog").innerHTML="";$("#dstart").value=$("#dend").value="";
   addMsg(`Hi! I'm your finance copilot for ${M.name} (${M.country}, ${M.currency}). Ask me about financing, cash flow, sales or payments.`,"bot");loadTab(active())}
 $("#merchant").onchange=selectMerchant;$("#role").onchange=()=>loadTab(active());$("#consent").onchange=()=>loadTab(active());
+async function loadApplications(){
+  const r=await api('/api/applications'+q());$('#applications').innerHTML=r.applications.map(a=>`<div class="card"><b>${esc(a.application_id)}</b><p>${esc(a.status)} · ${fmt(a.requested_amount)} · ${esc(a.product_id)}</p>${a.reviews.map(r=>`<p>${esc(r.outcome)} · ${esc(r.note)}</p>`).join('')}${can('review_application')?`<button data-review="${a.application_id}">Record simulated review</button>`:''}</div>`).join('')||'No assigned applications. Owners can submit an application through Copilot after granting financing consent.';
+  $('#applications').querySelectorAll('button').forEach(b=>b.onclick=async()=>{const outcome=prompt('Outcome: request_information, sandbox_recommended, or sandbox_declined','request_information');if(!outcome)return;const note=prompt('Review note / requested information');if(!note)return;try{await api('/api/applications/'+b.dataset.review+'/review',{method:'POST',body:JSON.stringify({outcome,note})});loadApplications()}catch(e){showErr('applications',e)}})
+}
+$('#signout').onclick=async()=>{await api('/api/auth/logout',{method:'POST',body:'{}'});location.href='/login'};
 (async()=>{
-  try{const h=await api("/api/health");AGENT=h.agent_mode;
-    $("#modebadge").textContent=AGENT=="ai_agent"?"AI agent connected":"Rule engine";
-    if(AGENT=="ai_agent"){$("#modebadge").classList.add("ai");$("#modesub").textContent="Connected to an AI model that searches your business data with the copilot's tools. Advisory only — it never approves credit or moves money."}
-  }catch(e){}
-  const r=await api("/api/merchants");merchants=r.list;$("#merchant").innerHTML=merchants.map(m=>`<option value="${m.id}">${esc(m.name)} · ${m.country}</option>`).join("");$("#merchant").value="M002";selectMerchant()})();
+  SESSION=await api('/api/auth/me');
+  if(SESSION.user.must_change_password){location.href='/login';return}
+  if(!SESSION.demo){$('#role').innerHTML=`<option value="${esc(SESSION.user.role)}">${esc({owner:'Business Owner',staff:'Staff',lender_analyst:'Financing Agent',coach:'Progression Coach'}[SESSION.user.role]||SESSION.user.role)}</option>`;$('#role').disabled=true;$('#demo-consent').hidden=true;$('#account-name').textContent=SESSION.user.display_name;$('#consent-link').hidden=!can('manage_consents');}
+  const allowed={copilot:'use_copilot',financing:'view_financing',cashflow:'view_forecasts',dashboard:'view_dashboard',payments:'simulate_payments',transactions:'view_transactions',applications:'view_applications'};
+  $$('#tabs button').forEach(b=>b.hidden=!can(allowed[b.dataset.tab]));
+  const first=$$('#tabs button').find(b=>!b.hidden);if(!first){$('#tab-copilot').textContent='No business actions enabled for this account.';return}
+  $$('#tabs button').forEach(b=>b.classList.remove('active'));first.classList.add('active');$$('.tab').forEach(t=>t.classList.remove('active'));$('#tab-'+first.dataset.tab).classList.add('active');
+  try{const h=await api('/api/health');AGENT=h.agent_mode;$('#modebadge').textContent=AGENT==='ai_agent'?'AI agent connected':'Rule engine';}catch(e){}
+  const r=await api('/api/merchants');merchants=r.list;$('#merchant').innerHTML=merchants.map(m=>`<option value="${esc(m.id)}">${esc(m.name)} · ${esc(m.country)}</option>`).join('');
+  if(!merchants.length){$('#tab-copilot').textContent='No authorized merchants. Contact your administrator.';return}$('#merchant').value=merchants.some(m=>m.id==='M002')?'M002':merchants[0].id;selectMerchant();
+})().catch(e=>{console.error(e);$('#tab-copilot').textContent=e.message});
 </script>
 </body>
 </html>

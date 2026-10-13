@@ -6,3 +6,7 @@ logs/
 .env
 evidence/ui-ledger*.jsonl
 .publish/
+
+evidence/ui-ledger*.jsonl
+
+sme-finance-copilot/evidence/ui-ledger*.jsonl

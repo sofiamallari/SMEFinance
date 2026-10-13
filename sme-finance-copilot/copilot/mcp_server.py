@@ -36,9 +36,10 @@ import sys
 from urllib.parse import urlparse
 
 from copilot import tools_spec
+from copilot.auth import demo_mode, AuthError
 from copilot.security import AccessDenied, ApprovalRequired, Principal, sanitize_input
 
-SERVER_INFO = {"name": "sme-finance-copilot", "title": "SME Finance Copilot", "version": "1.1.0"}
+SERVER_INFO = {"name": "sme-finance-copilot", "title": "SME Finance Copilot", "version": "1.2.0"}
 SUPPORTED_VERSIONS = ["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"]
 LATEST = SUPPORTED_VERSIONS[0]
 META_VERSION = "io.modelcontextprotocol/protocolVersion"
@@ -53,6 +54,8 @@ PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR =
 
 
 def principal_from_env(merchants) -> Principal:
+    if not demo_mode():
+        return Principal("unauthenticated-mcp", "anonymous")
     role = os.environ.get("COPILOT_MCP_ROLE", "owner")
     if role not in ("owner", "coach", "lender_analyst", "demo_guest"):
         role = "demo_guest"
@@ -200,7 +203,9 @@ def handle_http(mcp: MCPHandler, headers, raw: bytes):
     """Returns (status, body_dict_or_None). Used by copilot/server.py for POST /mcp."""
     if not origin_allowed(headers.get("Origin")):
         return 403, {"jsonrpc": "2.0", "error": {"code": INVALID_REQUEST, "message": "Origin not allowed"}}
-    if not api_key_ok(headers):
+    if not demo_mode() and not mcp.principal.authenticated:
+        return 401, {"error":"Authenticated session required"}
+    if demo_mode() and not api_key_ok(headers):
         return 401, {"jsonrpc": "2.0", "error": {"code": INVALID_REQUEST, "message": "Unauthorized"}}
     try:
         msg = json.loads(raw or b"null")
@@ -214,7 +219,18 @@ def handle_http(mcp: MCPHandler, headers, raw: bytes):
 
 # ------------------------------------------------------------------ stdio
 def run_stdio(copilot):
-    mcp = MCPHandler(copilot)
+    if demo_mode():
+        mcp = MCPHandler(copilot)
+    else:
+        from copilot.auth import AuthStore
+        from copilot.modules.transactions import TransactionStore
+        auth = AuthStore(os.environ.get('COPILOT_IDENTITY_DB','logs/identity.sqlite3'),copilot.merchants)
+        token = os.environ.get('COPILOT_MCP_SESSION_TOKEN','')
+        principal = auth.principal(token)
+        copilot.identity_store=auth
+        copilot.audit.sink=auth.financial_audit
+        TransactionStore(copilot,os.environ.get('COPILOT_TRANSACTION_FILE','logs/manual_transactions.jsonl'))
+        mcp = MCPHandler(copilot,principal)
     print(f"[sme-finance-copilot MCP] stdio ready; role={mcp.principal.role}", file=sys.stderr, flush=True)
     for line in sys.stdin:
         line = line.strip()

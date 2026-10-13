@@ -12,6 +12,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree as ET
 from copilot.security import AccessDenied
+from copilot.authorization import require
 
 COLUMNS = ['date', 'type', 'amount', 'channel', 'category', 'reference', 'description']
 CHANNELS = {'cash', 'qr_pay', 'tap_pay', 'pay_link', 'external_wallet', 'external_card'}
@@ -113,7 +114,8 @@ class TransactionStore:
                     else: self.entries[tid] = (mid, validate_entry(event['entry'], copilot.as_of))
             for tid, (mid, entry) in self.entries.items(): self.apply(mid, tid, entry)
 
-    def authorize(self, p, mid, owner=False):
+    def authorize(self, p, mid, owner=False, action=None):
+        require(p, action or ("manage_transactions" if owner else "create_transactions"), mid)
         if mid not in p.merchant_ids or p.role not in (('owner',) if owner else ('owner','staff')):
             raise AccessDenied('Only authorized owners and staff can access transactions; management requires owner')
 
@@ -143,7 +145,7 @@ class TransactionStore:
         return checked, errors
 
     def preview(self,p,mid,body):
-        self.authorize(p,mid)
+        self.authorize(p,mid,action="bulk_import")
         rows = body.get('rows')
         if 'content' in body:
             try: content = base64.b64decode(body['content'],validate=True)
@@ -160,13 +162,15 @@ class TransactionStore:
             return {'rows':checked,'errors':errors,'valid':not errors,'preview_token':token,'total':len(rows)}
 
     def confirm(self,p,mid,token,confirmed):
-        self.authorize(p,mid)
+        self.authorize(p,mid,action="bulk_import")
         with self.lock:
             preview = self.previews.get(token)
             if confirmed is not True or not preview or preview[0:2] != (p.user_id,mid) or preview[3] < time.time() or preview[4] != p.role:
                 raise ValueError('Explicit confirmation of a current preview is required')
             result = self.save(p,mid,preview[2])
-            if result['valid']: self.previews.pop(token)
+            if result['valid']:
+                self.previews.pop(token)
+                if p.authenticated:self.copilot.identity_store.audit('transactions_imported',p,mid,target=str(result['imported']))
             return result
 
     def persist(self,event):
@@ -185,10 +189,12 @@ class TransactionStore:
             self.persist({'merchant':mid,'action':'batch','entries':events})
             for event in events:
                 self.entries[event['id']] = (mid,event['entry']); self.apply(mid,event['id'],event['entry'])
+            if getattr(self.copilot,'identity_store',None) and p.authenticated:
+                self.copilot.identity_store.audit('transactions_created',p,mid,target=str(len(checked)))
             return {'valid':True,'imported':len(checked),'errors':[]}
 
     def list_entries(self,p,mid):
-        self.authorize(p,mid)
+        self.authorize(p,mid,action="view_transactions")
         return {'transactions':[{'id':tid,**e} for tid,(m,e) in self.entries.items() if m == mid]}
 
     def manage(self,p,mid,body):
@@ -209,4 +215,5 @@ class TransactionStore:
             self.entries.pop(tid)
             if action == 'update':
                 self.entries[tid] = (mid,event['entry']); self.apply(mid,tid,event['entry'])
+            if p.authenticated:self.copilot.identity_store.audit('transaction_'+action,p,mid,tid)
             return {'valid':True}

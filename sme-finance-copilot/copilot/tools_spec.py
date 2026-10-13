@@ -111,9 +111,21 @@ def execute(copilot, principal, name: str, args: dict, fixed_merchant: str | Non
             raise ValueError(f"Missing required argument: {req}")
 
     if name == "list_merchants":
-        return {"merchants": [{"merchant_id": m.merchant_id, "name": m.name, "country": m.country,
-                               "currency": m.currency, "sector": m.sector}
-                              for m in copilot.merchants.values() if m.merchant_id in principal.merchant_ids]}
+        from copilot.authorization import require
+        from copilot.security import AccessDenied
+        try:
+            require(principal,"use_copilot")
+            visible=[]
+            for m in copilot.merchants.values():
+                if m.merchant_id not in principal.merchant_ids:continue
+                try:require(principal,"use_copilot",m.merchant_id)
+                except AccessDenied:continue
+                visible.append({"merchant_id":m.merchant_id,"name":m.name,"country":m.country,"currency":m.currency,"sector":m.sector})
+        except AccessDenied:
+            copilot.audit.write(actor=principal.user_id,role=principal.role,tool=name,decision="denied")
+            raise
+        copilot.audit.write(actor=principal.user_id,role=principal.role,tool=name,decision="allowed",outcome="ok")
+        return {"merchants":visible}
     mid = fixed_merchant or str(args.pop("merchant_id", ""))
     args.pop("merchant_id", None)
     if mid not in copilot.merchants:

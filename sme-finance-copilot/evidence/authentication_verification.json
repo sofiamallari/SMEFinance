@@ -1,0 +1,29 @@
+{
+  "automated_tests": 129,
+  "result": "passed",
+  "full_suite_seconds": 138.02,
+  "original_regression_tests": 103,
+  "authentication_security_tests": 26,
+  "browser": "Microsoft Edge headless",
+  "browser_result": "passed",
+  "browser_checks": [
+    "administrator login",
+    "security policy save and reauthentication",
+    "user creation",
+    "first-login password change",
+    "staff encoding and upload grant controls",
+    "dashboard rendering",
+    "owner consent",
+    "owner approval-token submission",
+    "assigned sandbox financing review",
+    "consent revocation and immediate denial",
+    "no JavaScript page errors"
+  ],
+  "screenshots": [
+    "user-management.png",
+    "security-controls.png",
+    "authenticated-dashboard.png",
+    "financing-review.png"
+  ],
+  "external_live_llm_tested": false
+}

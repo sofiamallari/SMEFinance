@@ -4,7 +4,7 @@ This release modifies the existing SME Finance Copilot v1.2 application for the 
 
 ## API
 
-All JSON requests use the existing demo role and consent headers and merchant scope.
+All requests require server-authenticated identity, assigned merchant scope and action permission. Cookie writes require X-CSRF-Token; role/consent headers are ignored in authenticated mode.
 
 | Method | Endpoint | Body / behavior |
 |---|---|---|
@@ -22,7 +22,7 @@ Preview errors use one-based data-row indices (header excluded). The returned `r
 
 ## Limitations
 
-- Role selection via `X-Demo-Role` is demo authentication. Production must replace it with authenticated accounts, merchant assignments and staff upload grants. In this demo, all staff selected through the UI are authorized upload staff for the demo merchants.
+- Authenticated mode is the default. Staff need a merchant membership, enabled role policy and an explicit bulk_import grant. Legacy headers exist only in explicitly configured localhost demo mode.
 - Single-process JSONL storage supports thread serialization and durable batch events. It is not a multi-process database; back up the ledger and use a transactional database before production deployment. A corrupted ledger currently stops startup so financial records are not silently discarded.
 - Duplicate detection covers manual/imported rows and references, not aggregate synthetic baseline records or simulator payment settlements.
 - XLSX supports a single worksheet, scalar values and ISO date text; native Excel serial dates, formulas, macros and multi-sheet workbooks require conversion. No external services receive uploaded files.

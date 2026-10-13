@@ -90,16 +90,19 @@ class Transactions(unittest.TestCase):
 class TransactionHTTP(unittest.TestCase):
     def test_upload_and_dashboard_over_http(self):
         from copilot import server
+        from tests.auth_support import setup_identity
+        setup_identity(self,all_merchants=True)
         with tempfile.TemporaryDirectory() as tmp:
-            old_c, old_store = server.COPILOT, server.STORE
-            server.COPILOT = Copilot()
+            old_c, old_store, old_auth = server.COPILOT, server.STORE, server.AUTH
+            server.COPILOT = self.c
+            server.AUTH = self.auth
             server.STORE = TransactionStore(server.COPILOT,str(Path(tmp)/'ledger.jsonl'))
             srv = ThreadingHTTPServer(('127.0.0.1',0),server.Handler)
             threading.Thread(target=srv.serve_forever,daemon=True).start()
             def request(path,body=None,role='owner'):
                 req=urllib.request.Request(f'http://127.0.0.1:{srv.server_port}'+path,
                     data=json.dumps(body).encode() if body is not None else None,
-                    headers={'Content-Type':'application/json','X-Demo-Role':role,'X-Demo-Consent':'yes'})
+                    headers={'Content-Type':'application/json','Cookie':'sme_session='+self.tokens[role],'X-CSRF-Token':self.auth.me(self.tokens[role])['csrf_token']})
                 try:
                     with urllib.request.urlopen(req) as r:return r.status,json.load(r)
                 except urllib.error.HTTPError as e:
@@ -118,4 +121,4 @@ class TransactionHTTP(unittest.TestCase):
                 self.assertFalse(request('/api/transactions/preview',{'merchant':'M002','rows':rows})[1]['valid'])
             finally:
                 srv.shutdown();srv.server_close()
-                server.COPILOT,server.STORE=old_c,old_store
+                server.COPILOT,server.STORE,server.AUTH=old_c,old_store,old_auth

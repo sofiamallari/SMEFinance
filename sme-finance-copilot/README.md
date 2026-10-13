@@ -24,6 +24,8 @@ Requirements: **Python 3.10+**. The core runs on the Python standard library alo
 
 ```bash
 cd sme-finance-copilot
+python -m copilot.auth migrate
+python -m copilot.auth bootstrap --username admin --email admin@example.com  # prompts for your own password
 python -m copilot.server          # web UI at http://127.0.0.1:8000 · MCP at http://127.0.0.1:8000/mcp
 ```
 
@@ -31,7 +33,7 @@ python -m copilot.server          # web UI at http://127.0.0.1:8000 · MCP at ht
 |---|---|
 | `python -m copilot.server` | Starts the web UI, JSON API and MCP endpoint (`/mcp`) |
 | `python -m copilot.mcp_server` | Starts the MCP server over stdio (normally launched by an AI client) |
-| `python -m unittest discover -s tests -v` | Runs the test suite (103 tests). `pytest -q` also works. |
+| `python -m unittest discover -s tests -v` | Runs the test suite (131 tests). `pytest -q` also works. |
 | `python scripts/run_demo.py` | Runs the end-to-end scenario, including an MCP session, and writes evidence to `evidence/` |
 
 Without an LLM configured, the Copilot tab runs on the deterministic **rule engine**. To switch to an AI model, set `COPILOT_LLM_BASE_URL`, `COPILOT_LLM_API_KEY` and `COPILOT_LLM_MODEL` (see `.env.example`).
@@ -89,22 +91,22 @@ docs/                  MODULE_DESIGN.md · MCP_SETUP.md
 | T4 Prohibited | Approve credit, disburse, change limits | ✖ | ✖ | ✖ | ✖ | **No** |
 
 Controls for AI callers:
-- MCP identity comes from server configuration, never from the model.
+- MCP identity comes from an authenticated session and SQLite memberships/consents. Demo environment identities are ignored in authenticated mode.
 - The in-app AI is locked to the merchant selected in the UI.
 - Sensitive intents and prompt-injection-flagged messages never reach the model.
-- `/mcp` validates the Origin header and supports an optional API key.
+- `/mcp` requires a server session (cookie plus CSRF, or Bearer session). API keys cannot create an identity in authenticated mode.
 - Every AI tool call is written to the hash-chained audit log.
 
 ## 6. Deployment
 
 ```bash
 # Local / VM
-HOST=0.0.0.0 PORT=8000 COPILOT_APPROVAL_SECRET=<64-hex> COPILOT_MCP_API_KEY=<secret> python -m copilot.server
+HOST=0.0.0.0 PORT=8000 COPILOT_HTTPS=yes COPILOT_APPROVAL_SECRET=<64-hex> python -m copilot.server
 # Docker
 docker build -t sme-finance-copilot .
-docker run -p 8000:8000 -e COPILOT_APPROVAL_SECRET=change-me -e COPILOT_MCP_API_KEY=change-me sme-finance-copilot
+docker run -p 8000:8000 -e COPILOT_APPROVAL_SECRET=change-me -e COPILOT_HTTPS=yes sme-finance-copilot
 ```
-For production, put the server behind TLS, set persistent secrets, ship `logs/*.jsonl` to write-once storage, and replace demo auth (`principal_from_request`) with your identity provider. For Copilot Studio, the `/mcp` URL must be public HTTPS (see docs/MCP_SETUP.md).
+For production, put the server behind TLS, set `COPILOT_HTTPS=yes` for Secure cookies, retain the identity database and transaction ledger on persistent storage, and set persistent approval secrets. The built-in username/password authentication is an MVP; external identity federation and MFA are not included. For Copilot Studio, the `/mcp` URL must be public HTTPS (see docs/MCP_SETUP.md).
 
 ## 7. Framework traceability
 
@@ -133,9 +135,9 @@ For production, put the server behind TLS, set persistent secrets, ship `logs/*.
 
 The existing app, role selector, Digital Payments Simulator, Merchant Intelligence Dashboard, RBF Calculator and AI/MCP integrations remain in place.
 
-Run from this directory with Python 3.10+: `python -m copilot.server`, then open http://127.0.0.1:8000. No runtime dependencies required. Run all tests with `python -m unittest discover -s tests -v` (103 tests).
+Run from this directory with Python 3.10+: `python -m copilot.server`, then open http://127.0.0.1:8000. No runtime dependencies required. Run all tests with `python -m unittest discover -s tests -v` (131 tests).
 
-Use the Transactions tab to encode income or expenses with date, amount, payment method, category, description and optional reference. Owners can view, edit and delete saved entries; staff can encode and upload for merchants in their authorized scope. Financing Agent uses the existing `lender_analyst` role and requires owner sharing consent; its AI tools only return authorized financing information, never transaction modification or raw ledger access.
+Use the Transactions tab to encode income or expenses with date, amount, payment method, category, description and optional reference. Owners can view, edit and delete saved entries; staff can encode for assigned merchants and upload only with an explicit bulk-upload grant and enabled role policy. Financing Agent uses the existing `lender_analyst` role and requires an assigned sandbox application and active owner consent for each data category; its AI tools only return authorized financing information, never transaction modification or raw ledger access.
 
 Upload CSV UTF-8 or Excel `.xlsx` (one worksheet). Headers: required `date,type,amount`; optional `channel,category,reference,description`. Aliases `payment_method` and `reference_number` are accepted. Dates must be ISO text YYYY-MM-DD and no later than the reproducible demo date **2026-09-30**. Type is income or expense. Amount must be positive with at most two decimals. Methods: cash, qr_pay, tap_pay, pay_link, external_wallet, external_card. Blank method defaults to cash; blank category defaults to other. Limit: 1,000 rows and 3 MB. XLSX formulas and native Excel serial dates are not supported: paste values and format dates as ISO text. A CSV template is available in the tab.
 
@@ -144,3 +146,27 @@ The server validates the whole upload and detects repeated normalized rows and r
 Transactions, edits and deletions persist to `logs/manual_transactions.jsonl` (`COPILOT_TRANSACTION_FILE` override) and replay on restart. Dashboard revenue, expenses, net income, counts and revenue payment-method breakdowns use saved data. Existing cash-flow, risk alerts, assessments and financing calculations use the same merchant ledger. Ask Copilot “Analyze uploaded transactions” or “Generate a financial report” for financial totals, risk alerts and a 30-day revenue projection; ask for financing options for ranked recommendations. The `financial_report` tool is also available to AI and MCP clients, with every tool call passing through the existing policy guard.
 
 See [docs/TRANSACTIONS.md](docs/TRANSACTIONS.md) for API details and limitations.
+
+
+## Authentication, User Administration and Security Controls
+
+Default mode is **authenticated**. `X-Demo-Role` and `X-Demo-Consent` have no authority. There are no default accounts or passwords. On first installation, run the bootstrap command above and choose a strong password at the hidden prompt. Bootstrap succeeds only before any user exists. Sign in at `/login`; the initial Security Administrator lands on `/admin/security` and can create accounts at `/admin/users`. A User Administrator lands on User Management. Administrative accounts have no merchant financial access.
+
+Create separate Business Owner, Staff and Financing Agent accounts in User Management. Business accounts need merchant memberships; Financing Agents also need an organization or named demo lender scope. Staff bulk upload requires its explicit optional grant. Administrator-created accounts must change their temporary password at first login, which invalidates existing sessions and requires signing in again. Account suspension, lock, role/scope/permission edits, reset and session revocation invalidate sessions. New coach assignments are disabled unless explicitly configured.
+
+Owners use **Financing consent** to grant categories and expiry to an assigned agent. Then use Copilot to submit a sandbox financing application, approving the existing confirmation token. Only the assigned agent, with current matching consent, can inspect authorized data and record a simulated review. Consent revocation or expiration stops new access immediately. Owners may also request staff access changes for User Administration.
+
+Security Controls provides bounded role permissions, safe authentication settings, reduced AI tier ceilings, audit filtering and monitoring. T4 remains permanently prohibited. Administrators must re-enter their password for sensitive changes; no administrative permission grants business data access.
+
+See [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) for migrations, configuration, API details, MCP authentication and limitations; [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md) summarizes validation.
+
+For explicit legacy demos only, PowerShell:
+
+```powershell
+$env:COPILOT_AUTH_MODE = "demo"
+python -m copilot.server --host 127.0.0.1
+# Return to normal authentication before any non-demo run:
+Remove-Item Env:COPILOT_AUTH_MODE
+```
+
+Demo mode is deliberately insecure and is refused by the server CLI on non-localhost bindings. It is not used by the authenticated HTTP regression tests. `.env.example` documents settings; this standard-library app reads process environment variables, not `.env` files automatically.

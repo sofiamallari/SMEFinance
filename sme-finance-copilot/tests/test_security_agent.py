@@ -194,6 +194,10 @@ class TestHTTP(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         from copilot import server
+        from types import SimpleNamespace
+        from tests.auth_support import setup_identity, attach_server
+        cls.identity=SimpleNamespace(addCleanup=cls.addClassCleanup)
+        setup_identity(cls.identity,all_merchants=True);attach_server(cls.identity)
         cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         cls.base = f"http://127.0.0.1:{cls.srv.server_address[1]}"
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
@@ -201,10 +205,12 @@ class TestHTTP(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.srv.shutdown()
+        cls.srv.server_close()
 
     def req(self, path, body=None, role="owner", consent="yes"):
         r = urllib.request.Request(self.base + path, data=json.dumps(body).encode() if body is not None else None,
-                                   headers={"X-Demo-Role": role, "X-Demo-Consent": consent,
+                                   headers={"Cookie":"sme_session="+self.identity.tokens[role],
+                                            "X-CSRF-Token":self.identity.auth.me(self.identity.tokens[role])["csrf_token"],
                                             "Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(r) as resp:

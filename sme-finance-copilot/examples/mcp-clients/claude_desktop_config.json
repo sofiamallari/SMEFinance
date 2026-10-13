@@ -2,9 +2,17 @@
   "mcpServers": {
     "sme-finance-copilot": {
       "command": "python",
-      "args": ["-m", "copilot.mcp_server"],
+      "args": [
+        "-m",
+        "copilot.mcp_server"
+      ],
       "cwd": "C:/Users/YOUR-NAME/Desktop/sme-finance-copilot",
-      "env": { "COPILOT_MCP_ROLE": "owner", "COPILOT_MCP_CONSENT": "yes" }
+      "env": {
+        "COPILOT_AUTH_MODE": "authenticated",
+        "COPILOT_IDENTITY_DB": "ABSOLUTE_PATH_TO_IDENTITY_SQLITE3",
+        "COPILOT_TRANSACTION_FILE": "ABSOLUTE_PATH_TO_TRANSACTION_LEDGER",
+        "COPILOT_MCP_SESSION_TOKEN": "INJECT_SERVER_ISSUED_SESSION_FROM_SECRET_STORE"
+      }
     }
   }
 }

@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import time
+import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -34,6 +35,8 @@ ROLE_MAX_TIER = {
     "coach": Tier.T1_ADVISE,          # field officer / progression coach
     "lender_analyst": Tier.T1_ADVISE,   # read only, consent-scoped
     "demo_guest": Tier.T2_SANDBOX_WRITE,
+    "user_admin": Tier.T0_READ,
+    "security_admin": Tier.T0_READ,
 }
 
 PROHIBITED_ACTIONS = {
@@ -50,9 +53,14 @@ class Principal:
     role: str
     merchant_ids: set = field(default_factory=set)      # merchants this user may act for / view
     consents: set = field(default_factory=set)          # e.g. {"share_with_lender", "coach_access"}
+    authenticated: bool = False
+    permissions: set = field(default_factory=set)
+    authorizer: object = field(default=None, repr=False, compare=False)
+    tier_limit: int | None = None
 
     def max_tier(self) -> Tier:
-        return ROLE_MAX_TIER.get(self.role, Tier.T0_READ)
+        maximum = ROLE_MAX_TIER.get(self.role, Tier.T0_READ)
+        return Tier(min(int(maximum), self.tier_limit)) if self.tier_limit is not None else maximum
 
 
 class AccessDenied(PermissionError):
@@ -70,22 +78,31 @@ class PolicyGuard:
         self.secret = secret or os.environ.get("COPILOT_APPROVAL_SECRET", "").encode() or secrets.token_bytes(32)
         self.clock = clock
         self.used_tokens: set[str] = set()
+        self.token_lock = threading.RLock()
 
     def check(self, principal: Principal, tool_name: str, tier: Tier, merchant_id: str,
               approval_token: str | None = None, required_consent: str | None = None) -> str:
         if tier == Tier.T4_PROHIBITED:
             raise AccessDenied(PROHIBITED_ACTIONS.get(tool_name, "This action is prohibited for the copilot."))
+        from copilot.authorization import require, TOOL_ACTIONS
+        live_tier = require(principal, TOOL_ACTIONS.get(tool_name, 'unsupported_tool'), merchant_id)
+        if live_tier is not None and tier > live_tier:
+            raise AccessDenied('AI tier is disabled by current security policy')
+        if tool_name == 'prepare_financing_application':
+            require(principal, 'prepare_application', merchant_id)
+        if principal.role in ('user_admin', 'security_admin'):
+            raise AccessDenied('Administrative authority does not grant financial tool access')
         if merchant_id not in principal.merchant_ids:
             raise AccessDenied("You do not have access to this merchant's data.")
-        if principal.role == "coach" and "coach_access" not in principal.consents:
+        if not principal.authenticated and principal.role == "coach" and "coach_access" not in principal.consents:
             raise AccessDenied("The merchant has not granted coach access.")
-        if principal.role == "lender_analyst" and "share_with_lender" not in principal.consents:
+        if not principal.authenticated and principal.role == "lender_analyst" and "share_with_lender" not in principal.consents:
             raise AccessDenied("The merchant has not consented to share data with the lender.")
         if principal.role == "lender_analyst" and tool_name not in {"assess_business", "match_financing", "rbf_quote", "cashflow_forecast", "cashflow_alerts", "financial_report"}:
             raise AccessDenied("Financing agents may access authorized financing information only")
         if tier > principal.max_tier():
             raise AccessDenied(f"Role '{principal.role}' cannot perform tier {tier.name} actions.")
-        if required_consent and required_consent not in principal.consents:
+        if not principal.authenticated and required_consent and required_consent not in principal.consents:
             raise AccessDenied(f"Missing owner consent: {required_consent}.")
         if tier == Tier.T3_APPROVAL_REQUIRED:
             if not approval_token:
@@ -103,6 +120,10 @@ class PolicyGuard:
         return f"{msg}|{sig}"
 
     def verify_token(self, token: str, user_id: str, action: str, merchant_id: str):
+        with self.token_lock:
+            return self._verify_token(token,user_id,action,merchant_id)
+
+    def _verify_token(self, token: str, user_id: str, action: str, merchant_id: str):
         try:
             u, a, m, exp, nonce, sig = token.split("|")
         except ValueError:
@@ -113,7 +134,9 @@ class PolicyGuard:
             raise AccessDenied("Invalid approval token.")
         if (u, a, m) != (user_id, action, merchant_id):
             raise AccessDenied("Approval token does not match this user/action/merchant.")
-        if self.clock() > int(exp):
+        try: expiry = int(exp)
+        except ValueError: raise AccessDenied("Malformed approval expiration.")
+        if self.clock() > expiry:
             raise AccessDenied("Approval token expired.")
         if token in self.used_tokens:
             raise AccessDenied("Approval token already used.")
@@ -182,15 +205,23 @@ class AuditLog:
         self.clock = clock
         self.records: list[dict] = []
         self.prev = "GENESIS"
+        self.lock = threading.RLock()
+        self.sink = None
         if path:
             os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 
     def write(self, **event) -> dict:
+        with self.lock:
+            return self._write(**event)
+
+    def _write(self, **event) -> dict:
         rec = {"seq": len(self.records) + 1, "ts": round(self.clock(), 3), **mask_pii(event),
                "prev_hash": self.prev}
         rec["hash"] = hashlib.sha256(json.dumps(rec, sort_keys=True, default=str).encode()).hexdigest()
         self.prev = rec["hash"]
         self.records.append(rec)
+        if self.sink:
+            self.sink(event)
         if self.path:
             with open(self.path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec, default=str) + "\n")

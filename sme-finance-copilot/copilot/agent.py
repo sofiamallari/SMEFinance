@@ -56,6 +56,7 @@ class Copilot:
         self.payments = PaymentSimulator(clock=clock)
         self.narrator = get_narrator()
         self.history: dict[str, list] = {}       # merchant_id -> assessment snapshots (MEASURE)
+        self.identity_store = None
         self.applications: list[dict] = []
         self.tools = {t.name: t for t in self._register_tools()}
 
@@ -148,6 +149,8 @@ class Copilot:
             raise
         try:
             result = tool.fn(merchant_id, **kwargs)
+            if name == "prepare_financing_application" and principal.authenticated:
+                result = self.identity_store.submit_packet(principal, merchant_id, result)
         except (PaymentError, ValueError, TypeError) as e:
             self.audit.write(**base, decision="allowed", outcome="error", reason=str(e))
             self.exec_log.write(**base, decision="allowed", outcome="error", reason=str(e), args=kwargs)
@@ -203,7 +206,7 @@ class Copilot:
 
     # --------------------------------------------------------- chat turn
     INTENTS = [
-        ("report", r"\b(report|analy[sz]e|projection|uploaded)\b"),
+        ("report", r"\b(report|analy[sz]e|projection|uploaded|repayment capacity)\b"),
         ("prohibited", r"\b(approve|approval of) (my|the|this)? ?(loan|credit|application)|disburse|transfer (the )?(money|funds)|increase (my )?(credit )?limit"),
         ("apply", r"\b(apply|submit|application|proceed with (the )?(loan|financing|offer))\b"),
         ("payment", r"\b(qr|pay ?link|payment link|tap|collect|charge|accept payment|generate)\b"),
@@ -237,6 +240,8 @@ class Copilot:
                history: list | None = None) -> dict:
         if not self.limiter.allow(principal.user_id):
             return {"reply": "Too many requests. Please wait a minute.", "intent": "rate_limited"}
+        from copilot.authorization import require
+        require(principal, "use_copilot", merchant_id)
         clean = sanitize_input(message)
         text, flags = clean["text"], clean["flags"]
         intent = self.route(text)

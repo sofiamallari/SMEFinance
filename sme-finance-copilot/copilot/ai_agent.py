@@ -56,6 +56,8 @@ def _post(payload: dict, timeout: int = 45) -> dict:
 
 def run(copilot, principal, merchant_id: str, question: str, history: list | None = None) -> dict:
     """Returns {"reply", "tools_used", "mode": "ai_agent"}; raises on any failure (caller falls back)."""
+    from copilot.authorization import require
+    require(principal,"use_copilot",merchant_id)
     m = copilot.merchants[merchant_id]
     ctx = (f"Current business: {m.name} (ID {m.merchant_id}), {m.sector}, country {m.country}, currency {m.currency}. "
            f"Data as of {copilot.as_of.isoformat()}. User role: {principal.role}.")

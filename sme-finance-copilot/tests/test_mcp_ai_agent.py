@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import unittest
+from unittest.mock import patch
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -103,7 +104,8 @@ class TestMCPProtocol(unittest.TestCase):
     def test_merchant_scope_from_env(self):
         os.environ["COPILOT_MCP_MERCHANTS"] = "M002"
         try:
-            p = mcp_server.principal_from_env(self.c.merchants)
+            with patch.dict(os.environ,{"COPILOT_AUTH_MODE":"demo"}):
+                p = mcp_server.principal_from_env(self.c.merchants)
         finally:
             os.environ.pop("COPILOT_MCP_MERCHANTS")
         h = mcp_server.MCPHandler(self.c, p)
@@ -124,6 +126,8 @@ class TestMCPProtocol(unittest.TestCase):
 
 class TestMCPHttpSecurity(unittest.TestCase):
     def setUp(self):
+        mode=patch.dict(os.environ,{"COPILOT_AUTH_MODE":"demo"})
+        mode.start();self.addCleanup(mode.stop)
         self.mcp = mcp_server.MCPHandler(Copilot(), Principal("o", "owner", set(ALL), {"share_with_lender"}))
         self.body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode()
 
@@ -151,7 +155,7 @@ class TestMCPHttpSecurity(unittest.TestCase):
 
 class TestMCPOverTransports(unittest.TestCase):
     def test_stdio_roundtrip(self):
-        env = {**os.environ, "COPILOT_LOG_DIR": os.path.join(ROOT, ".test_logs")}
+        env = {**os.environ, "COPILOT_AUTH_MODE":"demo", "COPILOT_LOG_DIR": os.path.join(ROOT, ".test_logs")}
         msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize",
                  "params": {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}},
                 {"jsonrpc": "2.0", "method": "notifications/initialized"},
@@ -166,6 +170,8 @@ class TestMCPOverTransports(unittest.TestCase):
 
     def test_streamable_http_endpoint_on_web_server(self):
         from copilot import server
+        from tests.auth_support import setup_identity,attach_server
+        setup_identity(self,all_merchants=True);attach_server(self)
         srv = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         url = f"http://127.0.0.1:{srv.server_address[1]}/mcp"
@@ -173,7 +179,9 @@ class TestMCPOverTransports(unittest.TestCase):
             def post(body):
                 r = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                            headers={"Content-Type": "application/json",
-                                                    "Accept": "application/json, text/event-stream"})
+                                                    "Accept": "application/json, text/event-stream",
+                                                    "Cookie":"sme_session="+self.tokens["owner"],
+                                                    "X-CSRF-Token":self.auth.me(self.tokens["owner"])["csrf_token"]})
                 with urllib.request.urlopen(r) as resp:
                     raw = resp.read()
                     return resp.status, json.loads(raw) if raw else None
@@ -190,6 +198,7 @@ class TestMCPOverTransports(unittest.TestCase):
             ctx.exception.close()
         finally:
             srv.shutdown()
+            srv.server_close()
 
 
 # ---------------------------------------------------------------- AI agent mode
