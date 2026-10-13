@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "sme-finance-copilot": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "-m",
+        "copilot.mcp_server"
+      ],
+      "env": {
+        "COPILOT_MCP_ROLE": "owner",
+        "COPILOT_MCP_CONSENT": "yes"
+      }
+    }
+  }
+}

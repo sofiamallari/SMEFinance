@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "sme-finance-copilot": {
+      "command": "python",
+      "args": ["-m", "copilot.mcp_server"],
+      "cwd": "C:/Users/YOUR-NAME/Desktop/sme-finance-copilot",
+      "env": { "COPILOT_MCP_ROLE": "owner", "COPILOT_MCP_CONSENT": "yes" }
+    }
+  }
+}

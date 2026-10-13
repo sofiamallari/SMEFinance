@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SME Finance Copilot</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f1f5f9;--card:#fff;--brand:#0b3b5c;--brand2:#127a8a;--accent:#16a34a;--warn:#d97706;--crit:#dc2626;--soft:#e6f4f6}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:linear-gradient(120deg,var(--brand),var(--brand2));color:#fff;padding:14px 22px;display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between}
+header h1{margin:0;font-size:1.25rem}header small{opacity:.8}
+.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+select,input,button,textarea{font:inherit}select,input[type=number],input[type=date],input[type=text]{padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;color:var(--ink)}
+header select{border-color:transparent}
+label.chk{display:flex;gap:6px;align-items:center;font-size:.85rem}
+nav{display:flex;gap:4px;padding:0 18px;background:#fff;border-bottom:1px solid var(--line);overflow-x:auto}
+nav button{border:0;background:none;padding:13px 14px;cursor:pointer;color:var(--muted);font-weight:600;border-bottom:3px solid transparent;white-space:nowrap}
+nav button.active{color:var(--brand);border-color:var(--brand2)}
+main{padding:20px;max-width:1280px;margin:auto}
+.tab{display:none}.tab.active{display:block}
+.grid{display:grid;gap:18px}.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 2px 8px rgba(15,23,42,.04);min-width:0}
+.card h2{margin:0 0 4px;font-size:1.05rem;color:var(--brand)}.card p.sub{margin:0 0 12px;color:var(--muted);font-size:.82rem}
+.btn{border:0;border-radius:10px;padding:10px 14px;background:var(--brand);color:#fff;font-weight:600;cursor:pointer}
+.btn:hover{background:var(--brand2)}.btn.ghost{background:transparent;color:var(--brand);border:1.5px solid var(--brand)}
+.btn:disabled{opacity:.5;cursor:not-allowed}.btn.sm{padding:6px 10px;font-size:.82rem}
+.kpi{font-size:1.6rem;font-weight:800;color:var(--brand)}.muted{color:var(--muted);font-size:.82rem}
+.pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:.72rem;font-weight:700;background:var(--soft);color:var(--brand)}
+.pill.ai{background:#ede9fe;color:#5b21b6}
+.sev-critical{background:#fee2e2;color:var(--crit)}.sev-warning{background:#fef3c7;color:#92400e}.sev-info{background:#e0f2fe;color:#075985}
+.row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:.9rem}
+.row:last-child{border-bottom:0}
+.bar{height:9px;background:#e2e8f0;border-radius:99px;overflow:hidden}.bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--brand2),var(--brand))}
+.stages{display:flex;gap:6px;margin:10px 0}.stage{flex:1;text-align:center;padding:8px 4px;border-radius:10px;background:#f1f5f9;font-size:.7rem;color:var(--muted);font-weight:600}
+.stage.on{background:var(--brand);color:#fff}.stage.done{background:var(--soft);color:var(--brand)}
+#chatlog{height:420px;overflow-y:auto;padding:8px;background:#f8fafc;border-radius:12px;border:1px solid var(--line)}
+.msg{max-width:85%;margin:8px 0;padding:10px 12px;border-radius:12px;white-space:pre-wrap;font-size:.9rem;line-height:1.4}
+.msg.user{margin-left:auto;background:var(--brand);color:#fff;border-bottom-right-radius:4px}
+.msg.bot{background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px}
+.msg .trace{display:block;margin-top:6px;font-size:.72rem;color:var(--muted);white-space:normal}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 10px;font-size:.78rem;cursor:pointer}
+.chip:hover{border-color:var(--brand2)}
+.chatin{display:flex;gap:8px}.chatin input{flex:1}
+input[type=range]{width:100%;accent-color:var(--brand2)}
+.day{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.tag{padding:4px 9px;border-radius:8px;font-size:.78rem;font-weight:700;background:#f1f5f9}.tag.pay{background:var(--soft);color:var(--brand)}
+.donutwrap{display:flex;gap:16px;align-items:center}.donut{width:140px;height:140px;border-radius:50%;display:grid;place-items:center;flex-shrink:0}
+.hole{width:88px;height:88px;border-radius:50%;background:#fff;display:grid;place-items:center;text-align:center;font-weight:800;font-size:.8rem;color:var(--brand);padding:4px}
+.legend{display:flex;flex-direction:column;gap:6px;font-size:.75rem;flex:1}.legend div{display:flex;gap:6px;align-items:center}.sw{width:11px;height:11px;border-radius:3px;flex-shrink:0}
+.bars{display:flex;align-items:flex-end;gap:6px;height:180px;border-bottom:2px solid var(--line);padding-top:16px;overflow-x:auto}
+.bcol{flex:1;min-width:26px;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end}
+.bcol i{display:block;width:100%;max-width:34px;border-radius:6px 6px 0 0;background:linear-gradient(180deg,var(--brand2),var(--brand))}
+.bcol.rev i{background:linear-gradient(180deg,#22c55e,#15803d)}.bcol b{font-size:.6rem;color:var(--brand);margin-bottom:3px;white-space:nowrap}.bcol span{font-size:.62rem;color:var(--muted);margin-top:4px;white-space:nowrap}
+.qr{display:inline-grid;gap:0;padding:10px;background:#fff;border:2px solid var(--brand);border-radius:12px}
+.qr i{width:8px;height:8px;display:block}.qr i.on{background:var(--brand)}
+.prod{border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center;cursor:pointer;background:#fff}.prod:hover{border-color:var(--brand2);background:var(--soft)}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:.72rem;word-break:break-all;background:#f8fafc;padding:8px;border-radius:8px;border:1px solid var(--line)}
+.banner{padding:10px 12px;border-radius:10px;font-size:.85rem;margin-top:10px}.ok{background:#dcfce7;color:#166534}.err{background:#fee2e2;color:#991b1b}.note{background:#fef3c7;color:#92400e}
+svg text{font-size:10px;fill:#64748b}
+footer{text-align:center;color:var(--muted);font-size:.75rem;padding:18px}
+@media(max-width:900px){.g2,.g3{grid-template-columns:1fr}}
+#tledger table,#tpreview table{width:100%;border-collapse:collapse;text-align:left} #tledger th,#tledger td,#tpreview th,#tpreview td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top} #tledger td{overflow-wrap:anywhere} #tledger button{margin:3px}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>SME Finance Copilot</h1><small>Financing matching · Cash-flow alerts · Business analysis — ASEAN sandbox prototype</small></div>
+  <div class="controls">
+    <select id="merchant" aria-label="Merchant"></select>
+    <select id="role" aria-label="Role">
+      <option value="owner">Role: Business owner</option><option value="staff">Role: Staff</option><option value="coach">Role: Progression coach</option>
+      <option value="lender_analyst">Role: Financing Agent</option><option value="demo_guest">Role: Demo guest</option>
+    </select>
+    <label class="chk"><input type="checkbox" id="consent" checked> Owner consent to share</label>
+  </div>
+</header>
+<nav id="tabs">
+  <button data-tab="copilot" class="active">Copilot</button>
+  <button data-tab="financing">Financing</button>
+  <button data-tab="cashflow">Cash flow</button>
+  <button data-tab="dashboard">Dashboard</button>
+  <button data-tab="payments">Payments sandbox</button>
+  <button data-tab="transactions">Transactions</button>
+</nav>
+<main>
+<section class="tab active" id="tab-copilot">
+  <div class="grid g2">
+    <div class="card">
+      <div class="row" style="border:0;padding:0"><h2>Ask your copilot</h2><span id="modebadge" class="pill">…</span></div>
+      <p class="sub" id="modesub">Advisory only — it never approves credit or moves real money.</p>
+      <div id="chatlog"></div>
+      <div class="chips" id="chips"></div>
+      <form class="chatin" id="chatform"><input type="text" id="chatinput" maxlength="2000" placeholder="Search or ask anything, e.g. Why is my operational capacity low and what should I do first?" aria-label="Message"><button class="btn">Send</button></form>
+    </div>
+    <div class="card" id="progress"><h2>Progression engine</h2><p class="sub">Identify → Profile → Place → Activate → Measure</p><div id="progressbody" class="muted">Loading…</div></div>
+  </div>
+</section>
+<section class="tab" id="tab-financing">
+  <div class="grid g2">
+    <div class="card">
+      <h2>Revenue-based financing calculator</h2><p class="sub">Repay as a % of daily digital sales — slower days, smaller payments.</p>
+      <div id="rbfelig"></div>
+      <div class="kpi" id="rbfamt" style="text-align:center;margin:8px 0">—</div>
+      <input type="range" id="rbfslider" aria-label="Advance amount">
+      <div class="row muted"><span id="rbfmin"></span><span id="rbfmax"></span></div>
+      <div id="rbfsummary"></div>
+    </div>
+    <div class="card"><h2>Daily repayment flow</h2><p class="sub">Based on this merchant's real sales pattern.</p><div id="rbfdays"></div><div id="rbfcmp" class="muted" style="margin-top:10px"></div></div>
+  </div>
+  <div class="card" style="margin-top:18px"><h2>Matched financing & support options</h2><p class="sub">Ranked by constraint fit, stage fit, readiness and affordability.</p><div id="matches"></div></div>
+</section>
+<section class="tab" id="tab-cashflow">
+  <div class="grid g3" id="cfkpis"></div>
+  <div class="card" style="margin-top:18px"><h2>30-day balance forecast</h2><p class="sub" id="cfmethod"></p><div id="cfchart"></div></div>
+  <div class="card" style="margin-top:18px"><h2>Alerts</h2><div id="cfalerts"></div></div>
+</section>
+<section class="tab" id="tab-dashboard">
+  <div class="card" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+    <div><div class="muted">Start</div><input type="date" id="dstart"></div>
+    <div><div class="muted">End</div><input type="date" id="dend"></div>
+    <div><div class="muted">Granularity</div><select id="dgran"><option>daily</option><option>weekly</option><option selected>monthly</option><option>quarterly</option></select></div>
+    <button class="btn" id="dapply">Apply</button><span class="muted" id="derr"></span>
+  </div>
+  <div class="grid g3" style="margin-top:18px" id="dkpis"></div>
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card"><h2>1. Transaction volume mix</h2><p class="sub">Own digital rails vs external channels vs cash</p><div id="dvol"></div></div>
+    <div class="card"><h2>2. Revenue split</h2><p class="sub">Gross processed value by payment source</p><div id="drev"></div></div>
+  </div>
+  <div class="card" style="margin-top:18px"><h2>3. Transaction volume trend</h2><div id="dvoltrend"></div></div>
+  <div class="card" style="margin-top:18px"><h2>4. Revenue trend</h2><div id="drevtrend"></div></div>
+</section>
+<section class="tab" id="tab-payments">
+  <div class="grid g2">
+    <div class="card">
+      <h2>Pathway 1 — Standalone app</h2><p class="sub">Key in an amount, then choose how to collect.</p>
+      <input type="number" id="pamt" min="1" placeholder="Amount" style="width:100%">
+      <div class="tiles"><button class="btn" data-m="qr_pay">QR Pay</button><button class="btn" data-m="tap_pay">Tap Pay</button><button class="btn" data-m="pay_link" style="grid-column:span 2">Pay Link</button></div>
+      <h2 style="margin-top:22px">Pathway 2 — POS terminal</h2><p class="sub">Build an order; sales tax applied by country.</p>
+      <div class="tiles" id="catalog"></div>
+      <div id="cart" style="margin-top:10px"></div>
+      <div class="tiles"><button class="btn" id="posqr">Pay by QR</button><button class="btn" id="postap">Pay by Tap</button><button class="btn ghost" id="poscash">Cash</button><button class="btn ghost" id="posclear">Clear</button></div>
+    </div>
+    <div class="card"><h2>Payment request</h2><p class="sub">Sandbox only — QR codes are visual placeholders and no card data is ever collected.</p><div id="pout" class="muted">Create a payment to begin.</div></div>
+  </div>
+</section>
+<section class="tab" id="tab-transactions">
+  <div class="grid g2">
+    <div class="card"><h2>Single transaction entry</h2><p class="sub">Record a sale or expense. The dashboard and forecast will use the new data.</p>
+      <form id="singleform" style="display:grid;gap:10px">
+        <label>Date <input id="tdate" type="date" required style="width:100%"></label>
+        <label>Type <select id="ttype" style="width:100%"><option value="income">Income / sale</option><option value="expense">Expense</option></select></label>
+        <label>Amount <input id="tamount" type="number" min="0.01" step="any" required style="width:100%"></label>
+        <label>Payment channel <select id="tchannel" style="width:100%"><option value="cash">Cash</option><option value="qr_pay">QR Pay</option><option value="tap_pay">Tap Pay</option><option value="pay_link">Pay Link</option><option value="external_wallet">External wallet</option><option value="external_card">External card</option></select></label>
+        <label>Category <input id="tcategory" placeholder="e.g. inventory, supplies, sales" style="width:100%"></label>
+        <label>Reference (optional) <input id="tref" maxlength="100" style="width:100%"></label>
+        <label>Description (optional) <input id="tdesc" maxlength="250" style="width:100%"></label>
+        <button class="btn">Save transaction</button>
+      </form>
+    </div>
+    <div class="card"><h2>Bulk upload</h2><p class="sub">Import up to 1,000 transactions at once. Supported: CSV and Excel (.xlsx). Review all rows before committing.</p>
+      <p><a id="tsample" href="#">Download CSV template</a></p>
+      <input type="file" id="tfile" accept=".csv,.xlsx,text/csv" style="width:100%">
+      <div id="tpreview" class="muted" style="margin:12px 0">Choose a file to preview its transactions.</div>
+      <button class="btn" id="timport" disabled>Confirm bulk import</button>
+      <p class="muted" style="margin-top:12px">Excel: one worksheet, ISO date text (YYYY-MM-DD), values only. Preview expires after 10 minutes.</p>
+    </div>
+  </div>
+  <div id="tresult" style="margin-top:12px"></div><div class="card" id="tledger" style="margin-top:12px"></div>
+</section>
+</main>
+<footer>Synthetic data only · Indicative estimates, not credit offers · Lenders make all credit decisions</footer>
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+let M=null, merchants=[], cart=[], chatHistory=[], AGENT="rule_engine";
+const SYM={IDR:"Rp",PHP:"₱",MYR:"RM",THB:"฿",VND:"₫",SGD:"S$"};
+const fmt=(v,c)=>v==null?"n/a":(v<0?"-":"")+(SYM[c||M?.currency]||"")+Math.abs(Number(v)).toLocaleString("en-US",{maximumFractionDigits:Math.abs(v)<100?2:0});
+const short=v=>(v<0?"-":"")+(SYM[M.currency]||"")+((v=Math.abs(v))>=1e9?(v/1e9).toFixed(1)+"B":v>=1e6?(v/1e6).toFixed(1)+"M":v>=1e3?(v/1e3).toFixed(0)+"k":Math.round(v));
+const CHL={qr_pay:"QR Pay",tap_pay:"Tap Pay",pay_link:"Pay Link",external_wallet:"external e-wallet",external_card:"external card"};
+const pct=v=>v==null?"n/a":(v*100).toFixed(1)+"%";
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const COLORS=["#0b3b5c","#127a8a","#38bdf8","#94a3b8","#f59e0b","#a3a3a3"];
+async function api(path,opt={}){
+  const h={"Content-Type":"application/json","X-Demo-Role":$("#role").value,"X-Demo-Consent":$("#consent").checked?"yes":"no"};
+  const r=await fetch(path,{...opt,headers:h});const j=await r.json();
+  if(r.status>=400) throw new Error(j.error||"Request failed");return {status:r.status,...(Array.isArray(j)?{list:j}:j)};
+}
+const q=extra=>`?merchant=${M.id}${extra||""}`;
+$$("#tabs button").forEach(b=>b.onclick=()=>{$$("#tabs button").forEach(x=>x.classList.remove("active"));b.classList.add("active");$$(".tab").forEach(t=>t.classList.remove("active"));$("#tab-"+b.dataset.tab).classList.add("active");loadTab(b.dataset.tab)});
+const active=()=>$("#tabs button.active").dataset.tab;
+function loadTab(t){({copilot:loadProgress,financing:loadFinancing,cashflow:loadCashflow,dashboard:loadDashboard,payments:loadPayments,transactions:loadTransactions})[t]().catch(e=>showErr(t,e))}
+function showErr(t,e){const el={copilot:"#progressbody",financing:"#matches",cashflow:"#cfalerts",dashboard:"#dkpis",payments:"#pout",transactions:"#tresult"}[t];$(el).innerHTML=`<div class="banner err">${esc(e.message)}</div>`}
+// ---------- COPILOT
+const CHIPS=["How am I doing?","What financing fits my business?","How much can I borrow with RBF?","Any cash-flow alerts?","Show my sales dashboard","Which incentive milestone am I on?","Generate a QR for 500","Submit a financing application","Approve my loan now"];
+function addMsg(t,who){const d=document.createElement("div");d.className="msg "+who;d.textContent=t;$("#chatlog").appendChild(d);$("#chatlog").scrollTop=1e9;return d}
+async function send(text,token){
+  if(!text.trim())return; if(!token)addMsg(text,"user");
+  const thinking=AGENT=="ai_agent"&&!token?addMsg("Thinking…","bot"):null;
+  try{const r=await api("/api/chat",{method:"POST",body:JSON.stringify({merchant:M.id,message:text,approval_token:token,history:chatHistory.slice(-6)})});
+    if(thinking)thinking.remove();
+    const d=addMsg(r.reply,"bot");
+    chatHistory.push({role:"user",content:text},{role:"assistant",content:r.reply});
+    const tr=document.createElement("span");tr.className="trace";
+    tr.textContent=r.mode=="ai_agent"?("AI agent · tools used: "+((r.data&&r.data.tools_used||[]).join(", ")||"none")):"Rule engine"+(r.intent?" · "+r.intent:"");
+    d.appendChild(tr);
+    if(r.data&&r.data.approval_required){const b=document.createElement("button");b.className="btn sm";b.style.marginTop="8px";b.textContent="✔ I approve — submit";b.onclick=()=>{b.disabled=true;addMsg("Approved by owner.","user");send(text,r.data.approval_token)};d.appendChild(document.createElement("br"));d.appendChild(b)}
+    if(r.data&&r.data.qr_matrix){d.appendChild(document.createElement("br"));d.appendChild(qrEl(r.data.qr_matrix))}
+    if(["progress","apply"].includes(r.intent))loadProgress();
+  }catch(e){if(thinking)thinking.remove();addMsg("Error: "+e.message,"bot")}
+}
+$("#chips").innerHTML=CHIPS.map(c=>`<button class="chip">${esc(c)}</button>`).join("");
+$$(".chip").forEach(c=>c.onclick=()=>send(c.textContent));
+$("#chatform").onsubmit=e=>{e.preventDefault();const v=$("#chatinput").value;$("#chatinput").value="";send(v)};
+async function loadProgress(){
+  const c=await api("/api/cycle"+q());
+  const names=["Survival","Striving","Steady","Opportunity","Expanding","Heir"];
+  let h=`<div class="stages">${names.map((n,i)=>`<div class="stage ${i+1===c.stage?"on":i+1<c.stage?"done":""}">${i+1}. ${n}</div>`).join("")}</div>
+  <div class="row"><b>Stage ${c.stage}: ${esc(c.stage_name)}</b><span class="pill">Composite ${c.composite_score}/100</span></div>`;
+  h+=Object.entries(c.scores).map(([k,v])=>`<div style="margin:7px 0"><div class="row" style="border:0;padding:0 0 3px"><span>${k.replace(/_/g," ")}</span><b>${v.toFixed(0)}</b></div><div class="bar"><span style="width:${v}%"></span></div></div>`).join("");
+  if(c.measure.next_stage){const n=c.measure.next_stage;h+=`<p class="muted">Next: Stage ${n.target_stage} (${esc(n.target_name)}) — ${n.composite_gap} composite points to go${Object.keys(n.dimension_gaps).length?"; lift "+Object.entries(n.dimension_gaps).map(([k,v])=>`${k.replace(/_/g," ")} +${v}`).join(", "):""}.</p>`}
+  h+=`<h2 style="margin-top:14px">Activation plan</h2>`+Object.entries(c.plan).map(([k,v])=>`<div style="margin:6px 0"><span class="pill">${k}</span><ul style="margin:6px 0 0 0;padding-left:18px;font-size:.86rem">${v.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`).join("");
+  if(c.alerts.length)h+=`<h2 style="margin-top:14px">Alerts</h2>`+c.alerts.slice(0,3).map(a=>`<div class="row"><span>${esc(a.message)}</span><span class="pill sev-${a.severity}">${a.severity}</span></div>`).join("");
+  $("#progressbody").innerHTML=h;
+}
+// ---------- FINANCING
+let rbfTimer;
+async function loadFinancing(){
+  const L=await api("/api/rbf/limits"+q());const s=$("#rbfslider");
+  $("#rbfelig").innerHTML=L.eligibility.eligible?`<div class="banner ok">Eligible to simulate revenue-based financing. Basis: ${fmt(L.basis_monthly_ecosystem_sales)} monthly sales on own digital rails.</div>`:`<div class="banner note"><b>Not yet eligible:</b> ${L.eligibility.reasons.map(esc).join(" ")}<br>You can still explore the calculator.</div>`;
+  const step=Math.max(1,Math.round((L.max_advance-L.min_advance)/200));
+  s.min=L.min_advance;s.max=L.max_advance;s.step=step;s.value=L.recommended||L.min_advance;
+  $("#rbfmin").textContent=fmt(L.min_advance);$("#rbfmax").textContent=fmt(L.max_advance);
+  s.oninput=()=>{$("#rbfamt").textContent=fmt(+s.value);clearTimeout(rbfTimer);rbfTimer=setTimeout(quote,180)};
+  $("#rbfamt").textContent=fmt(+s.value);
+  if(L.max_advance>0)await quote();
+  try{renderMatches(await api("/api/match"+q()))}catch(e){$("#matches").innerHTML=`<div class="banner err">${esc(e.message)}</div>`}
+}
+async function quote(){
+  try{const r=await api("/api/rbf/quote",{method:"POST",body:JSON.stringify({merchant:M.id,advance:+$("#rbfslider").value})});
+  $("#rbfsummary").innerHTML=`<div class="row"><span>Advance</span><b>${fmt(r.advance)}</b></div><div class="row"><span>Flat fee (${pct(r.fee_rate)}${r.incentive_tier_applied>=2?" incl. milestone discount":""})</span><b>${fmt(r.fee)}</b></div><div class="row"><span>Total repayable</span><b>${fmt(r.total_repayable)}</b></div><div class="row" style="background:var(--soft);padding:10px;border-radius:10px"><span><b>Repayment</b><br><small class="muted">of each day's own-rail digital sales</small></span><b style="font-size:1.2rem">${pct(r.remittance_rate)}</b></div><div class="row"><span>Estimated payoff</span><b>${r.estimated_payoff_days?r.estimated_payoff_days+" days":"beyond max term"}</b></div>${r.warnings.map(w=>`<div class="banner note">${esc(w)}</div>`).join("")}<p class="muted">${esc(r.disclaimer)}</p>`;
+  const e=r.examples;$("#rbfdays").innerHTML=[["Strong day",e.strong_day],["Typical day",e.typical_day],["Slow day",e.slow_day],["No sales",e.no_sales_day]].map(([n,x])=>`<div class="day"><b>${n}</b><span><span class="tag">${fmt(x.sales)} sales</span> → <span class="tag pay">${fmt(x.repayment)}</span></span></div>`).join("");
+  const f=r.fixed_instalment_comparison;$("#rbfcmp").textContent=f.equivalent_fixed_daily_payment?`A fixed instalment of ${fmt(f.equivalent_fixed_daily_payment)}/day would have exceeded the day's gross profit on ${f.days_in_last_90_where_fixed_payment_exceeds_daily_gross_profit} of the last 90 days.`:"";
+  }catch(err){$("#rbfsummary").innerHTML=`<div class="banner err">${esc(err.message)}</div>`}
+}
+function renderMatches(r){if(!r||!r.recommendations){$("#matches").innerHTML=`<div class="banner err">Not available for this role.</div>`;return}
+  $("#matches").innerHTML=r.recommendations.map((x,i)=>`<div class="row"><span><b>${i+1}. ${esc(x.name)}</b><br><small class="muted">${esc(x.provider_type)} · ${esc(x.rationale)}${x.indicative_size?" · indicative "+fmt(x.indicative_size):""}</small></span><span class="pill">${x.match_score}</span></div>`).join("")+
+  (r.not_yet_eligible.length?`<details style="margin-top:10px"><summary class="muted">Not yet eligible (${r.not_yet_eligible.length}) — what it would take</summary>${r.not_yet_eligible.map(x=>`<div class="row"><span>${esc(x.name)}</span><small class="muted">${esc(x.why_not_yet.join("; "))}</small></div>`).join("")}</details>`:"")+`<p class="muted">${esc(r.disclaimer)}</p>`}
+// ---------- CASHFLOW
+async function loadCashflow(){
+  const {forecast:f,alerts:a}=await api("/api/cashflow"+q());
+  $("#cfkpis").innerHTML=[["Balance today",fmt(f.opening_balance)],["Lowest projected (30d)",fmt(f.min_balance)],["Cash buffer",f.buffer_days+" days"+(f.runway_days?` · negative on day ${f.runway_days}`:"")]].map(([k,v])=>`<div class="card"><div class="muted">${k}</div><div class="kpi">${v}</div></div>`).join("");
+  $("#cfmethod").textContent="Method: "+f.method;
+  const W=900,H=220,P=36,vals=f.path.map(p=>p.balance),mn=Math.min(0,...vals),mx=Math.max(...vals,f.opening_balance);
+  const x=i=>P+i*(W-2*P)/(vals.length-1),y=v=>H-P-(v-mn)/((mx-mn)||1)*(H-2*P);
+  const pts=vals.map((v,i)=>`${x(i)},${y(v)}`).join(" ");
+  $("#cfchart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Balance forecast"><line x1="${P}" x2="${W-P}" y1="${y(0)}" y2="${y(0)}" stroke="#dc2626" stroke-dasharray="4"/><polyline points="${pts}" fill="none" stroke="#127a8a" stroke-width="3"/>${vals.map((v,i)=>i%5==0?`<text x="${x(i)}" y="${H-12}" text-anchor="middle">${f.path[i].date.slice(5)}</text>`:"").join("")}<text x="${W-P}" y="${y(mx)-6}" text-anchor="end">max ${short(mx)}</text><text x="${W-P}" y="${y(0)-4}" text-anchor="end" fill="#dc2626">0</text>${mn<0?`<text x="${W-P}" y="${y(mn)+12}" text-anchor="end">min ${short(mn)}</text>`:""}</svg>`;
+  $("#cfalerts").innerHTML=a.length?a.map(x=>`<div class="row"><span><span class="pill sev-${x.severity}">${x.severity}</span> <b>${esc(x.message)}</b><br><small class="muted">→ ${esc(x.recommended_action)} <i>(${esc(x.framework_intervention)})</i></small></span></div>`).join(""):`<div class="banner ok">No alerts. Cash position looks healthy.</div>`;
+}
+// ---------- DASHBOARD
+async function loadDashboard(){
+  const s=$("#dstart").value,e=$("#dend").value;$("#derr").textContent="";
+  if(s&&e&&s>e){$("#derr").textContent="Start date must be on or before end date.";return}
+  const d=await api("/api/dashboard"+q(`&granularity=${$("#dgran").value}${s?"&start="+s:""}${e?"&end="+e:""}`));
+  if(!s){$("#dstart").value=d.period.start;$("#dend").value=d.period.end}
+  const inc=d.incentive;
+  $("#dkpis").innerHTML=[["Expenses",fmt(d.expenses),`${d.expense_transactions} expense transactions`],["Net income",fmt(d.net_income),"Revenue minus recorded expenses"],["Gross revenue",fmt(d.mix.gross_revenue),`${d.mix.total_transactions.toLocaleString()} transactions`],["Digital capture",pct(d.capture.digital_share),`own rails ${pct(d.capture.ecosystem_share)} · cash ${pct(d.capture.cash_share)}`],["Incentive milestone",inc.tier?`Tier ${inc.tier}`:"—",inc.mom_growth!=null?`MoM own-rail growth ${pct(inc.mom_growth)} · ${inc.tier_name}`:(inc.note||"")]].map(([k,v,sub])=>`<div class="card"><div class="muted">${k}</div><div class="kpi">${v}</div><div class="muted">${esc(sub)}</div></div>`).join("")+`<div class="card" style="grid-column:1/-1"><b>Receivables insight:</b> <span class="pill">${esc(d.receivables.classification.replace("_"," "))}</span> ${esc(d.receivables.explanation)}</div>`;
+  const ch=Object.values(d.mix.by_channel);
+  $("#dvol").innerHTML=donut(ch.map(c=>c.volume_share),ch.map(c=>c.label),d.mix.total_transactions.toLocaleString()+"<br><small>txns</small>");
+  $("#drev").innerHTML=donut(ch.map(c=>c.revenue_share),ch.map(c=>c.label),short(d.mix.gross_revenue)+"<br><small>gross</small>");
+  $("#dvoltrend").innerHTML=bars(d.trend.map(t=>t.period),d.trend.map(t=>t.transactions),"vol");
+  $("#drevtrend").innerHTML=bars(d.trend.map(t=>t.period),d.trend.map(t=>t.revenue),"rev");
+}
+function donut(shares,labels,center){let deg=0;const parts=shares.map((s,i)=>{const a=deg,b=deg+s*360;deg=b;return `${COLORS[i%6]} ${a}deg ${b}deg`});
+  return `<div class="donutwrap"><div class="donut" style="background:conic-gradient(${parts.join(",")})"><div class="hole">${center}</div></div><div class="legend">${labels.map((l,i)=>`<div><span class="sw" style="background:${COLORS[i%6]}"></span><span style="flex:1">${esc(l)}</span><b>${(shares[i]*100).toFixed(1)}%</b></div>`).join("")}</div></div>`}
+function bars(labels,vals,type){const mx=Math.max(...vals,1),lab=v=>type=="rev"?short(v):(v>=1000?(v/1000).toFixed(1)+"k":v);
+  return `<div class="bars">${vals.map((v,i)=>`<div class="bcol ${type}"><b>${lab(v)}</b><i style="height:${Math.max(4,v/mx*80)}%"></i><span>${esc(labels[i])}</span></div>`).join("")}</div>`}
+$("#dapply").onclick=()=>loadDashboard().catch(e=>showErr("dashboard",e));
+// ---------- PAYMENTS
+let catalog=[];
+async function loadPayments(){const r=await api("/api/pos/catalog"+q());catalog=r.list;
+  $("#catalog").innerHTML=catalog.map(p=>`<div class="prod" data-k="${p.key}"><b>${esc(p.name)}</b><br><span class="muted">${fmt(p.price)}</span></div>`).join("");
+  $$(".prod").forEach(el=>el.onclick=()=>{const p=catalog.find(x=>x.key==el.dataset.k);const it=cart.find(x=>x.key==p.key);it?it.qty++:cart.push({...p,qty:1});renderCart()});renderCart()}
+function renderCart(){const st=cart.reduce((s,i)=>s+i.qty*i.price,0);$("#cart").innerHTML=cart.length?cart.map(i=>`<div class="row"><span>${i.qty}× ${esc(i.name)}</span><span>${fmt(i.qty*i.price)}</span></div>`).join("")+`<div class="row"><b>Subtotal (tax added at checkout)</b><b>${fmt(st)}</b></div>`:`<p class="muted">Cart is empty — tap products to add.</p>`;$("#posqr").disabled=$("#postap").disabled=$("#poscash").disabled=!cart.length}
+function qrEl(m){const d=document.createElement("div");d.className="qr";d.style.gridTemplateColumns=`repeat(${m.length},8px)`;d.setAttribute("aria-label","Sandbox QR placeholder");d.innerHTML=m.flat().map(b=>`<i class="${b?"on":""}"></i>`).join("");return d}
+async function createPayment(method,body){
+  try{const p=await api("/api/payments",{method:"POST",body:JSON.stringify({merchant:M.id,method,idempotency_key:crypto.randomUUID(),...body})});renderPayment(p)}catch(e){$("#pout").innerHTML=`<div class="banner err">${esc(e.message)}</div>`}}
+function renderPayment(p){
+  const o=$("#pout");o.innerHTML=`<div class="row"><b>${esc(p.ref)}</b><span class="pill ${p.status=="PAID"?"sev-info":""}">${p.status}</span></div><div class="kpi">${fmt(p.amount)}</div>${p.tax?`<div class="muted">incl. tax ${fmt(p.tax)} on subtotal ${fmt(p.subtotal)}</div>`:""}`;
+  if(p.method=="qr_pay"&&p.qr_matrix){const w=document.createElement("div");w.style.textAlign="center";w.style.margin="12px 0";w.appendChild(qrEl(p.qr_matrix));o.appendChild(w);const ttl=Math.max(0,Math.round(p.expires_at-Date.now()/1000));o.insertAdjacentHTML("beforeend",`<p class="muted" style="text-align:center">Valid ~${Math.round(ttl/60)} min · Payload (sandbox, scheme-style TLV):</p><div class="mono">${esc(p.qr_payload)}</div>`)}
+  if(p.method=="tap_pay")o.insertAdjacentHTML("beforeend",`<div class="banner note" style="text-align:center">Bring the contactless card near the phone.<br>Card details are never collected or stored.</div>`);
+  if(p.method=="pay_link")o.insertAdjacentHTML("beforeend",`<p class="muted">Share link:</p><div class="mono">${esc(p.link_url)}</div>`);
+  if(p.flags&&p.flags.length)o.insertAdjacentHTML("beforeend",`<div class="banner note">Integrity flags: ${p.flags.map(esc).join("; ")}</div>`);
+  if(p.status=="PENDING"){const opts=p.method=="pay_link"?[["qr_pay","Customer pays: QR Pay"],["tap_pay","Customer pays: card (own rail)"],["external_wallet","Customer pays: external e-wallet"]]:[[p.method,"Simulate customer "+(p.method=="qr_pay"?"scan & pay":"tap & settle")]];
+    o.insertAdjacentHTML("beforeend",`<div class="tiles">${opts.map(([c,l])=>`<button class="btn sm" data-ch="${c}">${l}</button>`).join("")}<button class="btn ghost sm" id="pstatus">Check status</button></div>`);
+    $$("#pout [data-ch]").forEach(b=>b.onclick=async()=>{try{const r=await api("/api/payments/pay",{method:"POST",body:JSON.stringify({merchant:M.id,ref:p.ref,channel:b.dataset.ch})});renderPayment(r)}catch(e){o.insertAdjacentHTML("beforeend",`<div class="banner err">${esc(e.message)}</div>`)}});
+    $("#pstatus").onclick=async()=>{const r=await api("/api/payments/status"+q("&ref="+encodeURIComponent(p.ref)));renderPayment({...p,...r})}}
+  if(p.status=="PAID")o.insertAdjacentHTML("beforeend",p.net_settled?`<div class="banner ok">✓ Payment received via ${esc(CHL[p.paid_channel]||p.paid_channel)}. MDR ${pct(p.mdr_rate)} = ${fmt(p.mdr_fee)}; ${fmt(p.net_settled)} settled to the business wallet.</div>`:`<div class="banner note">Paid via an external channel — the sale happened but it is not captured on your own rails, so it does not count toward milestones or financing limits.</div>`);
+}
+$$("[data-m]").forEach(b=>b.onclick=()=>{const a=+$("#pamt").value;if(!(a>0)){$("#pout").innerHTML=`<div class="banner err">Please enter a valid amount.</div>`;return}createPayment(b.dataset.m,{amount:a})});
+$("#posqr").onclick=()=>createPayment("qr_pay",{items:cart.map(({name,price,qty})=>({name,price,qty}))});
+$("#postap").onclick=()=>createPayment("tap_pay",{items:cart.map(({name,price,qty})=>({name,price,qty}))});
+$("#poscash").onclick=()=>{$("#pout").innerHTML=`<div class="banner note">Cash selected — collect at the counter. Cash sales are not visible to lenders and do not build your financing record.</div>`};
+$("#posclear").onclick=()=>{cart=[];renderCart()};
+
+// ---------- TRANSACTION ENTRY / BULK IMPORT
+let pendingRows=[], previewToken=null;
+async function loadTransactions(){
+  pendingRows=[];previewToken=null;$("#tpreview").textContent="Choose a file to preview.";loadLedger();
+  const permitted=["owner","staff"].includes($("#role").value);
+  $("#singleform").querySelectorAll("input,select,button").forEach(e=>e.disabled=!permitted);
+  $("#tfile").disabled=!permitted;
+  $("#timport").disabled=!permitted||!pendingRows.length;
+  $("#tdate").max="2026-09-30";
+  if(!$("#tdate").value)$("#tdate").value="2026-09-30";
+  $("#tresult").innerHTML=permitted?"":'<div class="banner note">Transaction input is restricted to business owners and staff.</div>';
+}
+const columns=["date","type","amount","channel","category","reference","description"];
+$("#tsample").onclick=e=>{e.preventDefault();const csv=columns.join(",")+"\n2026-09-29,income,50000,qr_pay,sales,SALE-001,Coffee sales\n2026-09-29,expense,12000,cash,supplies,EXP-001,Coffee beans\n";
+  const a=document.createElement("a"),url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.href=url;a.download="sme-transactions-template.csv";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+function parseCSV(text){
+  const out=[];let row=[],cell="",quoted=false;
+  for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}
+    else if(c===","&&!quoted){row.push(cell);cell=""}
+    else if((c==="\n"||c==="\r")&&!quoted){if(c==="\r"&&text[i+1]==="\n")i++;row.push(cell);if(row.some(v=>v.trim()))out.push(row);row=[];cell=""}
+    else cell+=c}
+  if(quoted)throw Error("Unclosed quoted CSV field");row.push(cell);if(row.some(v=>v.trim()))out.push(row);
+  if(!out.length)throw Error("CSV is empty");const heads=out.shift().map(v=>v.trim().toLowerCase().replace(/^\uFEFF/,""));
+  for(const key of ["date","type","amount"])if(!heads.includes(key))throw Error("Missing required column: "+key);
+  return out.map((r,i)=>{if(r.length!==heads.length)throw Error("Column count mismatch on row "+(i+2));return Object.fromEntries(heads.map((h,j)=>[h,r[j]]))});
+}
+$("#tfile").onchange=async()=>{pendingRows=[];previewToken=null;$("#timport").disabled=true;
+  const f=$("#tfile").files[0];if(!f)return;
+  try{if(f.size>3000000)throw Error("File exceeds 3 MB");
+    const bytes=new Uint8Array(await f.arrayBuffer());let raw="";for(const b of bytes)raw+=String.fromCharCode(b);
+    const r=await api("/api/transactions/preview",{method:"POST",body:JSON.stringify({merchant:M.id,filename:f.name,content:btoa(raw)})});
+    pendingRows=r.rows;previewToken=r.preview_token;
+    $("#tpreview").innerHTML=`<b>${r.total} rows; ${r.errors.length} errors</b><div style="max-height:350px;overflow:auto"><table><thead><tr>${columns.map(k=>`<th>${k}</th>`).join("")}</tr></thead><tbody>${r.rows.map(row=>`<tr>${columns.map(k=>`<td>${esc(row[k]??"")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>${r.errors.map(e=>`<p class="banner err">Data row ${e.row}: ${esc(e.error)}</p>`).join("")}`;
+    $("#timport").disabled=!r.valid;
+  }catch(e){$("#tpreview").innerHTML=`<div class="banner err">${esc(e.message)}</div>`}}
+async function saveRows(rows){const r=await api("/api/transactions/entry",{method:"POST",body:JSON.stringify({merchant:M.id,entry:rows[0]})});
+  $("#tresult").innerHTML=r.valid?`<div class="banner ok">Saved ${r.imported} transaction(s). Dashboard and cash-flow data updated.</div>`:`<div class="banner err">Nothing imported. ${r.errors.map(e=>`Row ${e.row}: ${esc(e.error)}`).join("; ")}</div>`;
+  if(r.valid)loadLedger();return r.valid;
+}
+$("#singleform").onsubmit=async e=>{e.preventDefault();try{const ok=await saveRows([{date:$("#tdate").value,type:$("#ttype").value,amount:$("#tamount").value,channel:$("#tchannel").value,category:$("#tcategory").value,reference:$("#tref").value,description:$("#tdesc").value}]);if(ok){$("#tamount").value="";$("#tref").value="";$("#tdesc").value=""}}catch(err){$("#tresult").innerHTML=`<div class="banner err">${esc(err.message)}</div>`}};
+$("#timport").onclick=async()=>{if(!previewToken||!confirm(`Save ${pendingRows.length} validated transactions?`))return;$("#timport").disabled=true;
+  try{const r=await api("/api/transactions/import",{method:"POST",body:JSON.stringify({merchant:M.id,preview_token:previewToken,confirmed:true})});
+    if(!r.valid)throw Error(r.errors.map(e=>`Row ${e.row}: ${e.error}`).join("; "));
+    previewToken=null;pendingRows=[];$("#tfile").value="";$("#tpreview").textContent=`Saved ${r.imported} transactions.`;loadLedger();
+  }catch(e){$("#tresult").textContent=e.message}}
+async function loadLedger(){
+  const el=$("#tledger");if(!["owner","staff"].includes($("#role").value)){el.textContent="";return}
+  try{const r=await api("/api/transactions"+q());el.innerHTML=`<h2>Saved transactions</h2><div style="overflow:auto"><table><thead><tr>${columns.map(k=>`<th>${k}</th>`).join("")}<th>Manage</th></tr></thead><tbody>${r.transactions.map(t=>`<tr>${columns.map(k=>`<td>${esc(t[k])}</td>`).join("")}<td>${$("#role").value==="owner"?`<button data-edit="${t.id}">Edit</button><button data-delete="${t.id}">Delete</button>`:"Owner only"}</td></tr>`).join("")}</tbody></table></div>`;
+    el.querySelectorAll('[data-delete],[data-edit]').forEach(b=>b.onclick=async()=>{try{const t=r.transactions.find(t=>t.id===(b.dataset.edit||b.dataset.delete));let body={merchant:M.id,id:t.id,action:b.dataset.edit?"update":"delete"};
+      if(b.dataset.edit){body.entry={};for(const k of columns){const v=prompt(k,t[k]);if(v===null)return;body.entry[k]=v}}
+      else if(!confirm("Delete this transaction?"))return;
+      const result=await api("/api/transactions/manage",{method:"POST",body:JSON.stringify(body)});if(!result.valid)throw Error(result.errors.map(e=>e.error).join("; "));loadLedger();
+    }catch(e){$("#tresult").textContent=e.message}});
+  }catch(e){el.textContent=e.message}}
+
+// ---------- init
+async function selectMerchant(){M=merchants.find(m=>m.id==$("#merchant").value);cart=[];chatHistory=[];$("#chatlog").innerHTML="";$("#dstart").value=$("#dend").value="";
+  addMsg(`Hi! I'm your finance copilot for ${M.name} (${M.country}, ${M.currency}). Ask me about financing, cash flow, sales or payments.`,"bot");loadTab(active())}
+$("#merchant").onchange=selectMerchant;$("#role").onchange=()=>loadTab(active());$("#consent").onchange=()=>loadTab(active());
+(async()=>{
+  try{const h=await api("/api/health");AGENT=h.agent_mode;
+    $("#modebadge").textContent=AGENT=="ai_agent"?"AI agent connected":"Rule engine";
+    if(AGENT=="ai_agent"){$("#modebadge").classList.add("ai");$("#modesub").textContent="Connected to an AI model that searches your business data with the copilot's tools. Advisory only — it never approves credit or moves money."}
+  }catch(e){}
+  const r=await api("/api/merchants");merchants=r.list;$("#merchant").innerHTML=merchants.map(m=>`<option value="${m.id}">${esc(m.name)} · ${m.country}</option>`).join("");$("#merchant").value="M002";selectMerchant()})();
+</script>
+</body>
+</html>

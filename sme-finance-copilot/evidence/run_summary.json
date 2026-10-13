@@ -1,0 +1,194 @@
+{
+  "generated_at": "2026-10-13T08:00:09",
+  "as_of": "2026-09-30",
+  "data": "100% synthetic personas; no enterprise or personal data",
+  "stage_placements": {
+    "M001": {
+      "stage": 1,
+      "stage_name": "Survival Borrower",
+      "composite": 30.0,
+      "top_recommendation": "WALLET",
+      "alerts": [
+        "RUNWAY_CRITICAL",
+        "OBLIGATIONS_DUE",
+        "FUNDS_MIXING",
+        "CASH_DEPENDENCE"
+      ]
+    },
+    "M002": {
+      "stage": 3,
+      "stage_name": "Steady Upgrader",
+      "composite": 60.2,
+      "top_recommendation": "RBF",
+      "alerts": [
+        "BUFFER_THIN",
+        "RECEIVABLES_OVERDUE"
+      ]
+    },
+    "M003": {
+      "stage": 4,
+      "stage_name": "Opportunity Seizer",
+      "composite": 79.7,
+      "top_recommendation": "PO_FIN",
+      "alerts": [
+        "RECEIVABLES_OVERDUE"
+      ]
+    },
+    "M004": {
+      "stage": 5,
+      "stage_name": "Expanding Proprietor",
+      "composite": 91.3,
+      "top_recommendation": "EXPANSION",
+      "alerts": [
+        "RECEIVABLES_OVERDUE"
+      ]
+    },
+    "M005": {
+      "stage": 6,
+      "stage_name": "Heir Seeker",
+      "composite": 86.2,
+      "top_recommendation": "SUCCESSION",
+      "alerts": [
+        "RECEIVABLES_OVERDUE"
+      ]
+    },
+    "M006": {
+      "stage": 2,
+      "stage_name": "Striving Amateur",
+      "composite": 46.2,
+      "top_recommendation": "POS_BUNDLE",
+      "alerts": [
+        "RUNWAY_WATCH"
+      ]
+    }
+  },
+  "payments": {
+    "qr_idempotent": true,
+    "qr_paid_net": 44730.0,
+    "external_link_settled_to_wallet": 0.0,
+    "pos_tap_total": 336.0,
+    "sandbox_wallets": {
+      "M002": 44730.0,
+      "M006": 334.99
+    }
+  },
+  "mcp_session": [
+    {
+      "id": 1,
+      "method": "initialize",
+      "tool": null,
+      "ok": true,
+      "summary": "2025-11-25"
+    },
+    {
+      "id": 2,
+      "method": "tools/list",
+      "tool": null,
+      "ok": true,
+      "summary": "11 tools"
+    },
+    {
+      "id": 3,
+      "method": "tools/call",
+      "tool": "list_merchants",
+      "ok": true,
+      "summary": "{\"merchants\": [{\"merchant_id\": \"M001\", \"name\": \"Lola Nena's Kakanin Stall\", \"country\": \"PH\", \"currency\": \"PHP\", \"sector\": \"Food stall\"}, {\"merchant_id\": \"M006\", \"name\": \"Bayanihan Sari-Sari Store\", \"c"
+    },
+    {
+      "id": 4,
+      "method": "tools/call",
+      "tool": "ask_copilot",
+      "ok": true,
+      "summary": "{\"answer\": \"Top options for your Stage 4 business:\\n1. Purchase-order financing (indicative \u0e3f988,500) \u2013 score 97.2. Stage 4 fit; addresses confirmed orders no capital.\\n2. Revolving working-capital li"
+    },
+    {
+      "id": 5,
+      "method": "tools/call",
+      "tool": "rbf_quote",
+      "ok": true,
+      "summary": "{\"currency\": \"IDR\", \"advance\": 20000000, \"fee_rate\": 0.11, \"fee\": 2200000.0, \"total_repayable\": 22200000.0, \"remittance_rate\": 0.117, \"remittance_basis\": \"daily sales captured on QR Pay / Tap Pay / Pa"
+    },
+    {
+      "id": 6,
+      "method": "tools/call",
+      "tool": "ask_copilot",
+      "ok": true,
+      "summary": "{\"answer\": \"I can't do that: Credit decisions are made only by the lender's authorised underwriters.\\nI'm an advisory copilot. I can estimate offers, rank options and prepare an application for your a"
+    }
+  ],
+  "application": {
+    "application_id": "APP-M002-0001",
+    "merchant_id": "M002",
+    "product_id": "RBF",
+    "requested_amount": 42069900.0,
+    "currency": "IDR",
+    "stage": 3,
+    "scores": {
+      "financial_health": 71.2,
+      "formalization": 60,
+      "digital_maturity": 48.1,
+      "market_access": 63.3,
+      "operational_capacity": 14.1,
+      "credit_readiness": 86.6,
+      "sustainability": 72.1
+    },
+    "status": "SUBMITTED_FOR_LENDER_REVIEW",
+    "note": "Packet contains aggregated indicators only; the lender makes the credit decision."
+  },
+  "security_cases": [
+    {
+      "case": "Prohibited tier: approve_credit",
+      "result": "blocked",
+      "reason": "AccessDenied: Credit decisions are made only by the lender's authorised underwriters."
+    },
+    {
+      "case": "Prohibited tier: disburse_funds",
+      "result": "blocked",
+      "reason": "AccessDenied: The copilot never moves real money."
+    },
+    {
+      "case": "Coach attempts sandbox write",
+      "result": "blocked",
+      "reason": "AccessDenied: Role 'coach' cannot perform tier T2_SANDBOX_WRITE actions."
+    },
+    {
+      "case": "Lender without consent reads dashboard",
+      "result": "blocked",
+      "reason": "AccessDenied: The merchant has not consented to share data with the lender."
+    },
+    {
+      "case": "Owner without consent submits application",
+      "result": "blocked",
+      "reason": "AccessDenied: Missing owner consent: share_with_lender."
+    },
+    {
+      "case": "Cross-merchant payment reference",
+      "result": "blocked",
+      "reason": "AccessDenied: Payment reference not found for this merchant."
+    },
+    {
+      "case": "Card number entered in payment",
+      "result": "blocked",
+      "reason": "PaymentError: Card numbers must never be entered. The simulator does not accept card data."
+    },
+    {
+      "case": "Outlier amount auto-settle",
+      "result": "blocked",
+      "reason": "ValueError: payment held for integrity review; a human must release it"
+    },
+    {
+      "case": "MCP client calls unexposed approve_credit tool",
+      "result": "blocked",
+      "reason": "PermissionError: Unknown tool: approve_credit"
+    },
+    {
+      "case": "Approval token replay",
+      "result": "blocked",
+      "reason": "AccessDenied: Approval token already used."
+    }
+  ],
+  "audit_records": 89,
+  "execution_records": 71,
+  "audit_chain_valid": true,
+  "execution_chain_valid": true
+}
