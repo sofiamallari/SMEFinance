@@ -98,3 +98,8 @@ try {
 ```
 
 For automation, inject that variable from your secret store rather than writing the password into a committed script or `.env.example`. The original hidden prompt remains available by omitting `--password-env`.
+
+
+## Portable Security Administration
+
+The existing Security Controls entry URL now provides seven sidebar sections and validated JSON policy sharing. See [SECURITY_CONFIGURATION.md](SECURITY_CONFIGURATION.md) for schema version 1, the additive migration, preview/reauthentication/atomic apply, local-data preservation, and team review/recovery guidance. Existing authentication and consent semantics remain unchanged.

@@ -33,7 +33,7 @@ python -m copilot.server          # web UI at http://127.0.0.1:8000 · MCP at ht
 |---|---|
 | `python -m copilot.server` | Starts the web UI, JSON API and MCP endpoint (`/mcp`) |
 | `python -m copilot.mcp_server` | Starts the MCP server over stdio (normally launched by an AI client) |
-| `python -m unittest discover -s tests -v` | Runs the test suite (131 tests). `pytest -q` also works. |
+| `python -m unittest discover -s tests -v` | Runs the test suite (157 tests). `pytest -q` also works. |
 | `python scripts/run_demo.py` | Runs the end-to-end scenario, including an MCP session, and writes evidence to `evidence/` |
 
 Without an LLM configured, the Copilot tab runs on the deterministic **rule engine**. To switch to an AI model, set `COPILOT_LLM_BASE_URL`, `COPILOT_LLM_API_KEY` and `COPILOT_LLM_MODEL` (see `.env.example`).
@@ -135,7 +135,7 @@ For production, put the server behind TLS, set `COPILOT_HTTPS=yes` for Secure co
 
 The existing app, role selector, Digital Payments Simulator, Merchant Intelligence Dashboard, RBF Calculator and AI/MCP integrations remain in place.
 
-Run from this directory with Python 3.10+: `python -m copilot.server`, then open http://127.0.0.1:8000. No runtime dependencies required. Run all tests with `python -m unittest discover -s tests -v` (131 tests).
+Run from this directory with Python 3.10+: `python -m copilot.server`, then open http://127.0.0.1:8000. No runtime dependencies required. Run all tests with `python -m unittest discover -s tests -v` (157 tests).
 
 Use the Transactions tab to encode income or expenses with date, amount, payment method, category, description and optional reference. Owners can view, edit and delete saved entries; staff can encode for assigned merchants and upload only with an explicit bulk-upload grant and enabled role policy. Financing Agent uses the existing `lender_analyst` role and requires an assigned sandbox application and active owner consent for each data category; its AI tools only return authorized financing information, never transaction modification or raw ledger access.
 
@@ -170,3 +170,12 @@ Remove-Item Env:COPILOT_AUTH_MODE
 ```
 
 Demo mode is deliberately insecure and is refused by the server CLI on non-localhost bindings. It is not used by the authenticated HTTP regression tests. `.env.example` documents settings; this standard-library app reads process environment variables, not `.env` files automatically.
+
+
+## Portable Security Administration
+
+`/admin/security` now has seven sections: Overview, Authentication, Roles & Permissions, AI & MCP Controls, Consent Policies, Audit & Monitoring, and Configuration. Security Administrators can export their actual supported global policy to `security-config.json` and other local installations can validate, preview and apply it with recent reauthentication. Account, credential, session, membership, consent and financial records remain local. No centralized hosting is introduced.
+
+Read [docs/SECURITY_CONFIGURATION.md](docs/SECURITY_CONFIGURATION.md) for schema version 1, the safe example, exact team workflow, API, migration and recovery guidance. Restart the app after updating the code so the additive policy-revision migration is applied. The same existing entry point remains `python -m copilot.server --port 8000`.
+
+[Security Administration implementation report and actual test results](docs/SECURITY_ADMIN_REPORT.md).
