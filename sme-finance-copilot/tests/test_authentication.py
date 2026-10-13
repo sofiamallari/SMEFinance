@@ -195,7 +195,7 @@ class Authentication(unittest.TestCase):
         before=Path(self.store.path).read_bytes()
         self.auth.migrate();self.auth.migrate()
         self.assertEqual(Path(self.store.path).read_bytes(),before)
-        with self.auth.db() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0],2)
+        with self.auth.db() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0],3)
 
     def test_financing_data_master_permission_is_enforced(self):
         self.grant();self.submit()

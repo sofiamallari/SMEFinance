@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "application": "sme-finance-copilot",
+  "authentication": {
+    "admin_reauth_window": 300,
+    "failure_threshold": 5,
+    "idle_timeout": 1800,
+    "lockout_duration": 900,
+    "max_session_lifetime": 28800,
+    "password_min_length": 12,
+    "password_require_mixed": true,
+    "reset_expiration": 1800
+  },
+  "permissions": {
+    "coach": [
+      "use_copilot",
+      "view_assessment",
+      "view_dashboard",
+      "view_financing",
+      "view_forecasts",
+      "view_reports"
+    ],
+    "lender_analyst": [
+      "review_application",
+      "use_copilot",
+      "view_applications",
+      "view_assessment",
+      "view_financing",
+      "view_financing_data",
+      "view_forecasts",
+      "view_reports"
+    ],
+    "owner": [
+      "bulk_import",
+      "create_transactions",
+      "manage_consents",
+      "manage_transactions",
+      "prepare_application",
+      "request_staff_access",
+      "simulate_payments",
+      "submit_application",
+      "use_copilot",
+      "view_applications",
+      "view_assessment",
+      "view_dashboard",
+      "view_financing",
+      "view_financing_data",
+      "view_forecasts",
+      "view_reports",
+      "view_transactions"
+    ],
+    "security_admin": [
+      "manage_security",
+      "manage_staff_accounts",
+      "manage_users",
+      "view_account_audit",
+      "view_security_audit"
+    ],
+    "staff": [
+      "bulk_import",
+      "create_transactions",
+      "simulate_payments",
+      "use_copilot",
+      "view_dashboard",
+      "view_forecasts",
+      "view_transactions"
+    ],
+    "user_admin": [
+      "manage_staff_accounts",
+      "manage_users",
+      "view_account_audit"
+    ]
+  },
+  "ai_tiers": {
+    "coach": 1,
+    "lender_analyst": 1,
+    "owner": 3,
+    "security_admin": 0,
+    "staff": 2,
+    "user_admin": 0
+  }
+}

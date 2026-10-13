@@ -5,7 +5,8 @@ import zipfile
 
 def package():
     root=Path(__file__).resolve().parents[1]
-    output=root.parent/'SME-Finance-Copilot-v1.2-FinTechathon.zip'
+    destination=root.parent/'downloads' if (root.parent/'downloads').is_dir() else root.parent
+    output=destination/'SME-Finance-Copilot-v1.2-FinTechathon.zip'
     excluded={'__pycache__','logs','.test_logs','.pytest_cache','.git','.venv','.publish'}
     with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(root.rglob('*')):

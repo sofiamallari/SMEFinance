@@ -1,0 +1,51 @@
+const sections=['overview','authentication','permissions','ai','consent','audit','configuration'];
+let policies,preview=null,selectedFile=null;
+const settingNames={idle_timeout:'Session idle timeout (seconds)',max_session_lifetime:'Maximum session lifetime (seconds)',failure_threshold:'Failed login threshold',lockout_duration:'Temporary lockout duration (seconds)',password_min_length:'Minimum password length',reset_expiration:'Reset token expiration (seconds)',admin_reauth_window:'Administrator reauthentication window (seconds)'};
+const ranges={idle_timeout:[300,3600],max_session_lifetime:[900,86400],failure_threshold:[3,10],lockout_duration:[60,3600],password_min_length:[12,128],reset_expiration:[300,3600],admin_reauth_window:[60,600]};
+
+function selectSection(value,focus=false){
+  const section=sections.includes(value)?value:'overview';
+  sections.forEach(s=>$('#section-'+s).hidden=s!==section);
+  document.querySelectorAll('[data-section]').forEach(b=>{if(b.dataset.section===section)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+  $('#section-picker').value=section;
+  if(location.hash!=='#'+section)history.replaceState(null,'','#'+section);
+  if(focus)$('#heading-'+section).focus();
+}
+document.querySelectorAll('[data-section]').forEach((b,index)=>{
+  b.onclick=()=>selectSection(b.dataset.section,true);
+  b.onkeydown=e=>{if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?sections.length-1:(index+(e.key==='ArrowDown'?1:-1)+sections.length)%sections.length;const target=document.querySelectorAll('[data-section]')[next];selectSection(target.dataset.section);target.focus()};
+});
+document.querySelector('#section-picker').onchange=e=>selectSection(e.target.value,true);
+window.addEventListener('hashchange',()=>selectSection(location.hash.slice(1)));
+selectSection(location.hash.slice(1));
+
+function resetPreview(){preview=null;$('#config-preview').replaceChildren();$('#config-confirm').hidden=true;$('#apply-config').disabled=true;}
+function renderPolicy(){
+  $('#settings').innerHTML=Object.entries(settingNames).map(([key,name])=>`<label>${esc(name)}<input data-setting="${key}" type="number" min="${ranges[key][0]}" max="${ranges[key][1]}" required value="${policies.settings[key]}"><small class="muted">Allowed ${ranges[key][0]}–${ranges[key][1]}</small></label>`).join('');
+  const roles=Object.keys(policies.roles),actions=[...new Set(Object.values(policies.boundaries).flat())].sort();
+  $('#matrix').innerHTML=`<table><caption class="muted">Role-level action policy</caption><thead><tr><th scope="col">Protected action</th>${roles.map(r=>`<th scope="col">${esc(policies.roles[r])}</th>`).join('')}</tr></thead><tbody>${actions.map(a=>`<tr><th scope="row">${esc(a.replaceAll('_',' '))}</th>${roles.map(r=>`<td>${policies.boundaries[r].includes(a)?`<input type="checkbox" data-role="${r}" data-permission="${a}" aria-label="${esc(policies.roles[r]+' '+a)}" ${policies.permissions[r].includes(a)?'checked':''}>`:'—'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  $('#tiers').innerHTML=roles.map(r=>`<label>${esc(policies.roles[r])}<select data-tier="${r}">${Array.from({length:policies.tiers[r]+1},(_,i)=>`<option value="${i}" ${(policies.settings.ai_tiers?.[r]??policies.tiers[r])===i?'selected':''}>T${i}</option>`).join('')}</select></label>`).join('');
+  $('#policy-status').innerHTML=`<div class="policy-summary"><p><strong>${policies.settings.password_min_length} characters</strong><br>minimum password length</p><p><strong>${policies.settings.idle_timeout/60} minutes</strong><br>session idle timeout</p><p><strong>${roles.length} bounded roles</strong><br>administrative authority is independent</p></div>`;
+}
+async function load(){policies=await api('/api/security/policies');renderPolicy();await refreshAudit();document.querySelectorAll('.policy-save,#export-config').forEach(b=>b.disabled=false);message('Security policies loaded. Changes require administrator reauthentication.');}
+async function refreshAudit(){
+  const m=await api('/api/security/events');
+  $('#monitor').innerHTML=Object.entries(m).filter(([k])=>k!=='window').map(([k,v])=>`<div><strong>${esc(v)}</strong><span>${esc(k.replaceAll('_',' '))}</span></div>`).join('');$('#monitor-window').textContent=m.window;
+  const query={actor:$('#actor-filter').value,action:$('#action-filter').value,result:$('#result-filter').value};
+  if($('#start-filter').value)query.start=new Date($('#start-filter').value+'T00:00:00').getTime()/1000;
+  if($('#end-filter').value)query.end=new Date($('#end-filter').value+'T23:59:59').getTime()/1000;
+  const r=await api('/api/security/audit?'+new URLSearchParams(query));
+  $('#audit').innerHTML=`<table><thead><tr><th>Time</th><th>Actor / role</th><th>Merchant</th><th>Action / target</th><th>Result / reason</th><th>Request ID</th></tr></thead><tbody>${r.records.map(r=>`<tr><td>${new Date(r.ts*1000).toLocaleString()}</td><td>${esc(r.actor)}<br>${esc(r.role)}</td><td>${esc(r.merchant_id)}</td><td>${esc(r.action)}<br>${esc(r.target)}</td><td>${esc(r.result)}<br>${esc(r.reason_code)}</td><td>${esc(r.request_id)}</td></tr>`).join('')}</tbody></table>`;
+  const all=Object.values(query).some(Boolean)?await api('/api/security/audit'):r;
+  $('#recent-events').innerHTML=all.records.filter(r=>r.action==='security_policy_changed'||r.action.startsWith('security_config_')).slice(0,6).map(r=>`<p>${new Date(r.ts*1000).toLocaleString()} · ${esc(r.action)} · <span class="pill">${esc(r.result)}</span></p>`).join('')||'<p class="muted">No recent security administration events.</p>';
+}
+async function savePolicy(event,body){event.preventDefault();const button=event.target.querySelector('button');button.disabled=true;try{if(!await reauthenticate())return;await api('/api/security/policies',body,'PATCH');policies=await api('/api/security/policies');renderPolicy();resetPreview();await refreshAudit();message('Security configuration saved and audited.')}catch(e){message(e.message,true)}finally{button.disabled=false}}
+document.querySelector('#authentication-form').onsubmit=e=>{const settings={};$('#settings').querySelectorAll('input').forEach(i=>settings[i.dataset.setting]=Number(i.value));savePolicy(e,{settings})};
+document.querySelector('#permissions-form').onsubmit=e=>{const permissions={};Object.keys(policies.roles).forEach(r=>permissions[r]=[]);$('#matrix').querySelectorAll('input:checked').forEach(i=>permissions[i.dataset.role].push(i.dataset.permission));savePolicy(e,{permissions})};
+document.querySelector('#ai-form').onsubmit=e=>{const ai_tiers={};$('#tiers').querySelectorAll('select').forEach(s=>ai_tiers[s.dataset.tier]=Number(s.value));savePolicy(e,{ai_tiers})};
+document.querySelector('#audit-filter').onsubmit=e=>{e.preventDefault();refreshAudit().catch(e=>message(e.message,true))};
+document.querySelector('#export-config').onclick=async()=>{const b=$('#export-config');b.disabled=true;try{const config=await api('/api/security/config/export');const url=URL.createObjectURL(new Blob([JSON.stringify(config,null,2)+'\n'],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='security-config.json';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);message('Configuration exported without local accounts, credentials or business records.');await refreshAudit()}catch(e){message(e.message,true)}finally{b.disabled=false}};
+document.querySelector('#config-file').onchange=()=>{resetPreview();selectedFile=$('#config-file').files[0]||null;const valid=selectedFile&&selectedFile.name.toLowerCase().endsWith('.json')&&selectedFile.size>0&&selectedFile.size<=65536;$('#validate-config').disabled=!valid;$('#validation-status').textContent=valid?'File selected. Validate it on the server before applying.':'Choose a nonempty .json file no larger than 64 KiB.';};
+document.querySelector('#validate-config').onclick=async()=>{const b=$('#validate-config'),file=selectedFile;b.disabled=true;resetPreview();$('#validation-status').textContent='Validating configuration on the server…';try{if(!file)throw Error('Choose a JSON file');const result=await api('/api/security/config/validate',{filename:file.name,content:await file.text()});if(file!==selectedFile)return;preview=result;$('#validation-status').textContent=`Validated schema version ${result.schema_version}. ${result.change_count} change(s). Preview expires in ${result.expires_in/60} minutes.`;$('#config-preview').innerHTML=`<table><caption>Complete configuration difference preview</caption><thead><tr><th>Setting</th><th>Current</th><th>Imported</th><th>Status</th></tr></thead><tbody>${result.differences.map(r=>`<tr class="${r.changed?'configuration-changed':''}"><th scope="row">${esc(r.setting)}</th><td>${esc(JSON.stringify(r.current))}</td><td>${esc(JSON.stringify(r.imported))}</td><td>${r.changed?'Changed':'Unchanged'}</td></tr>`).join('')}</tbody></table>`;$('#config-confirm').hidden=false;$('#apply-config').disabled=false;await refreshAudit()}catch(e){$('#validation-status').textContent='Validation failed: '+e.message;message(e.message,true)}finally{b.disabled=!selectedFile}};
+document.querySelector('#cancel-config').onclick=()=>{resetPreview();$('#validation-status').textContent='Import cancelled. No policy changes were saved.';};
+document.querySelector('#apply-config').onclick=async()=>{const candidate=preview;if(!candidate)return;$('#apply-config').disabled=true;try{if(!await reauthenticate())return;if(preview!==candidate)return;const r=await api('/api/security/config/import',{preview_token:candidate.preview_token,confirmed:true});resetPreview();policies=await api('/api/security/policies');renderPolicy();await refreshAudit();$('#validation-status').textContent=r.changed?`Configuration applied. ${r.change_count} change(s) saved atomically.`:'Configuration already matches. No policy changes needed.';message('Configuration applied and audited. Local accounts and business records preserved.')}catch(e){resetPreview();$('#validation-status').textContent='Import was not applied: '+e.message;message(e.message,true)}finally{$('#apply-config').disabled=!preview}};

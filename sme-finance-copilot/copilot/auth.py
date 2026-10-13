@@ -64,6 +64,8 @@ class AuthStore:
         Path(self.path).parent.mkdir(parents=True,exist_ok=True)
         self.dummy_hash = password_hash(secrets.token_urlsafe(24))
         self.migrate()
+        from copilot.security_configuration import SecurityConfiguration
+        self.security_config = SecurityConfiguration(self)
 
     @contextmanager
     def db(self):
@@ -97,17 +99,24 @@ class AuthStore:
     def policies(self, db):
         return {r['policy_key']:json.loads(r['value']) for r in db.execute('SELECT * FROM security_policies')}
 
-    def audit(self, action, actor=None, merchant=None, target=None, result='success', reason=None, request_id=None, db=None):
+    def audit(self, action, actor=None, merchant=None, target=None, result='success', reason=None, request_id=None, db=None, metadata=None):
         if db is None:
             with self.db() as connection:
-                return self.audit(action,actor,merchant,target,result,reason,request_id,connection)
+                return self.audit(action,actor,merchant,target,result,reason,request_id,connection,metadata)
         last = db.execute('SELECT seq,hash FROM audit_events ORDER BY seq DESC LIMIT 1').fetchone()
         logger = AuditLog(clock=self.clock)
         logger.prev = last['hash'] if last else 'GENESIS'
-        record = logger.write(seq=last['seq']+1 if last else 1, action=action,
+        safe_metadata={k:v for k,v in (metadata or {}).items() if k in {'schema_version','configuration_digest','change_count'}}
+        record = logger.write(**safe_metadata,seq=last['seq']+1 if last else 1, action=action,
             actor=actor.user_id if isinstance(actor,Principal) else actor,
             role=actor.role if isinstance(actor,Principal) else None, merchant_id=merchant,
             target=target, result=result, reason_code=reason, request_id=request_id or REQUEST_ID.get() or secrets.token_hex(8))
+        # A generated SHA-256 digest is metadata, not a phone number. Keep it exact
+        # while preserving the existing hash-chain serialization and PII masking.
+        generated_digest=safe_metadata.get('configuration_digest')
+        if isinstance(generated_digest,str) and re.fullmatch(r'[0-9a-f]{64}',generated_digest):
+            record['configuration_digest']=generated_digest
+            record['hash']=hashlib.sha256(json.dumps({k:v for k,v in record.items() if k!='hash'},sort_keys=True,default=str).encode()).hexdigest()
         db.execute('INSERT INTO audit_events VALUES (?,?,?)',(record['seq'],json.dumps(record),record['hash']))
         return record
 
@@ -230,28 +239,31 @@ class AuthStore:
 
     def authorize(self,token,action,merchant=None,reauth=False):
         with self.db() as db:
-            row=self._session(db,token)
-            role=row['role']
-            if row['must_change_password']: raise AccessDenied('Change your temporary password first')
-            enabled={r[0] for r in db.execute('SELECT permission FROM role_permissions WHERE role=?',(role,))}
-            if role=='staff' and action=='bulk_import' and not db.execute('SELECT 1 FROM optional_permissions WHERE user_id=? AND permission=?',(row['user_id'],'bulk_import')).fetchone(): raise AccessDenied('Staff upload permission has not been granted')
-            if action not in enabled or action not in BOUNDARIES.get(role,set()): raise AccessDenied('Action is not permitted for this account')
-            if merchant is not None and role=='lender_analyst' and 'view_financing_data' not in enabled:
-                raise AccessDenied('Consent-authorized financing data permission is disabled')
-            if reauth and self.clock()-row['reauthenticated_at']>self.policies(db)['admin_reauth_window']:
-                raise AccessDenied('Administrator reauthentication required')
-            if merchant is not None:
-                if merchant not in self.merchants or not db.execute('SELECT 1 FROM memberships WHERE user_id=? AND merchant_id=?',(row['user_id'],merchant)).fetchone():
-                    raise AccessDenied('Merchant access denied')
-                if role in ('lender_analyst','coach'):
-                    category=CATEGORIES.get(action)
-                    consent=self._consent(db,merchant,row['user_id'],category)
-                    if not consent: raise AccessDenied('Active merchant consent for this data category is required')
-                    if role=='lender_analyst' and not db.execute('SELECT 1 FROM applications WHERE merchant_id=? AND recipient_id=?',(merchant,row['user_id'])).fetchone():
-                        raise AccessDenied('An assigned financing application is required')
-                if action=='submit_application' and not self._owner_consent(db,merchant,row['user_id']):
-                    raise AccessDenied('Active financing consent including applications is required before submission')
-            return self.policies(db).get('ai_tiers',{}).get(role,int(ROLE_MAX_TIER[role]))
+            return self._authorize(db,token,action,merchant,reauth)
+
+    def _authorize(self,db,token,action,merchant=None,reauth=False,touch=True):
+        row=self._session(db,token,touch=touch)
+        role=row['role']
+        if row['must_change_password']: raise AccessDenied('Change your temporary password first')
+        enabled={r[0] for r in db.execute('SELECT permission FROM role_permissions WHERE role=?',(role,))}
+        if role=='staff' and action=='bulk_import' and not db.execute('SELECT 1 FROM optional_permissions WHERE user_id=? AND permission=?',(row['user_id'],'bulk_import')).fetchone(): raise AccessDenied('Staff upload permission has not been granted')
+        if action not in enabled or action not in BOUNDARIES.get(role,set()): raise AccessDenied('Action is not permitted for this account')
+        if merchant is not None and role=='lender_analyst' and 'view_financing_data' not in enabled:
+            raise AccessDenied('Consent-authorized financing data permission is disabled')
+        if reauth and self.clock()-row['reauthenticated_at']>self.policies(db)['admin_reauth_window']:
+            raise AccessDenied('Administrator reauthentication required')
+        if merchant is not None:
+            if merchant not in self.merchants or not db.execute('SELECT 1 FROM memberships WHERE user_id=? AND merchant_id=?',(row['user_id'],merchant)).fetchone():
+                raise AccessDenied('Merchant access denied')
+            if role in ('lender_analyst','coach'):
+                category=CATEGORIES.get(action)
+                consent=self._consent(db,merchant,row['user_id'],category)
+                if not consent: raise AccessDenied('Active merchant consent for this data category is required')
+                if role=='lender_analyst' and not db.execute('SELECT 1 FROM applications WHERE merchant_id=? AND recipient_id=?',(merchant,row['user_id'])).fetchone():
+                    raise AccessDenied('An assigned financing application is required')
+            if action=='submit_application' and not self._owner_consent(db,merchant,row['user_id']):
+                raise AccessDenied('Active financing consent including applications is required before submission')
+        return self.policies(db).get('ai_tiers',{}).get(role,int(ROLE_MAX_TIER[role]))
 
     def _consent(self,db,mid,recipient,category=None):
         for row in db.execute('SELECT c.* FROM consents c JOIN users o ON o.user_id=c.owner_id WHERE c.merchant_id=? AND c.recipient_id=? AND c.revoked_at IS NULL AND c.expires_at>? AND o.account_status=\'active\' AND o.role=\'owner\' AND EXISTS (SELECT 1 FROM memberships m WHERE m.user_id=o.user_id AND m.merchant_id=c.merchant_id)',(mid,recipient,self.clock())):
@@ -398,34 +410,33 @@ class AuthStore:
                     'boundaries':{role:sorted(actions) for role,actions in BOUNDARIES.items()},
                     'tiers':{role:int(ROLE_MAX_TIER[role]) for role in BOUNDARIES},'t4':'Permanently prohibited'}
 
+    def _write_policy_changes(self,db,settings,permissions,tiers):
+        current=self.security_config.current(db)
+        desired={'schema_version':current['schema_version'],'application':current['application'],
+                 'authentication':{**current['authentication'],**settings},
+                 'permissions':{**current['permissions'],**{role:sorted(actions) for role,actions in permissions.items()}},
+                 'ai_tiers':{**current['ai_tiers'],**tiers}}
+        if desired==current:return False
+        for key,value in settings.items():
+            db.execute('UPDATE security_policies SET value=? WHERE policy_key=?',(json.dumps(value),key))
+        if tiers:
+            db.execute('INSERT OR REPLACE INTO security_policies VALUES (?,?)',('ai_tiers',json.dumps(desired['ai_tiers'])))
+        for role,actions in permissions.items():
+            db.execute('DELETE FROM role_permissions WHERE role=?',(role,))
+            db.executemany('INSERT INTO role_permissions VALUES (?,?)',[(role,a) for a in sorted(set(actions))])
+        db.execute('UPDATE security_config_state SET revision=revision+1 WHERE singleton=1')
+        return True
+
     def update_policies(self,token,body):
-        self.authorize(token,'manage_security',reauth=True);actor=self.principal(token)
-        if not isinstance(body,dict) or set(body)-{'settings','permissions','ai_tiers'}:raise InputError('Unsupported security configuration')
+        from copilot.security_configuration import validate_update
         with self.db() as db:
-            settings=body.get('settings',{})
-            if not isinstance(settings,dict) or set(settings)-set(POLICIES):raise InputError('Unknown security setting')
-            for key,value in settings.items():
-                if key=='password_require_mixed':
-                    if value is not True:raise InputError('Mixed password policy cannot be disabled')
-                elif type(value) is not int or not RANGES[key][0]<=value<=RANGES[key][1]:raise InputError(f'Unsafe value for {key}')
-            combined={**self.policies(db),**settings}
-            if combined['max_session_lifetime']<combined['idle_timeout']:raise InputError('Maximum lifetime must exceed idle timeout')
-            permissions=body.get('permissions',{})
-            if not isinstance(permissions,dict):raise InputError('Permission matrix must be an object')
-            for role,actions in permissions.items():
-                if role not in BOUNDARIES or not isinstance(actions,list) or any(not isinstance(a,str) for a in actions) or not set(actions)<=BOUNDARIES[role]:raise InputError('Permissions exceed hard-coded role boundaries')
-                if role=='security_admin' and not {'manage_users','manage_security','view_security_audit'}<=set(actions):raise InputError('Essential Security Administrator controls cannot be disabled')
-            tiers=body.get('ai_tiers',{})
-            if not isinstance(tiers,dict) or any(role not in BOUNDARIES or type(t) is not int or not 0<=t<=int(ROLE_MAX_TIER[role]) for role,t in tiers.items()):raise InputError('AI tiers exceed hard-coded role limits; T4 is prohibited')
-            for key,value in settings.items():db.execute('UPDATE security_policies SET value=? WHERE policy_key=?',(json.dumps(value),key))
-            if tiers:
-                value={**combined.get('ai_tiers',{}),**tiers}
-                db.execute('INSERT OR REPLACE INTO security_policies VALUES (?,?)',('ai_tiers',json.dumps(value)))
-            for role,actions in permissions.items():
-                db.execute('DELETE FROM role_permissions WHERE role=?',(role,))
-                db.executemany('INSERT INTO role_permissions VALUES (?,?)',[(role,a) for a in set(actions)])
+            db.execute('BEGIN IMMEDIATE')
+            self._authorize(db,token,'manage_security',reauth=True)
+            row=self._session(db,token,touch=False);actor=Principal(row['user_id'],row['role'])
+            settings,permissions,tiers=validate_update(body,self.policies(db))
+            changed=self._write_policy_changes(db,settings,permissions,tiers)
             self.audit('security_policy_changed',actor,db=db)
-        return {'ok':True}
+        return {'ok':True,'changed':changed}
 
     def audit_records(self,token,filters=None):
         actor=self.principal(token)

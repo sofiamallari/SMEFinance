@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SME Finance Copilot portable security configuration v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "application",
+    "authentication",
+    "permissions",
+    "ai_tiers"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "application": {
+      "type": "string",
+      "const": "sme-finance-copilot"
+    },
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "admin_reauth_window",
+        "failure_threshold",
+        "idle_timeout",
+        "lockout_duration",
+        "max_session_lifetime",
+        "password_min_length",
+        "password_require_mixed",
+        "reset_expiration"
+      ],
+      "properties": {
+        "idle_timeout": {
+          "type": "integer",
+          "minimum": 300,
+          "maximum": 3600
+        },
+        "max_session_lifetime": {
+          "type": "integer",
+          "minimum": 900,
+          "maximum": 86400
+        },
+        "failure_threshold": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 10
+        },
+        "lockout_duration": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 3600
+        },
+        "password_min_length": {
+          "type": "integer",
+          "minimum": 12,
+          "maximum": 128
+        },
+        "password_require_mixed": {
+          "type": "boolean",
+          "const": true
+        },
+        "reset_expiration": {
+          "type": "integer",
+          "minimum": 300,
+          "maximum": 3600
+        },
+        "admin_reauth_window": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 600
+        }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coach",
+        "lender_analyst",
+        "owner",
+        "security_admin",
+        "staff",
+        "user_admin"
+      ],
+      "properties": {
+        "owner": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "bulk_import",
+              "create_transactions",
+              "manage_consents",
+              "manage_transactions",
+              "prepare_application",
+              "request_staff_access",
+              "simulate_payments",
+              "submit_application",
+              "use_copilot",
+              "view_applications",
+              "view_assessment",
+              "view_dashboard",
+              "view_financing",
+              "view_financing_data",
+              "view_forecasts",
+              "view_reports",
+              "view_transactions"
+            ]
+          }
+        },
+        "staff": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "bulk_import",
+              "create_transactions",
+              "simulate_payments",
+              "use_copilot",
+              "view_dashboard",
+              "view_forecasts",
+              "view_transactions"
+            ]
+          }
+        },
+        "lender_analyst": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "review_application",
+              "use_copilot",
+              "view_applications",
+              "view_assessment",
+              "view_financing",
+              "view_financing_data",
+              "view_forecasts",
+              "view_reports"
+            ]
+          }
+        },
+        "coach": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "use_copilot",
+              "view_assessment",
+              "view_dashboard",
+              "view_financing",
+              "view_forecasts",
+              "view_reports"
+            ]
+          }
+        },
+        "user_admin": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "manage_staff_accounts",
+              "manage_users",
+              "view_account_audit"
+            ]
+          }
+        },
+        "security_admin": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "manage_security",
+              "manage_staff_accounts",
+              "manage_users",
+              "view_account_audit",
+              "view_security_audit"
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "const": "manage_users"
+              }
+            },
+            {
+              "contains": {
+                "const": "manage_security"
+              }
+            },
+            {
+              "contains": {
+                "const": "view_security_audit"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "ai_tiers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coach",
+        "lender_analyst",
+        "owner",
+        "security_admin",
+        "staff",
+        "user_admin"
+      ],
+      "properties": {
+        "owner": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "staff": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "lender_analyst": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "coach": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "user_admin": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 0
+        },
+        "security_admin": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 0
+        }
+      }
+    }
+  },
+  "$comment": "Backend additionally enforces max_session_lifetime >= idle_timeout and strict JSON integer types."
+}

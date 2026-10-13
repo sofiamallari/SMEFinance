@@ -176,6 +176,15 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts)==6 and method=='POST':
                 if parts[5]=='suspend':return self._send(200,AUTH.update_user(token,uid,{'account_status':'suspended'}))
                 return self._send(200,AUTH.account_action(token,uid,parts[5]))
+        if path=='/api/security/config/export' and method=='GET':
+            self.config_handled=True
+            return self._send(200,AUTH.security_config.export(token),headers={'Content-Disposition':'attachment; filename="security-config.json"'})
+        if path=='/api/security/config/validate' and method=='POST':
+            self.config_handled=True
+            return self._send(200,AUTH.security_config.preview(token,body))
+        if path=='/api/security/config/import' and method=='POST':
+            self.config_handled=True
+            return self._send(200,AUTH.security_config.apply(token,body))
         if path=='/api/security/policies':
             if method=='GET':return self._send(200,AUTH.security_policies(token))
             if method=='PATCH':return self._send(200,AUTH.update_policies(token,body))
@@ -201,6 +210,7 @@ class Handler(BaseHTTPRequestHandler):
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
         p = None
         token = ""
+        self.config_handled=False
         self.request_id = secrets.token_hex(8)
         REQUEST_ID.set(self.request_id)
         try:
@@ -236,6 +246,9 @@ class Handler(BaseHTTPRequestHandler):
                 if method=='GET' and not path.startswith('/api/'):
                     return self._send(303,b'',headers={'Location':'/login'})
                 raise AccessDenied('Change your temporary password first')
+            if method=='GET' and path=='/assets/security-admin.js':
+                AUTH.authorize(token,'manage_security')
+                with open(os.path.join(ROOT,'..','web','security-admin.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/admin.js':
                 with open(os.path.join(ROOT,'..','web','admin.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/consents':
@@ -311,12 +324,18 @@ class Handler(BaseHTTPRequestHandler):
         except ApprovalRequired as e:
             return self._send(202, {"approval_required": True, "approval_token": e.token, "message": str(e)})
         except AccessDenied as e:
+            operation={'/api/security/config/export':'security_config_export','/api/security/config/validate':'security_config_validate','/api/security/config/import':'security_config_import'}.get(path)
+            if operation and not self.config_handled:
+                AUTH.security_config.rejected(session_token(self.headers),operation,e,'request_rejected')
             AUTH.audit("access_denied",p,target=path,result="denied",reason="authorization",request_id=self.request_id)
             code=getattr(e,"status",403)
             if code==401 and method=="GET" and not path.startswith("/api/"):
                 return self._send(303,b"",headers={"Location":"/login"})
             return self._send(code, {"error": str(e),"request_id":self.request_id})
         except (PaymentError, ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
+            operation={'/api/security/config/export':'security_config_export','/api/security/config/validate':'security_config_validate','/api/security/config/import':'security_config_import'}.get(path)
+            if operation and not self.config_handled:
+                AUTH.security_config.rejected(session_token(self.headers),operation,e,'request_rejected')
             AUTH.audit("request_failed",p,target=path,result="failed",reason="invalid_input",request_id=self.request_id)
             return self._send(getattr(e,"status",400), {"error": str(e),"request_id":self.request_id})
 
