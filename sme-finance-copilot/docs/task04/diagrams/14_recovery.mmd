@@ -1,0 +1,16 @@
+flowchart TB
+ START["Startup attaches journal<br/>and identity store"] --> REST["Restore SQLite payments<br/>wallets refunds"]
+ REST --> READ["Read canonical PAY and REF<br/>markers"]
+ READ --> SALE("Paid marker ahead?")
+ SALE -- Yes --> APPLY["Restore paid status and<br/>known wallet settlement"]
+ SALE -- No --> REF("Refund ahead?")
+ APPLY --> REF
+ REF -- Yes --> CHECK("Effects reconcile?")
+ CHECK -- No --> FAIL["Fail closed review<br/>required"]
+ CHECK -- Yes --> FIX["Apply missing exact refund<br/>effects"]
+ REF -- No --> OK["Persist consistent state"]
+ FIX --> OK
+ OK --> IDEM["Bound refund and action<br/>keys prevent duplicate<br/>effects"]
+
+classDef decision fill:#fff4cf,stroke:#947229,color:#242424
+class SALE,REF,CHECK decision

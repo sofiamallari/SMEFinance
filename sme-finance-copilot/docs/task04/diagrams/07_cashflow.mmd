@@ -1,0 +1,16 @@
+flowchart TB
+ DATA["Projected merchant and<br/>data date"] --> PROF["56 day weekday sales and<br/>expense averages"]
+ DATA --> OBL["Receivables payables debt<br/>service"]
+ PROF --> LOOP["Future daily inflow and<br/>outflow"]
+ OBL --> LOOP
+ WAL["Base wallet plus simulated<br/>settled wallet"] --> BAL["Opening cash"]
+ BAL --> LOOP
+ LOOP --> PATH["Balance previous plus<br/>inflow minus outflow"]
+ PATH --> NEG("Balance negative?")
+ NEG -- Yes --> RUN["First negative day runway<br/>alerts"]
+ NEG -- No --> BUF["Buffer and other rule<br/>alerts"]
+ RUN --> EST["Estimated forecast with<br/>assumptions"]
+ BUF --> EST
+
+classDef decision fill:#fff4cf,stroke:#947229,color:#242424
+class NEG decision

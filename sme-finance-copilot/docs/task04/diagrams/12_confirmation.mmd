@@ -1,0 +1,16 @@
+flowchart TB
+ P["Proposed exact parameters"] --> B("Binding valid?")
+ B -- No --> DENY["Reject"]
+ B -- Yes --> LIVE("Still authorized?")
+ LIVE -- No --> DENY
+ LIVE -- Yes --> OLD("Executed before?")
+ OLD -- Yes --> SAME["Return saved outcome after<br/>authorization"]
+ OLD -- No --> EXP("Confirmed in time?")
+ EXP -- No --> DENY
+ EXP -- Yes --> CAS["Atomic proposed to<br/>executing claim"]
+ CAS --> EXEC["Existing PolicyGuard and<br/>T3 token if needed"]
+ EXEC -- Success --> SAVED["Executed saved outcome and<br/>audit"]
+ EXEC -- Uncertain error --> REVIEW["review_required no auto<br/>retry"]
+
+classDef decision fill:#fff4cf,stroke:#947229,color:#242424
+class B,LIVE,OLD,EXP decision

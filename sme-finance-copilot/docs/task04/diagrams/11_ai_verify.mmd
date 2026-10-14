@@ -1,0 +1,13 @@
+flowchart TB
+ TOOL["Authorized deterministic<br/>tool result"] --> FACT["Typed facts and snapshot<br/>version"]
+ FACT --> GEM["Gemini copies allowed<br/>claims and bounded<br/>insights"]
+ GEM --> V("Claims exact?")
+ V -- Invalid or timeout --> FALL["Verified deterministic<br/>rendering"]
+ V -- Yes --> FRESH("Fresh and allowed?")
+ FRESH -- No --> ERR["Unauthorized or<br/>insufficient evidence"]
+ FRESH -- Yes --> R["Backend rendered verified<br/>or estimated answer"]
+ FALL --> FRESH
+ R --> CONT["Store scoped preferences<br/>and audit"]
+
+classDef decision fill:#fff4cf,stroke:#947229,color:#242424
+class V,FRESH decision
