@@ -114,6 +114,8 @@ def execute(c,p,mid,question,history=None,session=None,module=None):
         for step in result['stages']:
             facts.append(fact('financing_journey',mid,'journey_status_'+step['id'],step['status'],None,start,end,'mixed',limitations=result['limitations'],method='existing-records-no-completion-rule-v1'))
         facts.append(fact('financing_journey',mid,'journey_next_action',result['next_action_code'],None,start,end,'mixed',limitations=result['limitations']))
+        if result['incentive']['data']:
+            facts.append(fact('incentive_status',mid,'tier',result['incentive']['data']['tier'],None,start,end,'mixed',limitations=('Provisional demo incentive tier; not journey completion or a paid reward.',)))
     elif preferred in ('get_dashboard','financial_report'):
         for metric in ('net_sales','positive_sales','gross_sales','refunds','expenses','net_income','completed_transactions','pending_transactions','failed_transactions','voided_transactions'):
             if snapshot[metric] is None:continue
