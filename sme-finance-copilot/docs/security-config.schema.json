@@ -92,12 +92,14 @@
           "items": {
             "type": "string",
             "enum": [
+              "acknowledge_quality_alerts",
               "bulk_import",
               "create_transactions",
               "manage_consents",
               "manage_transactions",
               "prepare_application",
               "request_staff_access",
+              "resolve_quality_alerts",
               "simulate_payments",
               "submit_application",
               "use_copilot",
@@ -107,6 +109,7 @@
               "view_financing",
               "view_financing_data",
               "view_forecasts",
+              "view_quality_monitoring",
               "view_reports",
               "view_transactions"
             ]
@@ -118,12 +121,15 @@
           "items": {
             "type": "string",
             "enum": [
+              "acknowledge_quality_alerts",
               "bulk_import",
               "create_transactions",
+              "resolve_quality_alerts",
               "simulate_payments",
               "use_copilot",
               "view_dashboard",
               "view_forecasts",
+              "view_quality_monitoring",
               "view_transactions"
             ]
           }

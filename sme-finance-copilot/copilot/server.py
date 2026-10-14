@@ -82,6 +82,13 @@ def session_token(headers):
 
 from copilot.modules.transactions import TransactionStore, validate_entry
 STORE = TransactionStore(COPILOT, TRANSACTION_FILE)
+from copilot.pos_import import POSImportService
+POS = POSImportService(AUTH, STORE)
+
+def pos_service():
+    global POS
+    if POS.auth is not AUTH or POS.store is not STORE:POS=POSImportService(AUTH,STORE)
+    return POS
 
 def import_entries(principal, merchant_id, rows):
     return STORE.save(principal, merchant_id, rows)
@@ -119,7 +126,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _read_raw(self) -> bytes:
         n = int(self.headers.get("Content-Length", 0) or 0)
-        if n < 0 or n > MAX_BODY:
+        maximum=14_100_000 if urlparse(self.path).path=='/api/pos-import/stage' else MAX_BODY
+        if n < 0 or n > maximum:
             raise ValueError("request too large")
         return self.rfile.read(n) if n else b""
 
@@ -176,6 +184,30 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts)==6 and method=='POST':
                 if parts[5]=='suspend':return self._send(200,AUTH.update_user(token,uid,{'account_status':'suspended'}))
                 return self._send(200,AUTH.account_action(token,uid,parts[5]))
+        if path=='/api/merchant-transactions/entry' and method=='POST':
+            if set(body)-{'merchant','entry','idempotency_key'}:raise InputError('Unsupported entry request fields')
+            return self._send(200,pos_service().single(token,body.get('merchant'),body.get('entry'),body.get('idempotency_key')))
+        if path=='/api/merchant-transactions/history' and method=='GET':
+            return self._send(200,pos_service().history(token,q.get('merchant'),q))
+        if path=='/api/pos-import/stage' and method=='POST':
+            if set(body)-{'merchant','files'}:raise InputError('Unsupported upload request fields')
+            return self._send(201,pos_service().stage(token,body.get('merchant'),body.get('files')))
+        if path.startswith('/api/pos-import/'):
+            parts=path.split('/');bid=parts[3];mid=q.get('merchant') or body.get('merchant');service=pos_service()
+            if len(parts)==4 and method=='GET':return self._send(200,service.get_session(token,mid,bid))
+            if len(parts)==5:
+                operation=parts[4]
+                if operation=='validate' and method=='POST':
+                    if set(body)-{'merchant','mappings'}:raise InputError('Unsupported validation request fields')
+                    return self._send(200,service.validate(token,mid,bid,body.get('mappings')))
+                if operation=='preview' and method=='GET':return self._send(200,service.preview(token,mid,bid,int(q.get('offset',0)),int(q.get('limit',50))))
+                if operation=='commit' and method=='POST':
+                    if set(body)-{'merchant','preview_token','confirmed'}:raise InputError('Unsupported commit request fields')
+                    return self._send(200,service.commit(token,mid,bid,body.get('preview_token'),body.get('confirmed')))
+                if operation=='cancel' and method=='POST':return self._send(200,service.cancel(token,mid,bid))
+        if path=='/api/data-quality' and method=='GET':return self._send(200,pos_service().monitoring(token,q.get('merchant'),q))
+        if path.startswith('/api/data-quality/runs/') and method=='GET':return self._send(200,pos_service().run_details(token,q.get('merchant'),path.split('/')[4]))
+        if path.startswith('/api/data-quality/alerts/') and method=='POST':return self._send(200,pos_service().alert_action(token,body.get('merchant'),path.split('/')[4],body.get('state'),body.get('reason')))
         if path=='/api/security/config/export' and method=='GET':
             self.config_handled=True
             return self._send(200,AUTH.security_config.export(token),headers={'Content-Disposition':'attachment; filename="security-config.json"'})
@@ -215,6 +247,13 @@ class Handler(BaseHTTPRequestHandler):
         REQUEST_ID.set(self.request_id)
         try:
             body = {}
+            # Reject unauthenticated/CSRF-invalid transaction uploads before allocating
+            # their larger body. Merchant and stage binding are rechecked after parsing.
+            transaction_request=path.startswith(('/api/pos-import','/api/merchant-transactions','/api/data-quality'))
+            if transaction_request:
+                token=session_token(self.headers);p=AUTH.principal(token)
+                if p.role not in ('owner','staff'):raise AccessDenied('Administrative/financing accounts have no merchant transaction access')
+                if method in ('POST','PATCH') and not self.headers.get('Authorization','').lower().startswith('bearer '):AUTH.csrf(token,self.headers.get('X-CSRF-Token'))
             if method in ("POST","PATCH") and path != "/mcp":
                 body = json.loads(self._read_raw() or b"{}")
                 if not isinstance(body, dict):
@@ -246,6 +285,10 @@ class Handler(BaseHTTPRequestHandler):
                 if method=='GET' and not path.startswith('/api/'):
                     return self._send(303,b'',headers={'Location':'/login'})
                 raise AccessDenied('Change your temporary password first')
+            if method=='GET' and path=='/assets/icons.svg':
+                with open(os.path.join(ROOT,'..','web','icons.svg'),'rb') as f:return self._send(200,f.read(),'image/svg+xml')
+            if method=='GET' and path=='/assets/merchant-transactions.js':
+                with open(os.path.join(ROOT,'..','web','merchant-transactions.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/security-admin.js':
                 AUTH.authorize(token,'manage_security')
                 with open(os.path.join(ROOT,'..','web','security-admin.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
@@ -257,8 +300,16 @@ class Handler(BaseHTTPRequestHandler):
                 AUTH.authorize(token,'manage_users');return self._page('users.html')
             if method=='GET' and path=='/admin/security':
                 AUTH.authorize(token,'manage_security');return self._page('security.html')
-            if method=='GET' and path=='/':
-                if p.role in ('user_admin','security_admin'):return self._send(303,b'',headers={'Location':'/admin/users' if p.role=='user_admin' else '/admin/security'})
+            business_routes={'/':'use_copilot','/dashboard':'view_dashboard','/copilot':'use_copilot','/financing':'view_financing','/cash-flow':'view_forecasts','/payment-sandbox':'simulate_payments','/financing/applications':'view_applications',
+                '/merchant-transactions/single':'create_transactions','/merchant-transactions/import':'bulk_import','/merchant-transactions/history':'view_transactions','/merchant-transactions/data-quality':'view_quality_monitoring'}
+            if method=='GET' and path in business_routes:
+                if p.role in ('user_admin','security_admin'):
+                    if path=='/':return self._send(303,b'',headers={'Location':'/admin/users' if p.role=='user_admin' else '/admin/security'})
+                    raise AccessDenied('Administrative roles have no merchant transaction access')
+                if path!='/':
+                    mid=q.get('merchant') or next(iter(sorted(p.merchant_ids)),None)
+                    if mid not in p.merchant_ids:raise AccessDenied('Merchant route access denied')
+                    require(p,business_routes[path],mid)
                 return self._page('index.html')
             if method == "GET" and path == "/api/merchants":
                 from copilot.tools_spec import execute
@@ -331,13 +382,13 @@ class Handler(BaseHTTPRequestHandler):
             code=getattr(e,"status",403)
             if code==401 and method=="GET" and not path.startswith("/api/"):
                 return self._send(303,b"",headers={"Location":"/login"})
-            return self._send(code, {"error": str(e),"request_id":self.request_id})
+            return self._send(code, {"error": str(e),"request_id":self.request_id,**({"batch_id":e.batch_id} if hasattr(e,"batch_id") else {})})
         except (PaymentError, ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
             operation={'/api/security/config/export':'security_config_export','/api/security/config/validate':'security_config_validate','/api/security/config/import':'security_config_import'}.get(path)
             if operation and not self.config_handled:
                 AUTH.security_config.rejected(session_token(self.headers),operation,e,'request_rejected')
             AUTH.audit("request_failed",p,target=path,result="failed",reason="invalid_input",request_id=self.request_id)
-            return self._send(getattr(e,"status",400), {"error": str(e),"request_id":self.request_id})
+            return self._send(getattr(e,"status",400), {"error": str(e),"request_id":self.request_id,**({"batch_id":e.batch_id} if hasattr(e,"batch_id") else {})})
 
     def do_GET(self):
         self._dispatch("GET")

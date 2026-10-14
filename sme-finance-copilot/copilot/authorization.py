@@ -4,12 +4,12 @@ from copilot.security import AccessDenied
 ROLE_LABELS = {'owner':'Business Owner','staff':'Staff','lender_analyst':'Financing Agent',
                'coach':'Progression Coach','user_admin':'User Administrator','security_admin':'Security Administrator'}
 OPERATIONAL = {'view_transactions','create_transactions','bulk_import','view_dashboard',
-               'view_forecasts','simulate_payments','use_copilot'}
+               'view_forecasts','simulate_payments','use_copilot','view_quality_monitoring'}
 FINANCIAL = {'view_reports','view_assessment','view_financing','view_financing_data',
              'prepare_application','submit_application','view_applications'}
 BOUNDARIES = {
-    'owner': OPERATIONAL | FINANCIAL | {'manage_transactions','manage_consents','request_staff_access'},
-    'staff': OPERATIONAL,
+    'owner': OPERATIONAL | FINANCIAL | {'manage_transactions','manage_consents','request_staff_access','acknowledge_quality_alerts','resolve_quality_alerts'},
+    'staff': OPERATIONAL | {'acknowledge_quality_alerts','resolve_quality_alerts'},
     'lender_analyst': {'view_reports','view_assessment','view_forecasts','view_financing',
                        'view_financing_data','view_applications','review_application','use_copilot'},
     'coach': {'view_dashboard','view_reports','view_assessment','view_forecasts','view_financing','use_copilot'},

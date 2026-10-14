@@ -62,6 +62,15 @@ svg text{font-size:10px;fill:#64748b}
 footer{text-align:center;color:var(--muted);font-size:.75rem;padding:18px}
 @media(max-width:900px){.g2,.g3{grid-template-columns:1fr}}
 #tledger table,#tpreview table{width:100%;border-collapse:collapse;text-align:left} #tledger th,#tledger td,#tpreview th,#tpreview td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top} #tledger td{overflow-wrap:anywhere} #tledger button{margin:3px}
+
+.app-layout{display:grid;grid-template-columns:250px minmax(0,1fr);align-items:start;min-height:calc(100vh - 110px)}
+#tabs{position:sticky;top:0;display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line);border-bottom:0;padding:18px 10px;min-height:calc(100vh - 100px);gap:5px;overflow:visible}
+#tabs button{display:flex;align-items:center;gap:9px;white-space:normal;text-align:left;border-bottom:0;border-left:3px solid transparent;border-radius:8px;padding:13px 10px;font-size:.88rem}
+#tabs button:hover{background:var(--bg)}#tabs button.active{background:var(--soft);border-left-color:var(--brand2);color:var(--brand)}
+#merchant-submenu button,.finance-secondary button{margin-left:17px;width:calc(100% - 17px);font-size:.78rem;padding:11px 8px}.chevron{margin-left:auto}.nav-icon svg{height:19px;width:19px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0}.nav-icon{display:flex}.alert-badge{margin-left:auto;border-radius:20px;padding:2px 6px;background:#fee2e2;color:#991b1b;font-size:.7rem}
+main{width:100%;min-width:0;padding:24px}#sidebar-toggle{display:none}.secondary-nav{margin-top:0!important}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;text-align:left}th,td{padding:10px;border-bottom:1px solid var(--line);font-size:.8rem;vertical-align:top}pre{white-space:pre-wrap;overflow-wrap:anywhere}
+#wizard-progress{display:flex;flex-wrap:wrap;list-style:none;padding:0;gap:8px}#wizard-progress li{padding:9px 12px;border-radius:8px;background:var(--bg);color:var(--muted);font-size:.82rem}#wizard-progress li.current{background:var(--brand);color:#fff}#wizard-progress li.complete{background:var(--soft);color:var(--brand)}[hidden]{display:none!important}.wizard-step input,.wizard-step select{max-width:100%}.mapping-file{border:1px solid var(--line);border-radius:12px;padding:16px;margin:16px 0}.mapping-file select,.mapping-file input:not([type=checkbox]){width:100%;margin:5px 0 10px}.history-filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}.history-filters label{flex:1;min-width:120px}.history-filters input,.history-filters select{width:100%}#run-dialog{max-width:1000px;width:95%;max-height:90vh;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:20px}#run-dialog::backdrop{background:#0f172a88}.tab>.card{margin-bottom:18px}#tabs button:focus-visible{outline:3px solid #38bdf8;outline-offset:2px}
+@media(max-width:850px){.app-layout{display:block}#sidebar-toggle{display:block;margin:10px}#tabs{display:none;position:static;min-height:0;border-right:0}#tabs.mobile-open{display:flex}main{padding:14px}.controls{width:100%}.history-filters{gap:8px}.g2,.g3{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -76,13 +85,21 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:18px}
     <label class="chk" id="demo-consent"><input type="checkbox" id="consent" checked> Demo consent</label><a id="consent-link" href="/consents" style="color:white" hidden>Financing consent</a><span id="account-name"></span><button class="btn" id="signout">Sign out</button>
   </div>
 </header>
-<nav id="tabs">
-  <button data-tab="copilot" class="active">Copilot</button>
-  <button data-tab="financing">Financing</button>
-  <button data-tab="cashflow">Cash flow</button>
-  <button data-tab="dashboard">Dashboard</button>
-  <button data-tab="payments">Payments sandbox</button>
-  <button data-tab="transactions">Transactions</button><button data-tab="applications">Financing applications</button>
+<button class="btn" id="sidebar-toggle" aria-controls="tabs" aria-expanded="false">☰ Navigation</button>
+<div class="app-layout"><nav id="tabs" aria-label="Business modules">
+ <button data-tab="dashboard" class="active"><span class="nav-icon" data-icon="layout-dashboard"></span>Dashboard</button>
+ <button data-tab="copilot"><span class="nav-icon" data-icon="bot"></span>AI Copilot</button>
+ <button data-tab="financing"><span class="nav-icon" data-icon="landmark"></span>Financing</button>
+ <div class="finance-secondary"><button data-tab="applications" class="secondary-nav">Financing applications</button></div>
+ <button data-tab="cashflow"><span class="nav-icon" data-icon="wallet"></span>Cash Flow</button>
+ <button data-tab="payments"><span class="nav-icon" data-icon="credit-card"></span>Payment Sandbox</button>
+ <button id="merchant-parent" aria-expanded="false" aria-controls="merchant-submenu"><span class="nav-icon" data-icon="receipt-text"></span>Merchant Transactions<span class="chevron">⌄</span></button>
+ <div id="merchant-submenu" hidden>
+  <button data-tab="transactions"><span class="nav-icon" data-icon="circle-plus"></span>Single Transaction</button>
+  <button data-tab="pos-import"><span class="nav-icon" data-icon="upload"></span>Bulk POS Import</button>
+  <button data-tab="transaction-history"><span class="nav-icon" data-icon="history"></span>Transaction History</button>
+  <button data-tab="data-quality"><span class="nav-icon" data-icon="shield-check"></span>Data Quality &amp; Monitoring <span id="quality-badge" class="alert-badge" hidden></span></button>
+ </div>
 </nav>
 <main>
 <section class="tab active" id="tab-copilot">
@@ -147,30 +164,37 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:18px}
 </section>
 <section class="tab" id="tab-applications"><div class="card"><h2>Sandbox financing applications</h2><p class="sub">Owner-approved packets and assigned reviews. Simulated outcomes are not bank credit approvals.</p><div id="applications"></div></div></section>
 <section class="tab" id="tab-transactions">
-  <div class="grid g2">
-    <div class="card"><h2>Single transaction entry</h2><p class="sub">Record a sale or expense. The dashboard and forecast will use the new data.</p>
-      <form id="singleform" style="display:grid;gap:10px">
-        <label>Date <input id="tdate" type="date" required style="width:100%"></label>
-        <label>Type <select id="ttype" style="width:100%"><option value="income">Income / sale</option><option value="expense">Expense</option></select></label>
-        <label>Amount <input id="tamount" type="number" min="0.01" step="any" required style="width:100%"></label>
-        <label>Payment channel <select id="tchannel" style="width:100%"><option value="cash">Cash</option><option value="qr_pay">QR Pay</option><option value="tap_pay">Tap Pay</option><option value="pay_link">Pay Link</option><option value="external_wallet">External wallet</option><option value="external_card">External card</option></select></label>
-        <label>Category <input id="tcategory" placeholder="e.g. inventory, supplies, sales" style="width:100%"></label>
-        <label>Reference (optional) <input id="tref" maxlength="100" style="width:100%"></label>
-        <label>Description (optional) <input id="tdesc" maxlength="250" style="width:100%"></label>
-        <button class="btn">Save transaction</button>
-      </form>
-    </div>
-    <div class="card"><h2>Bulk upload</h2><p class="sub">Import up to 1,000 transactions at once. Supported: CSV and Excel (.xlsx). Review all rows before committing.</p>
-      <p><a id="tsample" href="#">Download CSV template</a></p>
-      <input type="file" id="tfile" accept=".csv,.xlsx,text/csv" style="width:100%">
-      <div id="tpreview" class="muted" style="margin:12px 0">Choose a file to preview its transactions.</div>
-      <button class="btn" id="timport" disabled>Confirm bulk import</button>
-      <p class="muted" style="margin-top:12px">Excel: one worksheet, ISO date text (YYYY-MM-DD), values only. Preview expires after 10 minutes.</p>
-    </div>
-  </div>
-  <div id="tresult" style="margin-top:12px"></div><div class="card" id="tledger" style="margin-top:12px"></div>
+ <div class="card"><h2>Single Transaction</h2><p class="sub">Record a sale, expense, refund or reversal for the selected business. Refunds/reversals are negative; only completed records have financial effect.</p>
+ <form id="singleform" class="grid g2">
+  <label>Transaction date/time<input id="tdate" type="datetime-local" required style="width:100%"><small id="transaction-zone" class="muted"></small></label>
+  <label>Net amount<input id="tamount" type="number" min="0" step="0.01" required style="width:100%"></label>
+  <label>Currency<input id="tcurrency" readonly style="width:100%"></label>
+  <label>Transaction type<select id="ttype" style="width:100%"><option value="sale">Sale / income</option><option value="expense">Expense</option><option value="refund">Refund</option><option value="reversal">Reversal</option></select></label>
+  <label>Payment method<select id="tchannel" style="width:100%"><option value="cash">Cash</option><option value="qr_pay">QR Pay</option><option value="tap_pay">Tap Pay</option><option value="pay_link">Pay Link</option><option value="external_wallet">External wallet</option><option value="external_card">Card</option></select></label>
+  <label>Status<select id="tstatus" style="width:100%"><option>completed</option><option>pending</option><option>failed</option><option>voided</option></select></label>
+  <label>External reference<input id="tref" required maxlength="100" style="width:100%"></label><label>Category<input id="tcategory" maxlength="80" placeholder="sales / supplies" style="width:100%"></label>
+  <label style="grid-column:1/-1">Description (optional)<input id="tdesc" maxlength="250" style="width:100%"></label>
+  <button class="btn" id="single-save">Save transaction</button>
+ </form><div id="tresult" role="status" aria-live="polite"></div></div>
 </section>
-</main>
+<section class="tab" id="tab-pos-import">
+ <div class="card"><h2>Bulk POS Import</h2><p class="sub">Select Files → Map Columns → Validate → Preview → Import. Records remain uncommitted until explicit confirmation.</p>
+ <ol id="wizard-progress" aria-label="Import progress"><li>Select Files</li><li>Map Columns</li><li>Validate</li><li>Preview</li><li>Import</li></ol><div id="wizard-message" role="status" aria-live="polite"></div>
+ <div id="wizard-step-1" class="wizard-step"><div class="grid g2"><label>Upload Files<input id="pos-files" type="file" multiple accept=".csv,.xlsx"></label><label>Select Folder<input id="pos-folder" type="file" multiple webkitdirectory directory></label></div><p class="muted">CSV/XLSX only. Up to 10 files, 3 MB per file, 10 MB total, 5,000 rows and 30 columns. Folder selection uploads chosen browser files; no host directory access is requested.</p><div id="file-selection"></div><button class="btn" id="stage-files" disabled>Continue to Map Columns</button></div>
+ <div id="wizard-step-2" class="wizard-step" hidden><h3>Map Columns</h3><p class="muted">Verify each monetary meaning. Generic “Amount” columns require an explicit net/gross choice. Settlement is separate from revenue. Only one transaction per row is supported.</p><div id="mapping-forms"></div><button class="btn ghost" data-wizard-back="1">Back</button><button class="btn" id="validate-pos">Run validation</button><button class="btn ghost" id="cancel-pos">Cancel batch</button></div>
+ <div id="wizard-step-3" class="wizard-step" hidden><h3>Validation and reconciliation</h3><div id="validation-results"></div><button class="btn ghost" data-wizard-back="2">Back to Mapping</button><button class="btn" id="show-preview" disabled>Continue to Preview</button></div>
+ <div id="wizard-step-4" class="wizard-step" hidden><h3>Exact normalized preview</h3><div id="preview-summary"></div><div id="pos-preview" class="table-scroll"></div><div class="row"><button class="btn ghost" id="preview-prev">Previous rows</button><span id="preview-page"></span><button class="btn ghost" id="preview-next">Next rows</button></div><button class="btn ghost" data-wizard-back="3">Back</button><button class="btn" id="commit-pos" disabled>Confirm Import</button><button class="btn ghost" id="cancel-preview">Cancel</button></div>
+ <div id="wizard-step-5" class="wizard-step" hidden><h3>Backend-confirmed import result</h3><div id="import-result"></div><button class="btn" data-navigate="transaction-history">View Transaction History</button><button class="btn" data-navigate="data-quality">View Data Quality</button><button class="btn ghost" id="import-another">Import Another Batch</button></div>
+ </div>
+</section>
+<section class="tab" id="tab-transaction-history"><div class="card"><h2>Transaction History</h2><form id="history-filter" class="history-filters"><label>From<input id="history-start" type="date"></label><label>Through<input id="history-end" type="date"></label><label>Status<select id="history-status"><option value="">All</option><option>completed</option><option>pending</option><option>failed</option><option>voided</option></select></label><label>Source<select id="history-source"><option value="">All</option><option>manual</option><option>legacy_manual</option><option>pos_csv</option><option>pos_xlsx</option></select></label><label>Payment method<select id="history-method"><option value="">All</option><option>cash</option><option>qr_pay</option><option>external_card</option><option>external_wallet</option><option>tap_pay</option><option>pay_link</option></select></label><button class="btn">Filter</button></form><div id="tledger" class="table-scroll"></div><div class="row"><button class="btn ghost" id="history-prev">Previous</button><span id="history-page"></span><button class="btn ghost" id="history-next">Next</button></div><p class="muted">Only committed journal records appear here. The existing five demo modules retain their current data; consolidated integration follows in Task 03.</p></div></section>
+<section class="tab" id="tab-data-quality"><div class="card"><h2>Data Quality &amp; Monitoring</h2><p class="sub">Checks run on validation, reconciliation, commit, recovery and actual expiration checks. This is foreground monitoring, not a continuously scheduled service.</p><button class="btn" id="quality-refresh">Refresh / Recheck</button><div id="quality-message" role="status" aria-live="polite"></div><div id="quality-kpis" class="grid g3"></div><p id="quality-formula" class="muted"></p></div>
+ <div class="card"><h2>Import Run History</h2><label>Commit status<select id="run-state"><option value="">All</option><option>staged</option><option>validated</option><option>validation_failed</option><option>committed</option><option>failed</option><option>expired</option><option>cancelled</option><option>integrity_failed</option></select></label><div id="quality-runs" class="table-scroll"></div></div>
+ <div class="card"><h2>Automatic Alerts</h2><form id="alerts-filter" class="history-filters"><label>Severity<select id="alert-severity"><option value="">All</option><option>critical</option><option>high</option><option>medium</option><option>informational</option></select></label><label>Status<select id="alert-state"><option value="">All</option><option>open</option><option>acknowledged</option><option>resolved</option></select></label><label>From<input id="alert-start" type="date"></label><label>Through<input id="alert-end" type="date"></label><button class="btn">Filter alerts</button></form><div id="quality-alerts"></div></div>
+ <div class="card"><h2>Predefined Quality Rules</h2><p class="muted">Rule results appear in run details. No executable custom rules are supported.</p><div id="quality-rules"></div></div>
+</section>
+<dialog id="run-dialog"><h2>Import Run Details</h2><div id="run-detail"></div><button class="btn" id="close-run">Close</button></dialog>
+</main></div>
 <footer>Synthetic data only · Indicative estimates, not credit offers · Lenders make all credit decisions</footer>
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -183,7 +207,8 @@ const pct=v=>v==null?"n/a":(v*100).toFixed(1)+"%";
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const COLORS=["#0b3b5c","#127a8a","#38bdf8","#94a3b8","#f59e0b","#a3a3a3"];
 let SESSION=null;
-const can=permission=>SESSION?.demo ? ({owner:["use_copilot","view_financing","view_forecasts","view_dashboard","simulate_payments","view_transactions","create_transactions","bulk_import","manage_transactions","view_assessment","view_applications"],staff:["use_copilot","view_forecasts","view_dashboard","simulate_payments","view_transactions","create_transactions","bulk_import"],lender_analyst:["use_copilot","view_financing","view_forecasts"],coach:["use_copilot","view_financing","view_forecasts","view_dashboard","view_assessment"],demo_guest:["use_copilot","view_dashboard","simulate_payments"]}[$("#role").value]||[]).includes(permission) : SESSION?.permissions.includes(permission);
+const scopedActions=["create_transactions","bulk_import","acknowledge_quality_alerts","resolve_quality_alerts"];
+const can=permission=>SESSION?.demo ? ({owner:["use_copilot","view_financing","view_forecasts","view_dashboard","simulate_payments","view_transactions","create_transactions","bulk_import","manage_transactions","view_assessment","view_applications"],staff:["use_copilot","view_forecasts","view_dashboard","simulate_payments","view_transactions","create_transactions","bulk_import"],lender_analyst:["use_copilot","view_financing","view_forecasts"],coach:["use_copilot","view_financing","view_forecasts","view_dashboard","view_assessment"],demo_guest:["use_copilot","view_dashboard","simulate_payments"]}[$("#role").value]||[]).includes(permission) : SESSION?.permissions.includes(permission)&&(!(SESSION?.user.role==="staff"&&scopedActions.includes(permission))||SESSION.user.transaction_grants?.[M?.id]?.includes(permission));
 async function api(path,opt={}){
   const h={"Content-Type":"application/json","X-CSRF-Token":SESSION?.csrf_token||""};
   if(SESSION?.demo){h["X-Demo-Role"]=$("#role").value;h["X-Demo-Consent"]=$("#consent").checked?"yes":"no"}
@@ -192,10 +217,15 @@ async function api(path,opt={}){
   if(r.status>=400) throw new Error(j.error||"Request failed");return {status:r.status,...(Array.isArray(j)?{list:j}:j)};
 }
 const q=extra=>`?merchant=${M.id}${extra||""}`;
-$$("#tabs button").forEach(b=>b.onclick=()=>{$$("#tabs button").forEach(x=>x.classList.remove("active"));b.classList.add("active");$$(".tab").forEach(t=>t.classList.remove("active"));$("#tab-"+b.dataset.tab).classList.add("active");loadTab(b.dataset.tab)});
-const active=()=>$("#tabs button.active").dataset.tab;
-function loadTab(t){({copilot:loadProgress,financing:loadFinancing,cashflow:loadCashflow,dashboard:loadDashboard,payments:loadPayments,transactions:loadTransactions,applications:loadApplications})[t]().catch(e=>showErr(t,e))}
-function showErr(t,e){const el={copilot:"#progressbody",financing:"#matches",cashflow:"#cfalerts",dashboard:"#dkpis",payments:"#pout",transactions:"#tresult",applications:"#applications"}[t];$(el).innerHTML=`<div class="banner err">${esc(e.message)}</div>`}
+const routes={dashboard:'/dashboard',copilot:'/copilot',financing:'/financing',cashflow:'/cash-flow',payments:'/payment-sandbox',transactions:'/merchant-transactions/single','pos-import':'/merchant-transactions/import','transaction-history':'/merchant-transactions/history','data-quality':'/merchant-transactions/data-quality',applications:'/financing/applications'};
+const routePermissions={dashboard:'view_dashboard',copilot:'use_copilot',financing:'view_financing',cashflow:'view_forecasts',payments:'simulate_payments',transactions:'create_transactions','pos-import':'bulk_import','transaction-history':'view_transactions','data-quality':'view_quality_monitoring',applications:'view_applications'};
+function active(){return $('#tabs [data-tab].active')?.dataset.tab||'dashboard'}
+function refreshNavigation(){ $$('#tabs [data-tab]').forEach(b=>b.hidden=!can(routePermissions[b.dataset.tab]));$('#merchant-parent').hidden=!$$('#merchant-submenu [data-tab]').some(b=>!b.hidden); }
+function navigate(tab,push=true){if(!routes[tab]||!can(routePermissions[tab])){showErr(active(),Error('This view is not authorized'));return}$$('#tabs [data-tab]').forEach(b=>{b.classList.toggle('active',b.dataset.tab===tab);if(b.dataset.tab===tab)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});$$('.tab').forEach(t=>t.classList.remove('active'));$('#tab-'+tab).classList.add('active');const child=['transactions','pos-import','transaction-history','data-quality'].includes(tab);$('#merchant-parent').classList.toggle('active',child);if(child){$('#merchant-submenu').hidden=false;$('#merchant-parent').setAttribute('aria-expanded','true')}if(push&&M)history.pushState(null,'',routes[tab]+'?merchant='+encodeURIComponent(M.id));$('#tabs').classList.remove('mobile-open');$('#sidebar-toggle').setAttribute('aria-expanded','false');loadTab(tab);}
+$$('#tabs [data-tab]').forEach(b=>b.onclick=()=>navigate(b.dataset.tab));$('#merchant-parent').onclick=()=>{const expanded=$('#merchant-parent').getAttribute('aria-expanded')==='true';$('#merchant-parent').setAttribute('aria-expanded',String(!expanded));$('#merchant-submenu').hidden=expanded};$('#sidebar-toggle').onclick=()=>{const opened=$('#tabs').classList.toggle('mobile-open');$('#sidebar-toggle').setAttribute('aria-expanded',String(opened))};
+window.addEventListener('popstate',()=>{const params=new URLSearchParams(location.search),mid=params.get('merchant');if(mid&&merchants.some(m=>m.id===mid)){$('#merchant').value=mid;M=merchants.find(m=>m.id===mid);resetMerchantTransactions();refreshNavigation()}const tab=Object.keys(routes).find(k=>routes[k]===location.pathname)||'dashboard';navigate(tab,false);updateQualityBadge()});
+function loadTab(t){const fn={copilot:loadProgress,financing:loadFinancing,cashflow:loadCashflow,dashboard:loadDashboard,payments:loadPayments,transactions:loadTransactions,'pos-import':loadPOSImport,'transaction-history':loadTransactionHistory,'data-quality':loadDataQuality,applications:loadApplications}[t];Promise.resolve().then(()=>fn()).catch(e=>showErr(t,e))}
+function showErr(t,e){const el={copilot:'#progressbody',financing:'#matches',cashflow:'#cfalerts',dashboard:'#dkpis',payments:'#pout',transactions:'#tresult','pos-import':'#wizard-message','transaction-history':'#tledger','data-quality':'#quality-message',applications:'#applications'}[t];$(el).innerHTML=`<div class="banner err">${esc(e.message)}</div>`}
 // ---------- COPILOT
 const CHIPS=["How am I doing?","What financing fits my business?","How much can I borrow with RBF?","Any cash-flow alerts?","Show my sales dashboard","Which incentive milestone am I on?","Generate a QR for 500","Submit a financing application","Approve my loan now"];
 function addMsg(t,who){const d=document.createElement("div");d.className="msg "+who;d.textContent=t;$("#chatlog").appendChild(d);$("#chatlog").scrollTop=1e9;return d}
@@ -309,82 +339,23 @@ $("#postap").onclick=()=>createPayment("tap_pay",{items:cart.map(({name,price,qt
 $("#poscash").onclick=()=>{$("#pout").innerHTML=`<div class="banner note">Cash selected — collect at the counter. Cash sales are not visible to lenders and do not build your financing record.</div>`};
 $("#posclear").onclick=()=>{cart=[];renderCart()};
 
-// ---------- TRANSACTION ENTRY / BULK IMPORT
-let pendingRows=[], previewToken=null;
-async function loadTransactions(){
-  pendingRows=[];previewToken=null;$("#tpreview").textContent="Choose a file to preview.";loadLedger();
-  const permitted=can("create_transactions");
-  $("#singleform").querySelectorAll("input,select,button").forEach(e=>e.disabled=!permitted);
-  $("#tfile").disabled=!can("bulk_import");
-  $("#timport").disabled=!can("bulk_import")||!pendingRows.length;
-  $("#tdate").max="2026-09-30";
-  if(!$("#tdate").value)$("#tdate").value="2026-09-30";
-  $("#tresult").innerHTML=permitted?"":'<div class="banner note">Transaction input is restricted to business owners and staff.</div>';
-}
-const columns=["date","type","amount","channel","category","reference","description"];
-$("#tsample").onclick=e=>{e.preventDefault();const csv=columns.join(",")+"\n2026-09-29,income,50000,qr_pay,sales,SALE-001,Coffee sales\n2026-09-29,expense,12000,cash,supplies,EXP-001,Coffee beans\n";
-  const a=document.createElement("a"),url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.href=url;a.download="sme-transactions-template.csv";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
-function parseCSV(text){
-  const out=[];let row=[],cell="",quoted=false;
-  for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}
-    else if(c===","&&!quoted){row.push(cell);cell=""}
-    else if((c==="\n"||c==="\r")&&!quoted){if(c==="\r"&&text[i+1]==="\n")i++;row.push(cell);if(row.some(v=>v.trim()))out.push(row);row=[];cell=""}
-    else cell+=c}
-  if(quoted)throw Error("Unclosed quoted CSV field");row.push(cell);if(row.some(v=>v.trim()))out.push(row);
-  if(!out.length)throw Error("CSV is empty");const heads=out.shift().map(v=>v.trim().toLowerCase().replace(/^\uFEFF/,""));
-  for(const key of ["date","type","amount"])if(!heads.includes(key))throw Error("Missing required column: "+key);
-  return out.map((r,i)=>{if(r.length!==heads.length)throw Error("Column count mismatch on row "+(i+2));return Object.fromEntries(heads.map((h,j)=>[h,r[j]]))});
-}
-$("#tfile").onchange=async()=>{pendingRows=[];previewToken=null;$("#timport").disabled=true;
-  const f=$("#tfile").files[0];if(!f)return;
-  try{if(f.size>3000000)throw Error("File exceeds 3 MB");
-    const bytes=new Uint8Array(await f.arrayBuffer());let raw="";for(const b of bytes)raw+=String.fromCharCode(b);
-    const r=await api("/api/transactions/preview",{method:"POST",body:JSON.stringify({merchant:M.id,filename:f.name,content:btoa(raw)})});
-    pendingRows=r.rows;previewToken=r.preview_token;
-    $("#tpreview").innerHTML=`<b>${r.total} rows; ${r.errors.length} errors</b><div style="max-height:350px;overflow:auto"><table><thead><tr>${columns.map(k=>`<th>${k}</th>`).join("")}</tr></thead><tbody>${r.rows.map(row=>`<tr>${columns.map(k=>`<td>${esc(row[k]??"")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>${r.errors.map(e=>`<p class="banner err">Data row ${e.row}: ${esc(e.error)}</p>`).join("")}`;
-    $("#timport").disabled=!r.valid;
-  }catch(e){$("#tpreview").innerHTML=`<div class="banner err">${esc(e.message)}</div>`}}
-async function saveRows(rows){const r=await api("/api/transactions/entry",{method:"POST",body:JSON.stringify({merchant:M.id,entry:rows[0]})});
-  $("#tresult").innerHTML=r.valid?`<div class="banner ok">Saved ${r.imported} transaction(s). Dashboard and cash-flow data updated.</div>`:`<div class="banner err">Nothing imported. ${r.errors.map(e=>`Row ${e.row}: ${esc(e.error)}`).join("; ")}</div>`;
-  if(r.valid)loadLedger();return r.valid;
-}
-$("#singleform").onsubmit=async e=>{e.preventDefault();try{const ok=await saveRows([{date:$("#tdate").value,type:$("#ttype").value,amount:$("#tamount").value,channel:$("#tchannel").value,category:$("#tcategory").value,reference:$("#tref").value,description:$("#tdesc").value}]);if(ok){$("#tamount").value="";$("#tref").value="";$("#tdesc").value=""}}catch(err){$("#tresult").innerHTML=`<div class="banner err">${esc(err.message)}</div>`}};
-$("#timport").onclick=async()=>{if(!previewToken||!confirm(`Save ${pendingRows.length} validated transactions?`))return;$("#timport").disabled=true;
-  try{const r=await api("/api/transactions/import",{method:"POST",body:JSON.stringify({merchant:M.id,preview_token:previewToken,confirmed:true})});
-    if(!r.valid)throw Error(r.errors.map(e=>`Row ${e.row}: ${e.error}`).join("; "));
-    previewToken=null;pendingRows=[];$("#tfile").value="";$("#tpreview").textContent=`Saved ${r.imported} transactions.`;loadLedger();
-  }catch(e){$("#tresult").textContent=e.message}}
-async function loadLedger(){
-  const el=$("#tledger");if(!can("view_transactions")){el.textContent="";return}
-  try{const r=await api("/api/transactions"+q());el.innerHTML=`<h2>Saved transactions</h2><div style="overflow:auto"><table><thead><tr>${columns.map(k=>`<th>${k}</th>`).join("")}<th>Manage</th></tr></thead><tbody>${r.transactions.map(t=>`<tr>${columns.map(k=>`<td>${esc(t[k])}</td>`).join("")}<td>${can("manage_transactions")?`<button data-edit="${t.id}">Edit</button><button data-delete="${t.id}">Delete</button>`:"Owner only"}</td></tr>`).join("")}</tbody></table></div>`;
-    el.querySelectorAll('[data-delete],[data-edit]').forEach(b=>b.onclick=async()=>{try{const t=r.transactions.find(t=>t.id===(b.dataset.edit||b.dataset.delete));let body={merchant:M.id,id:t.id,action:b.dataset.edit?"update":"delete"};
-      if(b.dataset.edit){body.entry={};for(const k of columns){const v=prompt(k,t[k]);if(v===null)return;body.entry[k]=v}}
-      else if(!confirm("Delete this transaction?"))return;
-      const result=await api("/api/transactions/manage",{method:"POST",body:JSON.stringify(body)});if(!result.valid)throw Error(result.errors.map(e=>e.error).join("; "));loadLedger();
-    }catch(e){$("#tresult").textContent=e.message}});
-  }catch(e){el.textContent=e.message}}
-
 // ---------- init
-async function selectMerchant(){M=merchants.find(m=>m.id==$("#merchant").value);cart=[];chatHistory=[];$("#chatlog").innerHTML="";$("#dstart").value=$("#dend").value="";
-  addMsg(`Hi! I'm your finance copilot for ${M.name} (${M.country}, ${M.currency}). Ask me about financing, cash flow, sales or payments.`,"bot");loadTab(active())}
-$("#merchant").onchange=selectMerchant;$("#role").onchange=()=>loadTab(active());$("#consent").onchange=()=>loadTab(active());
+async function selectMerchant(){M=merchants.find(m=>m.id==$('#merchant').value);cart=[];chatHistory=[];$('#chatlog').innerHTML='';$('#dstart').value=$('#dend').value='';resetMerchantTransactions();refreshNavigation();addMsg(`Hi! I'm your finance copilot for ${M.name} (${M.country}, ${M.currency}).`,"bot");let tab=active();if(!can(routePermissions[tab]))tab=$$('#tabs [data-tab]').find(b=>!b.hidden)?.dataset.tab;if(tab)navigate(tab);await updateQualityBadge()}
+$('#merchant').onchange=selectMerchant;$('#role').onchange=()=>{refreshNavigation();loadTab(active())};$('#consent').onchange=()=>loadTab(active());
 async function loadApplications(){
   const r=await api('/api/applications'+q());$('#applications').innerHTML=r.applications.map(a=>`<div class="card"><b>${esc(a.application_id)}</b><p>${esc(a.status)} · ${fmt(a.requested_amount)} · ${esc(a.product_id)}</p>${a.reviews.map(r=>`<p>${esc(r.outcome)} · ${esc(r.note)}</p>`).join('')}${can('review_application')?`<button data-review="${a.application_id}">Record simulated review</button>`:''}</div>`).join('')||'No assigned applications. Owners can submit an application through Copilot after granting financing consent.';
   $('#applications').querySelectorAll('button').forEach(b=>b.onclick=async()=>{const outcome=prompt('Outcome: request_information, sandbox_recommended, or sandbox_declined','request_information');if(!outcome)return;const note=prompt('Review note / requested information');if(!note)return;try{await api('/api/applications/'+b.dataset.review+'/review',{method:'POST',body:JSON.stringify({outcome,note})});loadApplications()}catch(e){showErr('applications',e)}})
 }
 $('#signout').onclick=async()=>{await api('/api/auth/logout',{method:'POST',body:'{}'});location.href='/login'};
-(async()=>{
+async function initializeApp(){
   SESSION=await api('/api/auth/me');
   if(SESSION.user.must_change_password){location.href='/login';return}
   if(!SESSION.demo){$('#role').innerHTML=`<option value="${esc(SESSION.user.role)}">${esc({owner:'Business Owner',staff:'Staff',lender_analyst:'Financing Agent',coach:'Progression Coach'}[SESSION.user.role]||SESSION.user.role)}</option>`;$('#role').disabled=true;$('#demo-consent').hidden=true;$('#account-name').textContent=SESSION.user.display_name;$('#consent-link').hidden=!can('manage_consents');}
-  const allowed={copilot:'use_copilot',financing:'view_financing',cashflow:'view_forecasts',dashboard:'view_dashboard',payments:'simulate_payments',transactions:'view_transactions',applications:'view_applications'};
-  $$('#tabs button').forEach(b=>b.hidden=!can(allowed[b.dataset.tab]));
-  const first=$$('#tabs button').find(b=>!b.hidden);if(!first){$('#tab-copilot').textContent='No business actions enabled for this account.';return}
-  $$('#tabs button').forEach(b=>b.classList.remove('active'));first.classList.add('active');$$('.tab').forEach(t=>t.classList.remove('active'));$('#tab-'+first.dataset.tab).classList.add('active');
   try{const h=await api('/api/health');AGENT=h.agent_mode;$('#modebadge').textContent=AGENT==='ai_agent'?'AI agent connected':'Rule engine';}catch(e){}
   const r=await api('/api/merchants');merchants=r.list;$('#merchant').innerHTML=merchants.map(m=>`<option value="${esc(m.id)}">${esc(m.name)} · ${esc(m.country)}</option>`).join('');
-  if(!merchants.length){$('#tab-copilot').textContent='No authorized merchants. Contact your administrator.';return}$('#merchant').value=merchants.some(m=>m.id==='M002')?'M002':merchants[0].id;selectMerchant();
-})().catch(e=>{console.error(e);$('#tab-copilot').textContent=e.message});
+  if(!merchants.length){$('#tab-dashboard').textContent='No authorized merchants. Contact your administrator.';return}const requested=new URLSearchParams(location.search).get('merchant');$('#merchant').value=merchants.some(m=>m.id===requested)?requested:merchants.some(m=>m.id==='M002')?'M002':merchants[0].id;M=merchants.find(m=>m.id==$('#merchant').value);resetMerchantTransactions();refreshNavigation();let tab=Object.keys(routes).find(k=>routes[k]===location.pathname);if(!tab||!can(routePermissions[tab]))tab=$$('#tabs [data-tab]').find(b=>!b.hidden)?.dataset.tab;if(tab)navigate(tab,false);await updateQualityBadge();
+}
+document.addEventListener('DOMContentLoaded',()=>initializeApp().catch(e=>showErr('dashboard',e)),{once:true});
 </script>
-</body>
+<script src="/assets/merchant-transactions.js" defer></script></body>
 </html>

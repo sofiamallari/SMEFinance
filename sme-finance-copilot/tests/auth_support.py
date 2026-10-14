@@ -21,7 +21,8 @@ def setup_identity(test, all_merchants=False):
         body={'username':role,'email':role+'@example.test','display_name':role,'role':role,
               'merchants':[] if role=='user_admin' else sorted(ALL if all_merchants else {'M002'}),
               'organization':'Demo lender' if role=='lender_analyst' else '',
-              'optional_permissions':['bulk_import'] if all_merchants and role=='staff' else []}
+              'optional_permissions':['bulk_import'] if all_merchants and role=='staff' else [],
+              'transaction_grants':{m:['create_transactions']+(['bulk_import'] if all_merchants else []) for m in (ALL if all_merchants else {'M002'})} if role=='staff' else {}}
         with test.auth.db() as db:
             user=test.auth._create(db,test.auth.principal(test.tokens['security_admin']),body,PASSWORD,False)
         test.ids[role]=user['user_id'];test.tokens[role]=test.auth.login(role,PASSWORD)[0]

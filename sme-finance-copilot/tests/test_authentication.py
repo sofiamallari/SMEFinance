@@ -72,7 +72,7 @@ class Authentication(unittest.TestCase):
         self.assertGreaterEqual(len(events),6)
 
     def test_forced_password_change_and_all_session_invalidation(self):
-        user=self.auth.create_user(self.tokens['security_admin'],{'username':'new','email':'new@example.test','display_name':'New Staff','role':'staff','merchants':['M002'],'password':PASSWORD})
+        user=self.auth.create_user(self.tokens['security_admin'],{'username':'new','email':'new@example.test','display_name':'New Staff','role':'staff','merchants':['M002'],'transaction_grants':{'M002':['create_transactions']},'password':PASSWORD})
         token,_,force=self.auth.login('new',PASSWORD);self.assertTrue(force)
         with self.assertRaises(AccessDenied):self.auth.authorize(token,'create_transactions','M002')
         self.auth.change_password(token,PASSWORD,CHANGED)
@@ -195,7 +195,7 @@ class Authentication(unittest.TestCase):
         before=Path(self.store.path).read_bytes()
         self.auth.migrate();self.auth.migrate()
         self.assertEqual(Path(self.store.path).read_bytes(),before)
-        with self.auth.db() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0],3)
+        with self.auth.db() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0],4)
 
     def test_financing_data_master_permission_is_enforced(self):
         self.grant();self.submit()

@@ -99,17 +99,21 @@ class TransactionStore:
     def __init__(self, copilot, path):
         self.copilot, self.path = copilot, path
         self.lock, self.previews, self.entries = threading.RLock(), {}, {}
+        from copilot.transaction_journal import TransactionJournal
+        self.journal=TransactionJournal(self)
         if os.path.isfile(path):
             with open(path, encoding='utf-8') as f:
-                for line in f:
+                for line_number,line in enumerate(f,1):
                     event = json.loads(line)
+                    if event.get('action')=='canonical_batch':continue
                     mid = event['merchant']
                     if mid not in copilot.merchants: continue
                     if event.get('action') == 'batch':
                         for item in event['entries']:
                             self.entries[item['id']] = (mid, validate_entry(item['entry'], copilot.as_of))
                         continue
-                    tid = event.get('id', secrets.token_hex(12))
+                    from copilot.transaction_journal import checksum
+                    tid = event.get('id') or 'LEGACY-'+checksum({'line':line_number,'event':event})[:24]
                     if event.get('action') == 'delete': self.entries.pop(tid, None)
                     else: self.entries[tid] = (mid, validate_entry(event['entry'], copilot.as_of))
             for tid, (mid, entry) in self.entries.items(): self.apply(mid, tid, entry)
@@ -131,6 +135,9 @@ class TransactionStore:
             if merchant == mid and tid != exclude:
                 seen.add(json.dumps(e,sort_keys=True));
                 if e['reference']: refs.add(e['reference'].casefold())
+        records,_=self.journal.read()
+        for tid,e in records.items():
+            if e['merchant_id']==mid and tid!=exclude and e.get('external_reference'):refs.add(e['external_reference'].casefold())
         checked, errors = [], []
         for i,row in enumerate(rows,1):
             try:
@@ -174,13 +181,11 @@ class TransactionStore:
             return result
 
     def persist(self,event):
-        os.makedirs(os.path.dirname(self.path) or '.',exist_ok=True)
-        with open(self.path,'a',encoding='utf-8') as f:
-            f.write(json.dumps(event)+'\n'); f.flush(); os.fsync(f.fileno())
+        self.journal.append(event)
 
     def save(self,p,mid,rows):
         self.authorize(p,mid)
-        with self.lock:
+        with self.journal.writer():
             checked, errors = self.checked(mid,rows)
             if errors: return {'valid':False,'imported':0,'errors':errors}
             # One durable event per batch; replay preserves complete batches.
@@ -199,7 +204,7 @@ class TransactionStore:
 
     def manage(self,p,mid,body):
         self.authorize(p,mid,owner=True)
-        with self.lock:
+        with self.journal.writer():
             tid = body.get('id'); action = body.get('action')
             if tid not in self.entries or self.entries[tid][0] != mid: raise ValueError('Unknown transaction')
             if action not in ('update','delete'): raise ValueError('Use update or delete')
