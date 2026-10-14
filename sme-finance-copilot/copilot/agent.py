@@ -76,6 +76,9 @@ class Copilot:
 
     def financial_result(self,name,mid,args,tool,principal=None):
         m=self.financial_data.project(mid);asof=self.financial_data.as_of(mid)
+        if name=="financing_journey":
+            from copilot.financing_journey import build
+            return build(self,principal,mid)
         if name=="data_quality":
             if not self.identity_store:raise ValueError("Persistent quality monitoring is unavailable")
             with self.identity_store.db() as db:
@@ -111,6 +114,7 @@ class Copilot:
         A = self.as_of
         m = lambda mid: self.merchants[mid]
         return [
+            Tool("financing_journey", Tier.T1_ADVISE, lambda mid: {}, "Read-only merchant financing journey with unassessed completion rules"),
             Tool("data_quality", Tier.T0_READ, lambda mid: {}, "Merchant-scoped data quality"),
             Tool("latest_payment", Tier.T0_READ, lambda mid: {}, "Authorized simulated payment status"),
             Tool("application_status", Tier.T0_READ, lambda mid: {}, "Authorized simulated application status"),

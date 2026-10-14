@@ -18,6 +18,7 @@ BOUNDARIES = {
 }
 DEFAULTS = {role: set(actions) for role, actions in BOUNDARIES.items()}
 TOOL_ACTIONS = {
+    'financing_journey':'view_financing',
     'data_quality':'view_quality_monitoring','latest_payment':'simulate_payments','application_status':'view_applications',
     'get_dashboard':'view_dashboard','financial_report':'view_reports','assess_business':'view_assessment',
     'cashflow_forecast':'view_forecasts','cashflow_alerts':'view_forecasts','incentive_status':'view_dashboard',

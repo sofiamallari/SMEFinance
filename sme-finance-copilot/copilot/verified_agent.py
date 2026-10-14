@@ -9,7 +9,7 @@ from copilot.authorization import require,TOOL_ACTIONS,BOUNDARIES
 from copilot.security import AccessDenied
 from copilot.reliability import Fact,fact,claim,validate_claims,EvidenceError,domain,EDUCATION,REFUSAL,allowed_insights
 
-FIELDS={'assess_business':['stage','composite_score'],'rbf_quote':['advance','fee','total_repayable','fee_rate','remittance_rate','estimated_payoff_days'],
+FIELDS={'financing_journey':[], 'assess_business':['stage','composite_score'],'rbf_quote':['advance','fee','total_repayable','fee_rate','remittance_rate','estimated_payoff_days'],
         'cashflow_forecast':['opening_balance','min_balance','closing_balance','buffer_days'],
         'incentive_status':['tier','ecosystem_sales_previous'],'data_quality':['unresolved_quality_alerts','failed_import_validations'],'latest_payment':['payment_reference','payment_status','payment_amount','payment_refunded_amount'],'application_status':['application_reference','application_status','requested_amount'],'get_dashboard':[],'match_financing':[],'financial_report':[]}
 LABELS={'revenue_projection_30_days':'Estimated recorded sales for the next 30 days','risk_critical_count':'Critical rule alerts','risk_warning_count':'Warning rule alerts','risk_info_count':'Informational rule alerts','stage':'Stage','composite_score':'Business assessment score','advance':'Indicative advance','fee':'Financing fee','total_repayable':'Total repayment',
@@ -73,7 +73,7 @@ def execute(c,p,mid,question,history=None,session=None,module=None):
     state=c.partner_context(p,mid,session)
     follow_up=topic=='follow_up'
     if follow_up:topic=state.get('intent','sales')
-    preferred={'assessment':'assess_business','financing':'match_financing','rbf':'rbf_quote','cashflow':'cashflow_forecast','sales':'get_dashboard','quality':'data_quality','payments':'latest_payment','applications':'application_status','incentive':'incentive_status','report':'financial_report'}.get(topic,'get_dashboard')
+    preferred={'journey':'financing_journey','assessment':'assess_business','financing':'match_financing','rbf':'rbf_quote','cashflow':'cashflow_forecast','sales':'get_dashboard','quality':'data_quality','payments':'latest_payment','applications':'application_status','incentive':'incentive_status','report':'financial_report'}.get(topic,'get_dashboard')
     if preferred not in names:return {'reply':'Access denied: this account is not authorized for that financial capability. Use the modules available to your account.','tools_used':[],'mode':'rule_engine','classification':'UNAUTHORIZED','evidence':[]}
     asof=c.financial_data.as_of(mid);end=asof;start=end-timedelta(days=89)
     if 'last month' in question.lower():end=asof.replace(day=1)-timedelta(days=1);start=end.replace(day=1)
@@ -110,7 +110,11 @@ def execute(c,p,mid,question,history=None,session=None,module=None):
     snapshot=c.financial_data.aggregate(mid,start,end);provenance='mixed' if len(snapshot['provenance'])>1 else next(iter(snapshot['provenance']),'no_records')
     if snapshot['data_version']!=retrieval_version:raise EvidenceError('Financial records changed during evidence retrieval; request fresh analysis')
     facts=[]
-    if preferred in ('get_dashboard','financial_report'):
+    if preferred=='financing_journey':
+        for step in result['stages']:
+            facts.append(fact('financing_journey',mid,'journey_status_'+step['id'],step['status'],None,start,end,'mixed',limitations=result['limitations'],method='existing-records-no-completion-rule-v1'))
+        facts.append(fact('financing_journey',mid,'journey_next_action',result['next_action_code'],None,start,end,'mixed',limitations=result['limitations']))
+    elif preferred in ('get_dashboard','financial_report'):
         for metric in ('net_sales','positive_sales','gross_sales','refunds','expenses','net_income','completed_transactions','pending_transactions','failed_transactions','voided_transactions'):
             if snapshot[metric] is None:continue
             facts.append(fact('canonical_transactions',mid,metric,snapshot[metric],snapshot['currency'] if 'transactions' not in metric else None,start,end,provenance,count=snapshot['record_count'],limitations=snapshot['limitations'],method='decimal-aggregation-v1'))
@@ -175,7 +179,14 @@ def execute(c,p,mid,question,history=None,session=None,module=None):
     if fallback:c.audit.write(actor=p.user_id,event='ai_agent_fallback',merchant_id=mid,reason=fallback)
     state.update(intent=topic,period_start=start.isoformat(),period_end=end.isoformat(),data_version=version,evidence_ids=[f.evidence_id for f in chosen],last_verified_at=c.clock(),active_module=module or state.get('active_module','dashboard'))
     if preferred=='rbf_quote':state['advance']=result['advance']
+    if preferred=='financing_journey':
+        fresh=c.call(p,'financing_journey',mid)
+        if fresh['journey_version']!=result['journey_version']:raise EvidenceError('Journey evidence changed; ask for a fresh summary')
     c.save_partner_context(p,mid,session,state)
     c.audit.write(actor=p.user_id,event='verified_financial_answer',merchant_id=mid,tools_used=used,evidence_ids=state['evidence_ids'],mode=mode,fallback_reason=fallback)
-    return {'reply':render(chosen,insights),'tools_used':used,'mode':mode,'evidence':[asdict(f) for f in chosen],'classification':'ESTIMATED' if any(f.status=='ESTIMATED' for f in chosen) else 'VERIFIED',
+    if preferred=='financing_journey':
+        from copilot.financing_journey import explain
+        reply=explain(result)
+    else:reply=render(chosen,insights)
+    return {'reply':reply,'tools_used':used,'mode':mode,'evidence':[asdict(f) for f in chosen],'classification':'INSUFFICIENT_EVIDENCE' if preferred=='financing_journey' else 'ESTIMATED' if any(f.status=='ESTIMATED' for f in chosen) else 'VERIFIED',
             'connection_status':'connected' if mode=='ai_agent' else 'fallback' if fallback else 'deterministic','fallback_reason':fallback,'data_version':version,'period':{'start':start.isoformat(),'end':end.isoformat()},'data':result}

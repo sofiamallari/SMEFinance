@@ -99,7 +99,7 @@ class PolicyGuard:
             raise AccessDenied("The merchant has not granted coach access.")
         if not principal.authenticated and principal.role == "lender_analyst" and "share_with_lender" not in principal.consents:
             raise AccessDenied("The merchant has not consented to share data with the lender.")
-        if principal.role == "lender_analyst" and tool_name not in {"assess_business", "match_financing", "rbf_quote", "cashflow_forecast", "cashflow_alerts", "financial_report", "application_status"}:
+        if principal.role == "lender_analyst" and tool_name not in {"assess_business", "match_financing", "rbf_quote", "cashflow_forecast", "cashflow_alerts", "financial_report", "application_status", "financing_journey"}:
             raise AccessDenied("Financing agents may access authorized financing information only")
         if tier > principal.max_tier():
             raise AccessDenied(f"Role '{principal.role}' cannot perform tier {tier.name} actions.")

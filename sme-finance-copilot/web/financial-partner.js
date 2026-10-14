@@ -1,7 +1,7 @@
 /* Persistent, merchant-scoped UI. Backend evidence and permissions remain authoritative. */
 let partnerBusy=false,partnerMerchant=null;
 const partnerThreads=new Map();
-const moduleQuestions={dashboard:['Show recorded sales this month','Why did revenue change?'],transactions:['How do I upload a POS file?','Show recorded expenses'],'pos-import':['How do I upload a POS file?','Are there duplicate or unreconciled records?'],'transaction-history':['Show recorded sales this month','Show recorded refunds'],'data-quality':['Are there duplicate or unreconciled records?'],payments:['What happened to my latest simulated payment?','Explain cash balance versus revenue'],cashflow:['Show cash flow forecast','What is my cash buffer?'],financing:['What financing fits my business?','Quote RBF advance 10000000'],rbf:['How much can I borrow with RBF?','Explain revenue-based financing'],applications:['What is the status of my simulated application?']};
+const moduleQuestions={journey:['Show my financing progression.','What do I need before applying for financing?'],dashboard:['Show recorded sales this month','Why did revenue change?'],transactions:['How do I upload a POS file?','Show recorded expenses'],'pos-import':['How do I upload a POS file?','Are there duplicate or unreconciled records?'],'transaction-history':['Show recorded sales this month','Show recorded refunds'],'data-quality':['Are there duplicate or unreconciled records?'],payments:['What happened to my latest simulated payment?','Explain cash balance versus revenue'],cashflow:['Show cash flow forecast','What is my cash buffer?'],financing:['What financing fits my business?','Quote RBF advance 10000000'],rbf:['How much can I borrow with RBF?','Explain revenue-based financing'],applications:['What is the status of my simulated application?']};
 function partnerOpen(open){
  document.body.classList.toggle('ai-collapsed',!open);$('#ai-toggle').setAttribute('aria-expanded',String(open));
  const narrow=matchMedia('(max-width:1100px)').matches;
@@ -23,10 +23,10 @@ function partnerScope(){
 function partnerModule(tab){
  partnerScope();
  let questions=moduleQuestions[tab]||moduleQuestions.dashboard;
- if(['financing','rbf','applications'].includes(tab)&&!can('view_financing'))questions=moduleQuestions.dashboard;
+ if(['financing','journey','rbf','applications'].includes(tab)&&!can('view_financing'))questions=moduleQuestions.dashboard;
  $('#chips').replaceChildren();
  for(const question of questions){const b=document.createElement('button');b.className='chip';b.textContent=question;b.onclick=()=>send(question);$('#chips').appendChild(b)}
- $('#partner-module').textContent=({payments:'Digital Payments','pos-import':'Bulk POS Import',rbf:'RBF Calculator',cashflow:'Cash Flow','transaction-history':'Transaction History','data-quality':'Data Quality & Monitoring'}[tab]||tab.replace(/-/g,' '));
+ $('#partner-module').textContent=({payments:'Digital Payments','pos-import':'Bulk POS Import',rbf:'RBF Calculator',journey:'Merchant Financing Journey',cashflow:'Cash Flow','transaction-history':'Transaction History','data-quality':'Data Quality & Monitoring'}[tab]||tab.replace(/-/g,' '));
 }
 function partnerEvidence(container,r){
  const trace=document.createElement('span');trace.className='trace';
