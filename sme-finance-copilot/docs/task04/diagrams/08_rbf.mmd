@@ -1,0 +1,16 @@
+flowchart TB
+ HIST["90 day ecosystem and<br/>digital history"] --> LIM["Monthly basis and rounded<br/>advance limits"]
+ HIST --> EL["History verified share on<br/>time eligibility"]
+ LIM --> A("Advance valid?")
+ A -- No --> ERR["Quote error"]
+ A -- Yes --> FEE["Fee tier less milestone<br/>discount"]
+ FEE --> RATE["6 percent plus<br/>proportional span capped<br/>at 18 percent"]
+ RATE --> REP["Replay daily ecosystem<br/>sales"]
+ REP --> PAY["Repayment bounded by zero<br/>and remaining balance"]
+ PAY --> DONE("Replay finished?")
+ DONE -- No --> REP
+ DONE -- Yes --> Q["Indicative quote payoff<br/>and warnings"]
+ EL --> Q
+
+classDef decision fill:#fff4cf,stroke:#947229,color:#242424
+class A,DONE decision

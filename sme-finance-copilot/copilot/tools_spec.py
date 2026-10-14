@@ -32,6 +32,7 @@ READ = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, 
 WRITE_SANDBOX = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 
 TOOLS = [
+    {"name":"financing_journey","internal":"financing_journey","annotations":READ,"description":"Read authorized merchant financing journey statuses and next actions. Missing completion rules remain Not Yet Assessed, never inferred readiness or approval.","inputSchema":_schema()},
     {"name":"data_quality","internal":"data_quality","annotations":READ,"description":"Authorized merchant import quality and unresolved alert counts.","inputSchema":_schema()},
     {"name":"latest_payment","internal":"latest_payment","annotations":READ,"description":"Current status of the latest authorized simulated payment; not real bank settlement.","inputSchema":_schema()},
     {"name":"application_status","internal":"application_status","annotations":READ,"description":"Recorded status of an authorized simulated financing application; never lender credit approval.","inputSchema":_schema()},

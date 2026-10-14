@@ -39,7 +39,11 @@ class Fact:
             if self.provenance=='forecast' and self.status!='ESTIMATED':raise ValueError()
             if not self.value or not self.metric or not self.evidence_id or self.record_count<0:raise ValueError()
             if self.status not in STATUSES or self.provenance not in PROVENANCE or self.quality_status!='validated':raise ValueError()
-            if self.metric=='payment_reference':
+            if self.metric in ('journey_status_identify','journey_status_profile','journey_status_place','journey_status_activate','journey_status_measure'):
+                if self.value not in ('Completed','In Progress','Not Started','Not Yet Assessed','Blocked'):raise ValueError()
+            elif self.metric=='journey_next_action':
+                if self.value not in ('identify','profile','place','activate','measure','none'):raise ValueError()
+            elif self.metric=='payment_reference':
                 if not re.fullmatch(r'SBX-(QR|TAP|PAY)-'+re.escape(merchant)+r'-[A-F0-9]{8}',self.value):raise ValueError()
             elif self.metric=='application_reference':
                 if not re.fullmatch(r'APP-(?:[a-f0-9]{20}|'+re.escape(merchant)+r'-[0-9]{4})',self.value):raise ValueError()
@@ -94,6 +98,7 @@ def domain(text):
     if re.search(r'\b(upload|import).*(pos|csv|xlsx|file)|\b(pos|csv|xlsx).*upload',t):return 'guidance'
     if re.search(r'\binflation\b',t):return 'education'
     if not re.search(r'\b(my|our|recorded|projected)\b',t) and re.search(r'\b(what is|explain|how does|how do).*(financ|rbf|inventory|cash|revenue|payment)',t):return 'education'
+    if re.search(r'financing (?:journey|progression)|progression engine|what stage am i currently on|why am i at this stage|what should i do next|what do i need before applying',t):return 'journey'
     if re.search(r'\b(application|application status)\b',t):return 'applications'
     if re.search(r'\b(milestone|incentive|tier|reward)\b',t):return 'incentive'
     if re.search(r'\b(report)\b',t):return 'report'

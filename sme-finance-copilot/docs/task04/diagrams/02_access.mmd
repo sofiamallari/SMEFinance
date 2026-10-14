@@ -1,0 +1,16 @@
+flowchart TB
+ L["Sign in"] --> S("Session valid?")
+ S -- No --> LOGIN["Login or password change"]
+ S -- Yes --> ROLE("Account role")
+ ROLE -- Administrator --> ADMIN["Account or security pages"]
+ ROLE -- Business account --> M("Assigned merchant?")
+ M -- No --> DENY["403 or opaque 404"]
+ M -- Yes --> P("Action allowed?")
+ P -- No --> DENY
+ P -- Yes --> A("Grant or consent?")
+ A -- Missing --> DENY
+ A -- Satisfied --> VIEW["Authorized navigation and<br/>backend action"]
+ ADMIN --> LIMIT["No inherited merchant<br/>finance access"]
+
+classDef decision fill:#fff4cf,stroke:#947229,color:#242424
+class S,ROLE,M,P,A decision

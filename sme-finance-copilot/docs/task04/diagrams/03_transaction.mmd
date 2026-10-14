@@ -1,0 +1,15 @@
+flowchart TB
+ FORM["Single Transaction form"] --> AUTH("Encoding allowed?")
+ AUTH -- No --> DENY["Reject"]
+ AUTH -- Yes --> N("Input valid?")
+ N -- No --> ERR["Show correction"]
+ N -- Yes --> DUP("Duplicate conflict?")
+ DUP -- Yes --> ERR
+ DUP -- No --> J["Append idempotent journal<br/>batch"]
+ J --> H["History and audit"]
+ J --> STATUS("Completed?")
+ STATUS -- Yes --> F["Signed sale expense refund<br/>projection"]
+ STATUS -- No --> C["Status count without<br/>revenue"]
+
+classDef decision fill:#fff4cf,stroke:#947229,color:#242424
+class AUTH,N,DUP,STATUS decision

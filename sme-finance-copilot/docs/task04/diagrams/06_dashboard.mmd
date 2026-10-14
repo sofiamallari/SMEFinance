@@ -1,0 +1,14 @@
+flowchart TB
+ REQ["Merchant dates granularity"] --> AUTH("Dashboard allowed?")
+ AUTH -- No --> DENY["Reject"]
+ AUTH -- Yes --> BASE["Synthetic base plus<br/>canonical completed rows"]
+ BASE --> FILTER["Inclusive date filtering"]
+ FILTER --> TOTAL["Decimal sales refunds<br/>expenses and net income"]
+ FILTER --> MIX["Channel volume capture and<br/>trends"]
+ BASE --> INC["Calendar incentives and<br/>receivable behavior"]
+ TOTAL --> VIEW["Dashboard and financial<br/>evidence"]
+ MIX --> VIEW
+ INC --> VIEW
+
+classDef decision fill:#fff4cf,stroke:#947229,color:#242424
+class AUTH decision

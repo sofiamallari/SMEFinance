@@ -1,0 +1,14 @@
+flowchart TB
+ Q["Authenticated question"] --> S("Chat authorized?")
+ S -- No --> DENY["Unauthorized"]
+ S -- Yes --> D("Finance intent?")
+ D -- No --> OUT["Redirect to SME finance"]
+ D -- Education guidance --> T["Bounded templates"]
+ D -- Approval FX unavailable metric --> INSUF["Insufficient evidence"]
+ D -- Financial read --> TOOL("Tool allowed?")
+ TOOL -- No --> DENY
+ TOOL -- Yes --> PLAN["Server fixed scope dates<br/>amount and read schema"]
+ PLAN --> MODEL["Constrained Gemini<br/>planning or deterministic<br/>plan"]
+
+classDef decision fill:#fff4cf,stroke:#947229,color:#242424
+class S,D,TOOL decision

@@ -302,7 +302,7 @@ class Handler(BaseHTTPRequestHandler):
                 AUTH.authorize(token,'manage_users');return self._page('users.html')
             if method=='GET' and path=='/admin/security':
                 AUTH.authorize(token,'manage_security');return self._page('security.html')
-            business_routes={'/':'use_copilot','/dashboard':'view_dashboard','/copilot':'use_copilot','/financing':'view_financing','/financing/rbf':'view_financing','/cash-flow':'view_forecasts','/payment-sandbox':'simulate_payments','/financing/applications':'view_applications',
+            business_routes={'/':'use_copilot','/dashboard':'view_dashboard','/copilot':'use_copilot','/financing':'view_financing','/financing/rbf':'view_financing','/financing/progression':'view_financing','/cash-flow':'view_forecasts','/payment-sandbox':'simulate_payments','/financing/applications':'view_applications',
                 '/merchant-transactions/single':'create_transactions','/merchant-transactions/import':'bulk_import','/merchant-transactions/history':'view_transactions','/merchant-transactions/data-quality':'view_quality_monitoring'}
             if method=='GET' and path in business_routes:
                 if p.role in ('user_admin','security_admin'):
@@ -349,6 +349,8 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/cashflow":
                     return self._send(200, {"forecast": COPILOT.call(p, "cashflow_forecast", mid),
                                             "alerts": COPILOT.call(p, "cashflow_alerts", mid)})
+                if path == "/api/financing/journey":
+                    return self._send(200,COPILOT.call(p,"financing_journey",mid))
                 if path == "/api/match":
                     return self._send(200, COPILOT.call(p, "match_financing", mid))
                 if path == "/api/rbf/limits":
@@ -394,7 +396,7 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/chat":
                     hist = body.get("history") if isinstance(body.get("history"), list) else None
                     return self._send(200, COPILOT.handle(p, mid, str(body.get("message", "")),
-                                                          body.get("approval_token"), hist, module=body.get("module") if body.get("module") in ("dashboard","transactions","pos-import","transaction-history","data-quality","payments","cashflow","financing","applications","rbf") else None))
+                                                          body.get("approval_token"), hist, module=body.get("module") if body.get("module") in ("dashboard","transactions","pos-import","transaction-history","data-quality","payments","cashflow","financing","applications","rbf","journey") else None))
             return self._send(404, {"error": "not found"})
         except ApprovalRequired as e:
             return self._send(202, {"approval_required": True, "approval_token": e.token, "message": str(e)})
