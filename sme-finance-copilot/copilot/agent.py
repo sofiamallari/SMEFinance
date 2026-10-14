@@ -58,13 +58,62 @@ class Copilot:
         self.history: dict[str, list] = {}       # merchant_id -> assessment snapshots (MEASURE)
         self.identity_store = None
         self.applications: list[dict] = []
+        from copilot.financial_data import FinancialData
+        self.financial_data = FinancialData(self)
+        from copilot.partner_state import PartnerState
+        self.partner_states = {}
+        self.partner_state = PartnerState(self)
+        self.payments.on_event = self.financial_data.record_payment
+        self.payments.on_refund = self.financial_data.record_refund
+        self.payments.existing_refund = self.financial_data.existing_refund
         self.tools = {t.name: t for t in self._register_tools()}
+
+    def partner_context(self, principal, mid, session=None):
+        return self.partner_state.context(principal,mid,session or principal.session_id)
+
+    def save_partner_context(self,principal,mid,session,state):
+        return self.partner_state.save(principal,mid,session or principal.session_id,state)
+
+    def financial_result(self,name,mid,args,tool,principal=None):
+        m=self.financial_data.project(mid);asof=self.financial_data.as_of(mid)
+        if name=="data_quality":
+            if not self.identity_store:raise ValueError("Persistent quality monitoring is unavailable")
+            with self.identity_store.db() as db:
+                count=db.execute("SELECT COUNT(*) FROM quality_alerts WHERE merchant_id=? AND state!='resolved'",(mid,)).fetchone()[0]
+                conflicts=db.execute("SELECT COUNT(*) FROM pos_import_runs WHERE merchant_id=? AND state='validation_failed'",(mid,)).fetchone()[0]
+            return {"unresolved_quality_alerts":count,"failed_import_validations":conflicts}
+        if name=="latest_payment":
+            payments=[p for p in self.payments.payments.values() if p.merchant_id==mid]
+            if not payments:raise ValueError("Current payment-service status unavailable; review canonical transaction history")
+            payment=self.payments.status(max(payments,key=lambda p:p.created_at).ref)
+            status="REFUNDED" if payment.refunded_amount==payment.amount else "PARTIALLY_REFUNDED" if payment.refunded_amount else payment.status
+            return {"payment_reference":payment.ref,"payment_status":status,"payment_amount":payment.amount,"payment_refunded_amount":payment.refunded_amount,"currency":payment.currency,"recorded_at":payment.created_at}
+        if name=="application_status":
+            if not self.identity_store:raise ValueError("Persistent application status unavailable")
+            with self.identity_store.db() as db:
+                records=db.execute("SELECT * FROM applications WHERE merchant_id=? ORDER BY created_at DESC",(mid,)).fetchall()
+                visible=[record for record in records if principal.role=='owner' or record['recipient_id']==principal.user_id]
+                if not visible:raise ValueError("No authorized application record is available")
+                packet=__import__('json').loads(visible[0]['packet'])
+            return {"application_reference":packet['application_id'],"application_status":packet['status'],"requested_amount":packet['requested_amount'],"currency":packet['currency'],"recorded_at":visible[0]['created_at']}
+        if name=="get_dashboard":return self.financial_data.dashboard(mid,**args)
+        if name=="cashflow_forecast":return cashflow.forecast(m,asof,**args)
+        if name=="cashflow_alerts":return cashflow.alerts(m,asof)
+        if name=="assess_business":return assessment.assess(m,asof)
+        if name=="match_financing":return matching.match(m,assessment.assess(m,asof),asof)
+        if name=="incentive_status":return dashboard.incentive_status(m.transactions,asof)
+        if name=="financial_report":return reporting.report(m,asof)
+        if name=="rbf_quote":return rbf.quote(m,asof,args.get("advance") or rbf.recommend_advance(m,asof),dashboard.incentive_status(m.transactions,asof)["tier"])
+        return tool.fn(mid,**args)
 
     # ------------------------------------------------------------ tools
     def _register_tools(self):
         A = self.as_of
         m = lambda mid: self.merchants[mid]
         return [
+            Tool("data_quality", Tier.T0_READ, lambda mid: {}, "Merchant-scoped data quality"),
+            Tool("latest_payment", Tier.T0_READ, lambda mid: {}, "Authorized simulated payment status"),
+            Tool("application_status", Tier.T0_READ, lambda mid: {}, "Authorized simulated application status"),
             Tool("financial_report", Tier.T0_READ, lambda mid: reporting.report(m(mid), A),
                  "Financial report, risk alerts and 30-day revenue projection from saved transactions"),
             Tool("get_dashboard", Tier.T0_READ,
@@ -119,9 +168,10 @@ class Copilot:
         return True
 
     def _prepare_application(self, mid, product_id="RBF", amount=None):
-        mer = self.merchants[mid]
-        a = assessment.assess(mer, self.as_of)
-        q = rbf.quote(mer, self.as_of, amount or rbf.recommend_advance(mer, self.as_of)) if product_id == "RBF" else None
+        mer = self.financial_data.project(mid)
+        asof = self.financial_data.as_of(mid)
+        a = assessment.assess(mer, asof)
+        q = rbf.quote(mer, asof, amount or rbf.recommend_advance(mer, asof),dashboard.incentive_status(mer.transactions,asof)["tier"]) if product_id == "RBF" else None
         app = {"application_id": f"APP-{mid}-{len(self.applications) + 1:04d}", "merchant_id": mid,
                "product_id": product_id, "requested_amount": q["advance"] if q else amount,
                "currency": mer.currency, "stage": a["stage"], "scores": a["scores"],
@@ -148,7 +198,7 @@ class Copilot:
             self.exec_log.write(**base, decision="denied", reason=str(e), args=kwargs)
             raise
         try:
-            result = tool.fn(merchant_id, **kwargs)
+            result = self.financial_result(name, merchant_id, kwargs, tool, principal)
             if name == "prepare_financing_application" and principal.authenticated:
                 result = self.identity_store.submit_packet(principal, merchant_id, result)
         except (PaymentError, ValueError, TypeError) as e:
@@ -237,7 +287,7 @@ class Copilot:
         return "help"
 
     def handle(self, principal: Principal, merchant_id: str, message: str, approval_token: str | None = None,
-               history: list | None = None) -> dict:
+               history: list | None = None, module: str | None = None) -> dict:
         if not self.limiter.allow(principal.user_id):
             return {"reply": "Too many requests. Please wait a minute.", "intent": "rate_limited"}
         from copilot.authorization import require
@@ -251,19 +301,37 @@ class Copilot:
         if not mer or merchant_id not in principal.merchant_ids:
             return {"reply": "I can only help with businesses you are authorised to access.", "intent": "denied"}
         cur = mer.currency
+        action_requested=bool(re.search(r"(?:^|\b(?:can you|please|i want to)\s+)(?:create|generate|simulate|submit|apply|collect|charge|accept)\b",text,re.I))
+        analysis_only=intent in ("payment","apply") and not action_requested
+        if intent in ("payment","apply") and action_requested and not flags:
+            try:
+                kind="payment_create" if intent=="payment" else "prepare_financing_application"
+                amount=self.parse_amount(text)
+                if approval_token:
+                    outcome=self.partner_state.confirm(principal,merchant_id,principal.session_id,approval_token,True,expected_amount=amount,expected_kind=kind)
+                    result=outcome["result"]
+                    return {"reply":"Confirmed simulated action completed: "+str(result.get("ref",result.get("application_id","")))+" · "+str(result.get("status",""))+". No real funds moved or lender approval granted.","intent":intent,"mode":"rule_engine","data":result}
+                if amount is None and intent=="apply":amount=self.call(principal,"rbf_quote",merchant_id)["advance"]
+                if amount is None:return {"reply":"Please specify the exact amount for the simulated payment.","intent":intent,"mode":"rule_engine","data":{}}
+                parameters={"amount":amount,"method":"tap_pay" if "tap" in text.lower() else "pay_link" if "link" in text.lower() else "qr_pay"} if intent=="payment" else {"amount":amount,"product_id":"RBF"}
+                proposal=self.partner_state.propose(principal,merchant_id,principal.session_id,kind,parameters)
+                return {"reply":"Review the exact simulated action before confirming. Amount: "+str(amount)+" "+cur+". No payment or application has been created yet.","intent":intent,"mode":"rule_engine","data":{"approval_required":True,"approval_token":proposal["action_id"],"action":proposal}}
+            except (AccessDenied,ValueError) as exc:
+                return {"reply":str(exc),"intent":intent+":denied","mode":"rule_engine","data":{}}
 
         # AI agent mode: a real LLM plans tool calls for open questions. Sensitive intents
         # (credit approval, applications, payments) and flagged messages stay on the rule engine.
-        if ai_agent.configured() and intent not in self.RULE_ONLY_INTENTS and not flags and not approval_token:
+        if (intent not in self.RULE_ONLY_INTENTS or analysis_only) and not flags and not approval_token:
             try:
-                r = ai_agent.run(self, principal, merchant_id, text, history)
+                r = ai_agent.run(self, principal, merchant_id, text, history, module=module)
                 self.audit.write(actor=principal.user_id, event="ai_agent_answer", merchant_id=merchant_id,
                                  tools_used=r["tools_used"])
-                return {"reply": r["reply"], "intent": "ai_agent", "flags": flags,
-                        "data": {"tools_used": r["tools_used"]}, "mode": "ai_agent"}
+                return {"reply": r["reply"], "intent": "ai_agent" if r["mode"]=="ai_agent" else intent, "flags": flags,
+                        "data": {**r.get("data",{}),"tools_used": r["tools_used"]}, **{k:v for k,v in r.items() if k not in ("reply","data","tools_used")}}
             except Exception as e:
                 self.audit.write(actor=principal.user_id, event="ai_agent_fallback", reason=type(e).__name__,
                                  merchant_id=merchant_id)
+                return {"reply":"Financial evidence could not be verified. No unsupported financial conclusion or action was produced. Review the reporting period and available records.","intent":intent,"mode":"rule_engine","classification":"UNAUTHORIZED" if isinstance(e,AccessDenied) else "INSUFFICIENT_EVIDENCE","connection_status":"fallback","evidence":[],"data":{},"fallback_reason":type(e).__name__}
 
         data, lines = {}, []
         try:

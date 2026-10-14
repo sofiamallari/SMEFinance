@@ -1,4 +1,5 @@
 import os
+os.environ['COPILOT_LOAD_LLM_ENV'] = 'no'  # regressions never load a local real key
 
 # Tests never write log files and never call a real LLM unless a test sets it up explicitly.
 os.environ["COPILOT_AUDIT_LOG"] = ""

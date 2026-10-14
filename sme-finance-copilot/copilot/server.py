@@ -287,6 +287,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise AccessDenied('Change your temporary password first')
             if method=='GET' and path=='/assets/icons.svg':
                 with open(os.path.join(ROOT,'..','web','icons.svg'),'rb') as f:return self._send(200,f.read(),'image/svg+xml')
+            if method=='GET' and path=='/assets/financial-partner.js':
+                with open(os.path.join(ROOT,'..','web','financial-partner.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/merchant-transactions.js':
                 with open(os.path.join(ROOT,'..','web','merchant-transactions.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/security-admin.js':
@@ -300,7 +302,7 @@ class Handler(BaseHTTPRequestHandler):
                 AUTH.authorize(token,'manage_users');return self._page('users.html')
             if method=='GET' and path=='/admin/security':
                 AUTH.authorize(token,'manage_security');return self._page('security.html')
-            business_routes={'/':'use_copilot','/dashboard':'view_dashboard','/copilot':'use_copilot','/financing':'view_financing','/cash-flow':'view_forecasts','/payment-sandbox':'simulate_payments','/financing/applications':'view_applications',
+            business_routes={'/':'use_copilot','/dashboard':'view_dashboard','/copilot':'use_copilot','/financing':'view_financing','/financing/rbf':'view_financing','/cash-flow':'view_forecasts','/payment-sandbox':'simulate_payments','/financing/applications':'view_applications',
                 '/merchant-transactions/single':'create_transactions','/merchant-transactions/import':'bulk_import','/merchant-transactions/history':'view_transactions','/merchant-transactions/data-quality':'view_quality_monitoring'}
             if method=='GET' and path in business_routes:
                 if p.role in ('user_admin','security_admin'):
@@ -322,10 +324,25 @@ class Handler(BaseHTTPRequestHandler):
                 AUTH.audit("access_denied",p,target=path,result="denied",reason="merchant_scope",request_id=self.request_id)
                 return self._send(404, {"error": "unknown merchant"})
             if method == "GET":
+                if path == "/api/capabilities":
+                    require(p,"use_copilot",mid)
+                    allowed=[]
+                    from copilot.authorization import BOUNDARIES
+                    for action in BOUNDARIES.get(p.role,set()):
+                        try:
+                            tier=require(p,action,mid)
+                            if tier is not None and action=='view_financing' and tier<1:continue
+                            if tier is not None and action=='simulate_payments' and tier<2:continue
+                            allowed.append(action)
+                        except AccessDenied:pass
+                    return self._send(200,{"merchant":mid,"allowed":sorted(allowed)})
                 if path == "/api/transactions":
                     return self._send(200, STORE.list_entries(p, mid))
                 if path == "/api/cycle":
                     return self._send(200, COPILOT.run_cycle(p, mid))
+                if path == "/api/financial-metrics":
+                    require(p,"view_dashboard",mid)
+                    return self._send(200,COPILOT.financial_data.aggregate(mid,q.get("start"),q.get("end")))
                 if path == "/api/dashboard":
                     return self._send(200, COPILOT.call(p, "get_dashboard", mid, start=q.get("start"),
                                                         end=q.get("end"), granularity=q.get("granularity", "monthly")))
@@ -336,10 +353,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, COPILOT.call(p, "match_financing", mid))
                 if path == "/api/rbf/limits":
                     COPILOT.guard.check(p, "rbf_quote", COPILOT.tools["rbf_quote"].tier, mid)
-                    m = COPILOT.merchants[mid]
-                    return self._send(200, {**rbf.limits(m, COPILOT.as_of),
-                                            "eligibility": rbf.eligibility(m, COPILOT.as_of),
-                                            "recommended": rbf.recommend_advance(m, COPILOT.as_of)})
+                    m = COPILOT.financial_data.project(mid)
+                    asof = COPILOT.financial_data.as_of(mid)
+                    return self._send(200, {**rbf.limits(m, asof),
+                                            "eligibility": rbf.eligibility(m, asof),
+                                            "recommended": rbf.recommend_advance(m, asof)})
                 if path == "/api/pos/catalog":
                     COPILOT.guard.check(p, "payment_status", COPILOT.tools["payment_status"].tier, mid)
                     return self._send(200, pos_catalog(COPILOT.merchants[mid]))
@@ -367,10 +385,16 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/payments/pay":
                     return self._send(200, COPILOT.call(p, "payment_simulate_pay", mid, ref=body.get("ref", ""),
                                                         channel=body.get("channel")))
+                if path == "/api/partner/actions":
+                    if set(body)-{"merchant","kind","parameters"}:raise InputError("Unexpected action request fields")
+                    return self._send(200,COPILOT.partner_state.propose(p,mid,p.session_id,body.get("kind"),body.get("parameters")))
+                if path == "/api/partner/actions/confirm":
+                    if set(body)-{"merchant","action_id","confirmed"}:raise InputError("Unexpected confirmation fields")
+                    return self._send(200,COPILOT.partner_state.confirm(p,mid,p.session_id,body.get("action_id"),body.get("confirmed")))
                 if path == "/api/chat":
                     hist = body.get("history") if isinstance(body.get("history"), list) else None
                     return self._send(200, COPILOT.handle(p, mid, str(body.get("message", "")),
-                                                          body.get("approval_token"), hist))
+                                                          body.get("approval_token"), hist, module=body.get("module") if body.get("module") in ("dashboard","transactions","pos-import","transaction-history","data-quality","payments","cashflow","financing","applications","rbf") else None))
             return self._send(404, {"error": "not found"})
         except ApprovalRequired as e:
             return self._send(202, {"approval_required": True, "approval_token": e.token, "message": str(e)})

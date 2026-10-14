@@ -71,14 +71,19 @@ class CanonicalAndExtraction(POSFixture):
 
 class POSPipeline(POSFixture):
     def test_single_entry_submission_idempotency_and_duplicate_rejection(self):
-        before=self.c.call(self.auth.principal(self.owner),'get_dashboard',self.mid)
+        before=self.c.call(self.auth.principal(self.owner),'get_dashboard',self.mid,start='2026-07-01',end='2026-10-01')
         first=self.pos.single(self.owner,self.mid,self.entry(),'single-key-1')
         self.assertEqual(first,self.pos.single(self.owner,self.mid,self.entry(),'single-key-1'))
         with self.assertRaises(InputError):self.pos.single(self.owner,self.mid,self.entry(net_amount='200'),'single-key-1')
         with self.assertRaises(InputError):self.pos.single(self.owner,self.mid,self.entry(),'single-key-2')
         self.assertEqual(self.pos.history(self.owner,self.mid)['total'],1)
-        # Task 03 will consume canonical data; existing dashboard calculations/data are unchanged.
-        self.assertEqual(before,self.c.call(self.auth.principal(self.owner),'get_dashboard',self.mid))
+        # Task 03 consumes canonical records once. Keep the period fixed so the
+        # assertion measures the new entry rather than a moving default window.
+        after=self.c.call(self.auth.principal(self.owner),'get_dashboard',self.mid,start='2026-07-01',end='2026-10-01')
+        from decimal import Decimal
+        self.assertEqual(Decimal(after['financial_metrics']['net_sales'])-Decimal(before['financial_metrics']['net_sales']),Decimal('100.00'))
+        self.assertEqual(after['mix']['total_transactions'],before['mix']['total_transactions']+1)
+        self.assertEqual(after['period'],before['period'])
     def test_staging_mapping_preview_commit_and_provenance(self):
         staged,validated=self.validated(controls={'count':2,'net_total':'150.00','basis':'completed_net'})
         self.assertEqual(validated['metrics']['eligible_total'],'150.00');self.assertTrue(validated['valid'])
