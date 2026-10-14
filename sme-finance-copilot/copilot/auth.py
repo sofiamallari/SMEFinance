@@ -137,7 +137,8 @@ class AuthStore:
                 'created_at','updated_at','last_login_at','created_by','organization','locked_until']
         return {**{k:row[k] for k in keys},
                 'merchants':[r[0] for r in db.execute('SELECT merchant_id FROM memberships WHERE user_id=?',(row['user_id'],))],
-                'optional_permissions':[r[0] for r in db.execute('SELECT permission FROM optional_permissions WHERE user_id=?',(row['user_id'],))]}
+                'optional_permissions':[r[0] for r in db.execute('SELECT permission FROM optional_permissions WHERE user_id=?',(row['user_id'],))],
+                'transaction_grants':{m:[r[0] for r in db.execute('SELECT permission FROM merchant_transaction_grants WHERE user_id=? AND merchant_id=?',(row['user_id'],m))] for m in [r[0] for r in db.execute('SELECT merchant_id FROM memberships WHERE user_id=?',(row['user_id'],))]} if row['role']=='staff' else {}}
 
     def _validate_user(self,body,actor=None):
         role=body.get('role')
@@ -155,6 +156,8 @@ class AuthStore:
         optional=body.get('optional_permissions',[])
         if not isinstance(optional,list) or any(x!='bulk_import' for x in optional) or (optional and role!='staff'):
             raise InputError('Only the staff bulk_import optional permission is supported')
+        grants=body.get('transaction_grants',{})
+        if not isinstance(grants,dict) or (grants and role!='staff') or not set(grants)<=set(ids) or any(not isinstance(v,list) or any(a not in ('create_transactions','bulk_import','acknowledge_quality_alerts','resolve_quality_alerts') for a in v) for v in grants.values()):raise InputError('Invalid merchant-level staff transaction grants')
         for key in ('username','email','display_name'):
             if not isinstance(body.get(key),str) or not 1<=len(body[key].strip())<=150:
                 raise InputError(f'Invalid {key}')
@@ -178,8 +181,21 @@ class AuthStore:
         except sqlite3.IntegrityError: raise InputError('Username or email is already registered',409)
         db.executemany('INSERT INTO memberships VALUES (?,?)',[(uid,m) for m in set(body.get('merchants',[]))])
         db.executemany('INSERT INTO optional_permissions VALUES (?,?)',[(uid,a) for a in set(body.get('optional_permissions',[]))])
+        self._save_transaction_grants(db,uid,body,actor.user_id if actor else 'bootstrap')
         self.audit('account_created',actor,target=uid,db=db)
         return self._public_user(db,db.execute('SELECT * FROM users WHERE user_id=?',(uid,)).fetchone())
+
+    def _save_transaction_grants(self,db,uid,body,actor):
+        db.execute('DELETE FROM merchant_transaction_grants WHERE user_id=?',(uid,))
+        if body['role']!='staff':return
+        grants={m:set(actions) for m,actions in body.get('transaction_grants',{}).items()}
+        if 'transaction_grants' not in body and 'bulk_import' in body.get('optional_permissions',[]):
+            for mid in body['merchants']:grants.setdefault(mid,set()).add('bulk_import')
+        for mid,actions in grants.items():
+            db.executemany('INSERT INTO merchant_transaction_grants VALUES (?,?,?,?,?)',[(uid,mid,a,actor,self.clock()) for a in actions])
+        if any('bulk_import' in actions for actions in grants.values()):
+            db.execute('INSERT OR IGNORE INTO optional_permissions VALUES (?,?)',(uid,'bulk_import'))
+        else:db.execute('DELETE FROM optional_permissions WHERE user_id=? AND permission=?',(uid,'bulk_import'))
 
     def login(self,identity,password,address='local'):
         if not isinstance(identity,str) or not isinstance(password,str) or len(identity)>150 or len(password)>256:
@@ -247,6 +263,7 @@ class AuthStore:
         if row['must_change_password']: raise AccessDenied('Change your temporary password first')
         enabled={r[0] for r in db.execute('SELECT permission FROM role_permissions WHERE role=?',(role,))}
         if role=='staff' and action=='bulk_import' and not db.execute('SELECT 1 FROM optional_permissions WHERE user_id=? AND permission=?',(row['user_id'],'bulk_import')).fetchone(): raise AccessDenied('Staff upload permission has not been granted')
+        if role=='staff' and merchant is not None and action in ('create_transactions','bulk_import','acknowledge_quality_alerts','resolve_quality_alerts') and not db.execute('SELECT 1 FROM merchant_transaction_grants WHERE user_id=? AND merchant_id=? AND permission=?',(row['user_id'],merchant,action)).fetchone():raise AccessDenied('An explicit merchant-level staff grant is required')
         if action not in enabled or action not in BOUNDARIES.get(role,set()): raise AccessDenied('Action is not permitted for this account')
         if merchant is not None and role=='lender_analyst' and 'view_financing_data' not in enabled:
             raise AccessDenied('Consent-authorized financing data permission is disabled')
@@ -347,7 +364,7 @@ class AuthStore:
     def update_user(self,token,uid,body):
         self.authorize(token,'manage_users',reauth=True)
         actor=self.principal(token)
-        allowed={'username','email','display_name','role','account_status','merchants','optional_permissions','organization'}
+        allowed={'username','email','display_name','role','account_status','merchants','optional_permissions','organization','transaction_grants'}
         if not isinstance(body,dict) or set(body)-allowed: raise InputError('Unsupported account fields')
         with self.db() as db:
             row=db.execute('SELECT * FROM users WHERE user_id=?',(uid,)).fetchone()
@@ -355,6 +372,14 @@ class AuthStore:
             if row['role']=='staff' or body.get('role')=='staff':self.authorize(token,'manage_staff_accounts',reauth=True)
             if actor.role=='user_admin' and row['role'] in ('user_admin','security_admin'): raise AccessDenied('User Administrators cannot modify administrator accounts')
             merged={**self._public_user(db,row),**body}
+            if merged['role']!='staff' and 'transaction_grants' not in body:merged['transaction_grants']={}
+            if 'transaction_grants' not in body:merged['transaction_grants']={m:a for m,a in merged['transaction_grants'].items() if m in merged['merchants']}
+            if merged['role']=='staff' and 'optional_permissions' in body and 'transaction_grants' not in body:
+                for mid in merged['merchants']:
+                    actions=set(merged['transaction_grants'].get(mid,[]))
+                    if 'bulk_import' in body['optional_permissions']:actions.add('bulk_import')
+                    else:actions.discard('bulk_import')
+                    merged['transaction_grants'][mid]=sorted(actions)
             # Existing coaches can be maintained without enabling new assignments.
             if row['role']=='coach' and 'role' not in body:
                 validation={**merged,'role':'owner'}
@@ -372,7 +397,9 @@ class AuthStore:
             db.execute('DELETE FROM memberships WHERE user_id=?',(uid,));db.execute('DELETE FROM optional_permissions WHERE user_id=?',(uid,))
             db.executemany('INSERT INTO memberships VALUES (?,?)',[(uid,m) for m in set(merged['merchants'])])
             db.executemany('INSERT INTO optional_permissions VALUES (?,?)',[(uid,a) for a in set(merged['optional_permissions'])])
+            self._save_transaction_grants(db,uid,merged,actor.user_id)
             db.execute('UPDATE sessions SET revoked=1 WHERE user_id=?',(uid,))
+            if 'transaction_grants' in body:self.audit('permission_changed',actor,target=uid,db=db)
             if body.get('account_status')=='active':
                 identities={digest(row['username'].lower()),digest(row['email'].lower()),digest(merged['username'].lower()),digest(merged['email'].lower())}
                 for key in identities:db.execute('DELETE FROM login_attempts WHERE identity_hash=?',(key,))

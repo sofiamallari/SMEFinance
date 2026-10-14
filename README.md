@@ -41,4 +41,11 @@ Read [the application guide](sme-finance-copilot/README.md) and [transaction lim
 
 Security Administration includes seven sections and portable, validated JSON policy sharing between local installations. Read the [team configuration guide](sme-finance-copilot/docs/SECURITY_CONFIGURATION.md). Import never copies user credentials or financial records.
 
-The complete regression suite passes **157 tests**. See the [implementation report](sme-finance-copilot/docs/SECURITY_ADMIN_REPORT.md) for actual unit/API/browser results and review limits.
+The complete regression suite passes **188 tests**. See the [implementation report](sme-finance-copilot/docs/SECURITY_ADMIN_REPORT.md) for actual unit/API/browser results and review limits.
+
+
+## Merchant Transactions (Task 02)
+
+The sixth sidebar module contains Single Transaction, Bulk POS Import, Transaction History and Data Quality & Monitoring. The five-step wizard supports multi-file/folder CSV/XLSX acquisition, explicit mapping, decimal normalization, duplicate detection, count/financial reconciliation, signed staging and durable confirmation. Scoped grants protect Staff actions; administrator roles do not inherit business access. See the [complete workflow, APIs, guarantees and demo guide](sme-finance-copilot/docs/POS_TRANSACTION_IMPORT.md). New canonical records are intentionally prepared for Task 03 downstream integration; existing demo financial calculations remain unchanged.
+
+[Task 02 verified implementation report](sme-finance-copilot/docs/TASK02_REPORT.md).
