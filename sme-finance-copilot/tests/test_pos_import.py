@@ -169,7 +169,7 @@ class POSPipeline(POSFixture):
         self.auth.update_user(self.tokens['security_admin'],self.ids['staff'],{'transaction_grants':{self.mid:[]},'optional_permissions':[]})
         with self.assertRaises(AccessDenied):self.pos.validate(staff,self.mid,run['batch_id'],mapping(run))
     def test_new_staff_read_only_and_authorized_history_monitoring(self):
-        body={'username':'readonly','email':'readonly@example.test','display_name':'Read only','role':'staff','merchants':[self.mid]}
+        body={'username':'readonly','email':'readonly@example.test','display_name':'Read only','role':'staff','merchants':[self.mid],'transaction_grants':{self.mid:['view_quality_monitoring','view_transactions']}}
         with self.auth.db() as db:self.auth._create(db,self.auth.principal(self.tokens['security_admin']),body,PASSWORD,False)
         token=self.auth.login('readonly',PASSWORD)[0];self.pos.monitoring(token,self.mid);self.pos.history(token,self.mid)
         with self.assertRaises(AccessDenied):self.pos.single(token,self.mid,self.entry(),'readonly-key')

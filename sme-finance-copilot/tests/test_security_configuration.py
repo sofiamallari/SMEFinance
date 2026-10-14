@@ -128,7 +128,7 @@ class ConfigurationUnit(ConfigFixture):
 
     def test_export_preview_and_import_require_security_administrator(self):
         allowed=self.preview()
-        for role in ('owner','staff','lender_analyst','user_admin'):
+        for role in ('owner','staff','lender_analyst'):
             token=self.tokens[role]
             with self.subTest(role=role):
                 with self.assertRaises(AccessDenied):self.service.export(token)
@@ -208,7 +208,7 @@ class ConfigurationUnit(ConfigFixture):
         from copilot.security import ApprovalRequired
         try:self.c.call(owner,'prepare_financing_application','M002')
         except ApprovalRequired as e:approval=e.token
-        self.c.call(owner,'prepare_financing_application','M002',approval_token=approval)
+        self.c.call(owner,'prepare_financing_application','M002',approval_token=approval,recipient_id=self.ids['lender_analyst'])
         before=self.local_records();ledger=Path(self.store.path).read_bytes()
         config=self.current();config['authentication']['password_min_length']=14
         self.apply(self.preview(config))
@@ -275,7 +275,7 @@ class ConfigurationHTTP(ConfigFixture):
 
     def test_security_page_access_and_all_operations_authorized(self):
         self.assertEqual(self.req('/admin/security','security_admin')[0],200)
-        for role in ('owner','staff','user_admin'):
+        for role in ('owner','staff','lender_analyst'):
             self.assertEqual(self.req('/admin/security',role)[0],403)
             self.assertEqual(self.req('/api/security/config/export',role)[0],403)
             self.assertEqual(self.req('/api/security/config/validate',role,{'filename':'x.json','content':'{}'})[0],403)

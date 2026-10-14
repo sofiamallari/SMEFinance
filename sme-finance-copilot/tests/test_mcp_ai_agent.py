@@ -126,9 +126,9 @@ class TestMCPProtocol(unittest.TestCase):
 
 class TestMCPHttpSecurity(unittest.TestCase):
     def setUp(self):
-        mode=patch.dict(os.environ,{"COPILOT_AUTH_MODE":"demo"})
-        mode.start();self.addCleanup(mode.stop)
-        self.mcp = mcp_server.MCPHandler(Copilot(), Principal("o", "owner", set(ALL), {"share_with_lender"}))
+        from tests.auth_support import setup_identity
+        setup_identity(self)
+        self.mcp=mcp_server.MCPHandler(self.c,self.auth.principal(self.tokens['owner']))
         self.body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode()
 
     def test_origin_validation(self):
@@ -136,15 +136,12 @@ class TestMCPHttpSecurity(unittest.TestCase):
         self.assertEqual(mcp_server.handle_http(self.mcp, {"Origin": "http://localhost:3000"}, self.body)[0], 200)
         self.assertEqual(mcp_server.handle_http(self.mcp, {}, self.body)[0], 200)
 
-    def test_api_key(self):
-        os.environ["COPILOT_MCP_API_KEY"] = "s3cret"
-        try:
-            self.assertEqual(mcp_server.handle_http(self.mcp, {}, self.body)[0], 401)
-            self.assertEqual(mcp_server.handle_http(self.mcp, {"Authorization": "Bearer wrong"}, self.body)[0], 401)
-            self.assertEqual(mcp_server.handle_http(self.mcp, {"Authorization": "Bearer s3cret"}, self.body)[0], 200)
-            self.assertEqual(mcp_server.handle_http(self.mcp, {"X-API-Key": "s3cret"}, self.body)[0], 200)
-        finally:
-            os.environ.pop("COPILOT_MCP_API_KEY")
+    def test_api_key_cannot_replace_authenticated_identity(self):
+        with patch.dict(os.environ,{'COPILOT_MCP_API_KEY':'synthetic-dummy','COPILOT_AUTH_MODE':'demo'}):
+            anonymous=mcp_server.MCPHandler(self.c)
+            for headers in ({},{'Authorization':'Bearer synthetic-dummy'},{'X-API-Key':'synthetic-dummy'}):
+                self.assertEqual(mcp_server.handle_http(anonymous,headers,self.body)[0],401)
+            self.assertEqual(mcp_server.handle_http(self.mcp,{},self.body)[0],200)
 
     def test_parse_error_and_notification(self):
         s, b = mcp_server.handle_http(self.mcp, {}, b"{not json")
@@ -155,7 +152,9 @@ class TestMCPHttpSecurity(unittest.TestCase):
 
 class TestMCPOverTransports(unittest.TestCase):
     def test_stdio_roundtrip(self):
-        env = {**os.environ, "COPILOT_AUTH_MODE":"demo", "COPILOT_LOG_DIR": os.path.join(ROOT, ".test_logs")}
+        from tests.auth_support import setup_identity
+        setup_identity(self,all_merchants=True)
+        env={**os.environ,'COPILOT_IDENTITY_DB':self.auth.path,'COPILOT_MCP_SESSION_TOKEN':self.tokens['owner'],'COPILOT_TRANSACTION_FILE':str(self.store.path),'COPILOT_LOG_DIR':self.tmp.name}
         msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize",
                  "params": {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}},
                 {"jsonrpc": "2.0", "method": "notifications/initialized"},

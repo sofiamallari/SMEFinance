@@ -59,14 +59,7 @@ SECURITY_HEADERS = {
 
 
 def principal_from_request(headers) -> Principal:
-    if not demo_mode():
-        return AUTH.principal(session_token(headers))
-    role = headers.get("X-Demo-Role", "owner")
-    if role not in ("owner", "staff", "coach", "lender_analyst", "demo_guest"):
-        role = "demo_guest"
-    consent = headers.get("X-Demo-Consent", "") == "yes"
-    consents = {"coach_access", "share_with_lender"} if consent else set()
-    return Principal(user_id=f"demo-{role}", role=role, merchant_ids=set(COPILOT.merchants), consents=consents)
+    return AUTH.principal(session_token(headers))
 
 
 def session_token(headers):
@@ -165,11 +158,27 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200,{'ok':True,'login_required':True},headers={'Set-Cookie':self._cookie('',True)})
         if path=='/api/auth/reauthenticate' and method=='POST':
             AUTH.reauthenticate(token,body.get('password'));return self._send(200,{'ok':True})
+        from copilot.bank_workflow import BankWorkflow
+        workflow=BankWorkflow(AUTH,COPILOT)
+        mid=q.get('merchant') or body.get('merchant')
+        if path=='/api/owner/staff':
+            if method=='GET':return self._send(200,workflow.staff(token,mid))
+            if method=='PATCH':return self._send(200,workflow.staff(token,mid,body.get('user_id'),{'permissions':body.get('permissions')}))
+        if path=='/api/merchant/audit' and method=='GET':return self._send(200,workflow.audit(token,mid))
+        if path=='/api/financing-drafts':
+            if method=='GET':return self._send(200,workflow.draft(token,mid))
+            if method=='POST':return self._send(201,workflow.draft(token,mid,body=body.get('draft')))
+        if path.startswith('/api/financing-drafts/'):
+            parts=path.split('/')
+            if len(parts)==4 and method=='PATCH':return self._send(200,workflow.draft(token,mid,parts[3],body.get('draft')))
+            if len(parts)==5 and parts[4]=='propose' and method=='POST':return self._send(201,workflow.propose(token,mid,parts[3]))
+        if path=='/api/bank/review' and method=='GET':return self._send(200,workflow.review(token,mid,q.get('application_id')))
+        if path=='/api/bank/export' and method=='GET':return self._send(200,workflow.review(token,mid,q.get('application_id'),True),'text/csv; charset=utf-8',{'Content-Disposition':'attachment; filename="simulated-bank-review.csv"'})
         if path=='/api/admin/roles' and method=='GET':
             AUTH.authorize(token,'manage_users')
             roles={k:v for k,v in ROLE_LABELS.items() if k!='coach' or os.environ.get('COPILOT_ALLOW_COACH_ASSIGNMENT')=='yes'}
             if p.role=='user_admin':roles={k:v for k,v in roles.items() if k in ('owner','staff','lender_analyst')}
-            return self._send(200,{'roles':roles,'merchants':[{'id':m.merchant_id,'name':m.name} for m in COPILOT.merchants.values()]})
+            return self._send(200,{'staff_actions':sorted(__import__('copilot.authorization',fromlist=['STAFF_ACTIONS']).STAFF_ACTIONS),'roles':roles,'merchants':[{'id':m.merchant_id,'name':m.name} for m in COPILOT.merchants.values()]})
         if path=='/api/admin/users':
             if method=='GET':return self._send(200,{'users':AUTH.users(token,q.get('search',''),q.get('status',''),q.get('role',''))})
             if method=='POST':return self._send(201,AUTH.create_user(token,body))
@@ -231,7 +240,9 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith('/api/consents/') and path.endswith('/revoke') and method=='POST':
             return self._send(200,AUTH.revoke_consent(token,path.split('/')[3]))
         if path=='/api/staff-access-requests' and method=='POST':return self._send(201,AUTH.staff_request(token,body.get('merchant'),body.get('details')))
-        if path=='/api/applications' and method=='GET':return self._send(200,{'applications':AUTH.application_list(token,q.get('merchant'))})
+        if path=='/api/applications' and method=='GET':
+            if p.role=='staff':raise AccessDenied('Staff can access delegated drafts, not submitted applications')
+            return self._send(200,{'applications':AUTH.application_list(token,q.get('merchant'))})
         if path.startswith('/api/applications/') and path.endswith('/review') and method=='POST':
             return self._send(200,AUTH.review_application(token,path.split('/')[3],body))
         return False
@@ -296,6 +307,11 @@ class Handler(BaseHTTPRequestHandler):
                 with open(os.path.join(ROOT,'..','web','security-admin.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/admin.js':
                 with open(os.path.join(ROOT,'..','web','admin.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
+            if method=='GET' and path=='/owner/users':
+                AUTH.authorize(token,'manage_merchant_staff');return self._page('owner-users.html')
+            if method=='GET' and path=='/bank':
+                if p.role!='lender_analyst':raise AccessDenied('Bank page only')
+                AUTH.authorize(token,'view_bank_review');return self._page('bank.html')
             if method=='GET' and path=='/consents':
                 require(p,'manage_consents');return self._page('consents.html')
             if method=='GET' and path=='/admin/users':
@@ -305,6 +321,9 @@ class Handler(BaseHTTPRequestHandler):
             business_routes={'/':'use_copilot','/dashboard':'view_dashboard','/copilot':'use_copilot','/financing':'view_financing','/financing/rbf':'view_financing','/financing/progression':'view_financing','/cash-flow':'view_forecasts','/payment-sandbox':'simulate_payments','/financing/applications':'view_applications',
                 '/merchant-transactions/single':'create_transactions','/merchant-transactions/import':'bulk_import','/merchant-transactions/history':'view_transactions','/merchant-transactions/data-quality':'view_quality_monitoring'}
             if method=='GET' and path in business_routes:
+                if p.role=='lender_analyst':
+                    if path=='/':return self._send(303,b'',headers={'Location':'/bank'})
+                    raise AccessDenied('Bank uses read-only review views')
                 if p.role in ('user_admin','security_admin'):
                     if path=='/':return self._send(303,b'',headers={'Location':'/admin/users' if p.role=='user_admin' else '/admin/security'})
                     raise AccessDenied('Administrative roles have no merchant transaction access')
@@ -314,9 +333,16 @@ class Handler(BaseHTTPRequestHandler):
                     require(p,business_routes[path],mid)
                 return self._page('index.html')
             if method == "GET" and path == "/api/merchants":
-                from copilot.tools_spec import execute
-                result=execute(COPILOT,p,'list_merchants',{})['merchants']
-                return self._send(200,[{**m,'id':m['merchant_id']} for m in result])
+                if p.role not in ('owner','staff','lender_analyst'):raise AccessDenied('No merchant access')
+                result=[]
+                for mid in sorted(p.merchant_ids):
+                    if mid not in COPILOT.merchants:continue
+                    if p.role=='lender_analyst':
+                        try:AUTH.authorize(token,'view_bank_review',mid)
+                        except AccessDenied:continue
+                    m=COPILOT.merchants[mid]
+                    result.append({'id':mid,'merchant_id':mid,'name':m.name,'currency':m.currency,'country':m.country})
+                return self._send(200,result)
             mid = q.get("merchant") or body.get("merchant")
             if p.role in ("user_admin","security_admin"):
                 raise AccessDenied("Administrative accounts cannot access merchant financial APIs")
@@ -325,7 +351,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, {"error": "unknown merchant"})
             if method == "GET":
                 if path == "/api/capabilities":
-                    require(p,"use_copilot",mid)
                     allowed=[]
                     from copilot.authorization import BOUNDARIES
                     for action in BOUNDARIES.get(p.role,set()):

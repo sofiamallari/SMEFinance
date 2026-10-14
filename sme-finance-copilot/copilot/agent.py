@@ -92,6 +92,7 @@ class Copilot:
             status="REFUNDED" if payment.refunded_amount==payment.amount else "PARTIALLY_REFUNDED" if payment.refunded_amount else payment.status
             return {"payment_reference":payment.ref,"payment_status":status,"payment_amount":payment.amount,"payment_refunded_amount":payment.refunded_amount,"currency":payment.currency,"recorded_at":payment.created_at}
         if name=="application_status":
+            if principal.role=="staff":raise AccessDenied("Staff can inspect delegated drafts in Applications, not submitted packets")
             if not self.identity_store:raise ValueError("Persistent application status unavailable")
             with self.identity_store.db() as db:
                 records=db.execute("SELECT * FROM applications WHERE merchant_id=? ORDER BY created_at DESC",(mid,)).fetchall()
@@ -171,13 +172,13 @@ class Copilot:
             raise AccessDenied("Payment reference not found for this merchant.")
         return True
 
-    def _prepare_application(self, mid, product_id="RBF", amount=None):
+    def _prepare_application(self, mid, product_id="RBF", amount=None, recipient_id=None, draft_id=None):
         mer = self.financial_data.project(mid)
         asof = self.financial_data.as_of(mid)
         a = assessment.assess(mer, asof)
         q = rbf.quote(mer, asof, amount or rbf.recommend_advance(mer, asof),dashboard.incentive_status(mer.transactions,asof)["tier"]) if product_id == "RBF" else None
         app = {"application_id": f"APP-{mid}-{len(self.applications) + 1:04d}", "merchant_id": mid,
-               "product_id": product_id, "requested_amount": q["advance"] if q else amount,
+               "recipient_id":recipient_id,"draft_id":draft_id,"product_id": product_id, "requested_amount": q["advance"] if q else amount,
                "currency": mer.currency, "stage": a["stage"], "scores": a["scores"],
                "status": "SUBMITTED_FOR_LENDER_REVIEW",
                "note": "Packet contains aggregated indicators only; the lender makes the credit decision."}
