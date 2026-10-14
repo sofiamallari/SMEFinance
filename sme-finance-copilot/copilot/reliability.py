@@ -98,7 +98,7 @@ def domain(text):
     if re.search(r'\b(upload|import).*(pos|csv|xlsx|file)|\b(pos|csv|xlsx).*upload',t):return 'guidance'
     if re.search(r'\binflation\b',t):return 'education'
     if not re.search(r'\b(my|our|recorded|projected)\b',t) and re.search(r'\b(what is|explain|how does|how do).*(financ|rbf|inventory|cash|revenue|payment)',t):return 'education'
-    if re.search(r'financing (?:journey|progression)|progression engine|what stage am i currently on|why am i at this stage|what should i do next|what do i need before applying',t):return 'journey'
+    if re.search(r'financing (?:journey|progression)|progression engine|what stage am i currently on|why am i at this stage|what should i do next|what do i need before applying|what have i completed|what requirements are missing|how can i progress toward financing|what incentive milestone have i reached',t):return 'journey'
     if re.search(r'\b(application|application status)\b',t):return 'applications'
     if re.search(r'\b(milestone|incentive|tier|reward)\b',t):return 'incentive'
     if re.search(r'\b(report)\b',t):return 'report'
