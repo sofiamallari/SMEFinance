@@ -40,6 +40,8 @@ def verified_monthly_sales(merchant, as_of: date, days: int = 90) -> dict:
                   if (as_of - timedelta(days=days - 1)) <= date.fromisoformat(t["date"]) <= as_of
                   and config.CHANNELS[t["channel"]]["digital"])
     total = sum(allv) or 1
+    if total>0 and not (0<=digital/total<=1 and 0<=sum(eco)/total<=1):
+        raise ValueError("The net-sales channel mix cannot support a bounded verified-sales share; reconcile the records before financing analysis")
     return {"ecosystem_monthly": sum(eco) / days * 30,
             "total_monthly": sum(allv) / days * 30,
             "verified_share": digital / total,
@@ -48,7 +50,7 @@ def verified_monthly_sales(merchant, as_of: date, days: int = 90) -> dict:
 
 def limits(merchant, as_of: date) -> dict:
     v = verified_monthly_sales(merchant, as_of)
-    base = v["ecosystem_monthly"]
+    base = max(0.0, v["ecosystem_monthly"])
     return {"min_advance": round(base * R["min_advance_multiple"], -2),
             "max_advance": round(base * R["max_advance_multiple"], -2),
             "basis_monthly_ecosystem_sales": round(base, 2), **{k: round(x, 4) for k, x in v.items()
@@ -57,9 +59,13 @@ def limits(merchant, as_of: date) -> dict:
 
 def eligibility(merchant, as_of: date) -> dict:
     reasons = []
+    if not merchant.transactions:
+        return {"eligible":False,"reasons":["No recorded transaction history is available."],"history_days":0}
     first = min(date.fromisoformat(t["date"]) for t in merchant.transactions)
     history = (as_of - first).days + 1
     v = verified_monthly_sales(merchant, as_of)
+    if sum(_daily_series(merchant,as_of,90,False))<=0:
+        reasons.append("Positive recorded net sales are required for a financing simulation.")
     if history < R["min_history_days"]:
         reasons.append(f"Needs at least {R['min_history_days']} days of transaction history (has {history}).")
     if v["verified_share"] < R["verified_share_floor"]:
@@ -90,7 +96,7 @@ def quote(merchant, as_of: date, advance: float, incentive_tier: int = 0) -> dic
     remaining, day, schedule = total, 0, []
     while remaining > 0.005 and day < R["max_term_days"] * 2:
         sales = hist[day % len(hist)]
-        pay = min(round(sales * remit, 2), remaining)
+        pay = min(max(0.0, round(sales * remit, 2)), remaining)
         remaining -= pay
         if day < 14:
             schedule.append({"day": day + 1, "ecosystem_sales": round(sales, 2), "repayment": round(pay, 2)})

@@ -20,6 +20,8 @@ import hashlib
 import re
 import secrets
 import time
+import threading
+from functools import wraps
 from dataclasses import dataclass, field
 from statistics import median
 
@@ -68,17 +70,30 @@ class Payment:
     tax: float = 0.0
     flags: list = field(default_factory=list)
 
+    refunded_amount: float = 0.0
+
     def public(self) -> dict:
         return self.__dict__.copy()
 
 
+def synchronized(method):
+    @wraps(method)
+    def invoke(self,*args,**kwargs):
+        with self.lock:return method(self,*args,**kwargs)
+    return invoke
+
 class PaymentSimulator:
     def __init__(self, clock=time.time):
         self.clock = clock
+        self.lock = threading.RLock()
         self.payments: dict[str, Payment] = {}
         self.idempotency: dict[str, str] = {}
         self.wallets: dict[str, float] = {}
         self.events: list[dict] = []
+        self.on_event = None
+        self.on_refund = None
+        self.existing_refund = None
+        self.refunds = {}
 
     # ------------------------------------------------------------------ POS
     @staticmethod
@@ -86,8 +101,14 @@ class PaymentSimulator:
         if not items:
             raise PaymentError("cart is empty")
         subtotal = 0.0
+        from decimal import Decimal, InvalidOperation
+        if not isinstance(items,list) or len(items)>50:raise PaymentError("Use 1–50 POS cart items")
         for it in items:
-            if it.get("qty", 0) <= 0 or it.get("price", 0) <= 0:
+            try:
+                price=Decimal(str(it.get("price",0)));qty=Decimal(str(it.get("qty",0)))
+                valid=price.is_finite() and qty.is_finite() and 0<price<=Decimal('1e9') and 0<qty<=Decimal('1e6') and price==price.quantize(Decimal('.01'))
+            except (InvalidOperation,ValueError,TypeError,AttributeError):valid=False
+            if not valid:
                 raise PaymentError("each item needs a positive qty and price")
             subtotal += it["qty"] * it["price"]
         rate = config.CURRENCIES[currency][1]
@@ -96,6 +117,7 @@ class PaymentSimulator:
                 "total": round(subtotal + tax, 2)}
 
     # ------------------------------------------------------------ creation
+    @synchronized
     def create(self, merchant, method: str, amount: float | None = None, items: list | None = None,
                stage: int = 1, idempotency_key: str | None = None, **extra) -> Payment:
         if method not in ("qr_pay", "tap_pay", "pay_link"):
@@ -103,6 +125,8 @@ class PaymentSimulator:
         for v in extra.values():
             if isinstance(v, str) and PAN_PATTERN.search(v):
                 raise PaymentError("Card numbers must never be entered. The simulator does not accept card data.")
+        if idempotency_key:
+            idempotency_key=merchant.merchant_id+":"+idempotency_key
         if idempotency_key and idempotency_key in self.idempotency:
             return self.payments[self.idempotency[idempotency_key]]
 
@@ -110,7 +134,12 @@ class PaymentSimulator:
         if items:
             tot = self.cart_totals(items, merchant.currency)
             amount, subtotal, tax = tot["total"], tot["subtotal"], tot["tax"]
-        if amount is None or amount <= 0:
+        from decimal import Decimal, InvalidOperation
+        try:
+            valid_amount=Decimal(str(amount))
+            valid=valid_amount.is_finite() and Decimal('0')<valid_amount<=Decimal('1e12') and valid_amount==valid_amount.quantize(Decimal('.01'))
+        except (InvalidOperation,ValueError,TypeError):valid=False
+        if not valid:
             raise PaymentError("amount must be positive")
 
         now = self.clock()
@@ -137,6 +166,7 @@ class PaymentSimulator:
         return p
 
     # ------------------------------------------------------------- lifecycle
+    @synchronized
     def status(self, ref: str) -> Payment:
         p = self._get(ref)
         if p.status == "PENDING" and self.clock() > p.expires_at:
@@ -144,6 +174,7 @@ class PaymentSimulator:
             self._event("expired", p)
         return p
 
+    @synchronized
     def simulate_customer_payment(self, ref: str, paid_channel: str | None = None) -> Payment:
         """Customer completes payment. For Pay Link the customer may choose any rail."""
         p = self.status(ref)
@@ -165,6 +196,38 @@ class PaymentSimulator:
         self._event("paid", p)
         return p
 
+    @synchronized
+    def refund(self,ref,amount,idempotency_key):
+        from decimal import Decimal
+        p=self._get(ref)
+        key=p.merchant_id+":"+str(idempotency_key)
+        value=Decimal(str(amount))
+        if not idempotency_key or not value.is_finite() or value<=0 or value!=value.quantize(Decimal('.01')):raise PaymentError("Exact positive refund and idempotency key required")
+        if key in self.refunds:
+            old=self.refunds[key]
+            if old["ref"]!=ref or old["amount"]!=float(value):raise PaymentError("Refund key belongs to a different request")
+            return old
+        reference="SBX-REF-"+__import__('hashlib').sha256(key.encode()).hexdigest()[:20]
+        if self.existing_refund:
+            existing=self.existing_refund(p,float(value),reference)
+            if existing:self.refunds[key]=existing;return existing
+        if p.status!="PAID" or value>Decimal(str(p.amount))-Decimal(str(p.refunded_amount)):raise PaymentError("Refund exceeds the completed unrefunded amount")
+        if self.on_refund:self.on_refund(p,float(value),reference)
+        p.refunded_amount=round(p.refunded_amount+float(value),2)
+        # This is sandbox accounting only; no real bank refund or external settlement.
+        if p.net_settled:self.wallets[p.merchant_id]=round(self.wallets.get(p.merchant_id,0)-float(value)*(1-p.mdr_rate),2)
+        result={"ref":ref,"refund_reference":reference,"amount":float(value),"currency":p.currency,"status":"SIMULATED_REFUND","provenance":"simulated_payment"}
+        self.refunds[key]=result
+        self._event("refunded",p)
+        return result
+
+    @synchronized
+    def fail(self,ref):
+        p=self.status(ref)
+        if p.status!="PENDING":raise PaymentError("Only a pending simulated payment may fail")
+        p.status="FAILED";self._event("failed",p);return p
+
+    @synchronized
     def cancel(self, ref: str) -> Payment:
         p = self.status(ref)
         if p.status != "PENDING":
@@ -211,6 +274,7 @@ class PaymentSimulator:
         return self.payments[ref]
 
     def _event(self, kind: str, p: Payment):
+        if self.on_event:self.on_event(p)
         self.events.append({"type": kind, "ref": p.ref, "merchant_id": p.merchant_id,
                             "method": p.method, "amount": p.amount, "status": p.status,
                             "paid_channel": p.paid_channel, "ts": self.clock()})

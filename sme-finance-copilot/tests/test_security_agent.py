@@ -158,7 +158,8 @@ class TestAgent(unittest.TestCase):
         r2 = self.c.handle(owner(), "M002", "submit a financing application", r1["data"]["approval_token"])
         self.assertEqual(r2["data"]["status"], "SUBMITTED_FOR_LENDER_REVIEW")
         r3 = self.c.handle(owner(), "M002", "submit a financing application", r1["data"]["approval_token"])
-        self.assertIn("denied", r3["intent"])  # replay blocked
+        self.assertEqual(r3["data"]["application_id"],r2["data"]["application_id"])
+        self.assertEqual(len(self.c.applications),1)  # idempotent replay, never a second application
 
     def test_apply_needs_consent(self):
         r = self.c.handle(owner(consent=False), "M002", "submit application")

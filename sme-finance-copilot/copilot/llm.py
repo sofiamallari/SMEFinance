@@ -13,6 +13,8 @@ import os
 import re
 import urllib.request
 
+from copilot import llm_config  # loads only local LLM settings once at startup
+
 SYSTEM_PROMPT = (
     "You are SME Finance Copilot, a friendly finance assistant for ASEAN micro and small business owners. "
     "Rewrite the DRAFT into clear, plain language for the owner. Keep every number exactly as given. "
@@ -36,21 +38,10 @@ class OpenAICompatibleNarrator:
         self.fallback = TemplateNarrator()
 
     def narrate(self, draft: str, context: dict | None = None) -> str:
-        body = json.dumps({"model": self.model, "temperature": 0.2, "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"DRAFT:\n{draft}"}]}).encode()
-        req = urllib.request.Request(f"{self.base_url}/chat/completions", data=body, method="POST",
-                                     headers={"Content-Type": "application/json",
-                                              "Authorization": f"Bearer {self.api_key}"})
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:
-                out = json.loads(r.read())["choices"][0]["message"]["content"].strip()
-            nums = set(re.findall(r"\d[\d,.]*\d|\d", draft))  # numeric integrity check
-            if not all(n in out for n in nums):
-                return self.fallback.narrate(draft)
-            return out
-        except Exception:
-            return self.fallback.narrate(draft)
+        # Financial drafts are authoritative backend renderings. Arbitrary prose
+        # rewriting cannot prove metric/source/period/approval integrity.
+        # Gemini explanations use the separate typed claim verifier instead.
+        return self.fallback.narrate(draft, context)
 
 
 def get_narrator():

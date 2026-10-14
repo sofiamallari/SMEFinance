@@ -24,6 +24,8 @@ import json
 import os
 import urllib.request
 
+from copilot import llm_config  # loads only local LLM settings once at startup
+
 from copilot import tools_spec
 
 SYSTEM = (
@@ -54,39 +56,6 @@ def _post(payload: dict, timeout: int = 45) -> dict:
         return json.loads(r.read())
 
 
-def run(copilot, principal, merchant_id: str, question: str, history: list | None = None) -> dict:
-    """Returns {"reply", "tools_used", "mode": "ai_agent"}; raises on any failure (caller falls back)."""
-    from copilot.authorization import require
-    require(principal,"use_copilot",merchant_id)
-    m = copilot.merchants[merchant_id]
-    ctx = (f"Current business: {m.name} (ID {m.merchant_id}), {m.sector}, country {m.country}, currency {m.currency}. "
-           f"Data as of {copilot.as_of.isoformat()}. User role: {principal.role}.")
-    messages = [{"role": "system", "content": SYSTEM + "\n\n" + ctx}]
-    for h in (history or [])[-6:]:
-        if h.get("role") in ("user", "assistant") and isinstance(h.get("content"), str):
-            messages.append({"role": h["role"], "content": h["content"][:2000]})
-    messages.append({"role": "user", "content": question})
-    tools, used = tools_spec.openai_tools(), []
-
-    for _ in range(MAX_ROUNDS):
-        resp = _post({"model": os.environ["COPILOT_LLM_MODEL"], "messages": messages, "tools": tools,
-                      "tool_choice": "auto", "temperature": 0.2})
-        msg = resp["choices"][0]["message"]
-        calls = msg.get("tool_calls") or []
-        if not calls:
-            text = (msg.get("content") or "").strip()
-            if not text:
-                raise RuntimeError("empty model response")
-            return {"reply": text, "tools_used": used, "mode": "ai_agent"}
-        messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": calls})
-        for c in calls:
-            name = c["function"]["name"]
-            try:
-                args = json.loads(c["function"].get("arguments") or "{}")
-                result = tools_spec.execute(copilot, principal, name, args, fixed_merchant=merchant_id)
-                content = tools_spec.to_text(result)
-            except Exception as e:  # tool errors go back to the model so it can adapt
-                content = json.dumps({"error": f"{type(e).__name__}: {e}"})
-            used.append(name)
-            messages.append({"role": "tool", "tool_call_id": c["id"], "content": content[:12000]})
-    raise RuntimeError("too many tool rounds")
+def run(copilot, principal, merchant_id: str, question: str, history: list | None = None, module: str | None = None) -> dict:
+    from copilot.verified_agent import execute
+    return execute(copilot, principal, merchant_id, question, history, session=principal.session_id, module=module)

@@ -101,6 +101,7 @@ class TransactionStore:
         self.lock, self.previews, self.entries = threading.RLock(), {}, {}
         from copilot.transaction_journal import TransactionJournal
         self.journal=TransactionJournal(self)
+        self.copilot.financial_data.attach(self.journal)
         if os.path.isfile(path):
             with open(path, encoding='utf-8') as f:
                 for line_number,line in enumerate(f,1):

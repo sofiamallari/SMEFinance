@@ -251,7 +251,8 @@ class AuthStore:
             ids={r[0] for r in db.execute('SELECT merchant_id FROM memberships WHERE user_id=?',(row['user_id'],))}
             return Principal(row['user_id'],row['role'],ids,set(),True,permissions,
                              lambda action,mid:self.authorize(token,action,mid),
-                             policy.get('ai_tiers',{}).get(row['role'],int(ROLE_MAX_TIER[row['role']])))
+                             policy.get('ai_tiers',{}).get(row['role'],int(ROLE_MAX_TIER[row['role']])),
+                             hashlib.sha256(token.encode()).hexdigest())
 
     def authorize(self,token,action,merchant=None,reauth=False):
         with self.db() as db:

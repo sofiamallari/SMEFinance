@@ -32,6 +32,9 @@ READ = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, 
 WRITE_SANDBOX = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 
 TOOLS = [
+    {"name":"data_quality","internal":"data_quality","annotations":READ,"description":"Authorized merchant import quality and unresolved alert counts.","inputSchema":_schema()},
+    {"name":"latest_payment","internal":"latest_payment","annotations":READ,"description":"Current status of the latest authorized simulated payment; not real bank settlement.","inputSchema":_schema()},
+    {"name":"application_status","internal":"application_status","annotations":READ,"description":"Recorded status of an authorized simulated financing application; never lender credit approval.","inputSchema":_schema()},
     {"name":"financial_report", "internal":"financial_report", "annotations":READ,
      "description":"Aggregate financial report, expenses, net income, risk alerts and 30-day revenue projection including saved uploads.",
      "inputSchema":_schema()},
@@ -135,7 +138,7 @@ def execute(copilot, principal, name: str, args: dict, fixed_merchant: str | Non
         return {"answer": r["reply"], "intent": r["intent"]}
     out = copilot.call(principal, spec["internal"], mid, **args)
     if name == "rbf_quote" and isinstance(out, dict):
-        out["eligibility"] = rbf.eligibility(copilot.merchants[mid], copilot.as_of)
+        out["eligibility"] = rbf.eligibility(copilot.financial_data.project(mid), copilot.financial_data.as_of(mid))
     if isinstance(out, list):
         out = {"items": out}
     return _trim(out)

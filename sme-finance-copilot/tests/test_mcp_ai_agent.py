@@ -213,16 +213,13 @@ class FakeLLM(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         FakeLLM.calls.append(body)
         msgs = body["messages"]
-        tool_msgs = [m for m in msgs if m["role"] == "tool"]
-        if not tool_msgs:
-            reply = {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "c1", "type": "function", "function": {"name": "assess_business", "arguments": "{}"}},
-                # tries to read another merchant: must be overridden by the session merchant
-                {"id": "c2", "type": "function", "function": {"name": "cashflow_alerts",
-                                                               "arguments": json.dumps({"merchant_id": "M005"})}}]}
+        if body.get("tools"):
+            name=body["tools"][0]["function"]["name"]
+            # Deliberate forged scope: backend must retain the authenticated merchant.
+            reply={"role":"assistant","content":None,"tool_calls":[{"id":"c1","type":"function","function":{"name":name,"arguments":json.dumps({"merchant_id":"M005"})}}]}
         else:
-            stage = json.loads(tool_msgs[0]["content"])["stage"]
-            reply = {"role": "assistant", "content": f"You are at stage {stage}. Focus on operational capacity."}
+            allowed=json.loads(msgs[-1]["content"])["allowed_claims"]
+            reply={"role":"assistant","content":json.dumps({"claims":allowed,"insights":[]})}
         out = json.dumps({"choices": [{"message": reply}]}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -256,8 +253,10 @@ class TestAIAgentMode(unittest.TestCase):
     def test_free_text_question_uses_ai_agent_and_tools(self):
         r = self.c.handle(self.p, "M002", "Why is my business stuck and what should I fix first?")
         self.assertEqual(r["mode"], "ai_agent")
-        self.assertIn("stage 3", r["reply"])
-        self.assertEqual(r["data"]["tools_used"], ["assess_business", "cashflow_alerts"])
+        self.assertIn("Stage 3", r["reply"])
+        self.assertEqual(r["data"]["tools_used"], ["assess_business"])
+        self.assertTrue(r["evidence"])
+        self.assertTrue(all(e["merchant_id"]=="M002" for e in r["evidence"]))
         # the model's request for merchant M005 was overridden: every tool call hit M002
         hits = [x for x in self.c.exec_log.records if x.get("tool") in ("assess_business", "cashflow_alerts")]
         self.assertTrue(hits and all(x["merchant_id"] == "M002" for x in hits))

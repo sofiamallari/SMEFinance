@@ -169,7 +169,7 @@ python -m copilot.server --host 127.0.0.1
 Remove-Item Env:COPILOT_AUTH_MODE
 ```
 
-Demo mode is deliberately insecure and is refused by the server CLI on non-localhost bindings. It is not used by the authenticated HTTP regression tests. `.env.example` documents settings; this standard-library app reads process environment variables, not `.env` files automatically.
+Demo mode is deliberately insecure and is refused by the server CLI on non-localhost bindings. It is not used by the authenticated HTTP regression tests. `.env.example` documents settings; the app loads only the four LLM settings from local `.env`; authentication/security settings still require process variables.
 
 
 ## Portable Security Administration
@@ -183,6 +183,14 @@ Read [docs/SECURITY_CONFIGURATION.md](docs/SECURITY_CONFIGURATION.md) for schema
 
 ## Merchant Transactions (Task 02)
 
-The sixth sidebar module contains Single Transaction, Bulk POS Import, Transaction History and Data Quality & Monitoring. The five-step wizard supports multi-file/folder CSV/XLSX acquisition, explicit mapping, decimal normalization, duplicate detection, count/financial reconciliation, signed staging and durable confirmation. Scoped grants protect Staff actions; administrator roles do not inherit business access. See the [complete workflow, APIs, guarantees and demo guide](docs/POS_TRANSACTION_IMPORT.md). New canonical records are intentionally prepared for Task 03 downstream integration; existing demo financial calculations remain unchanged.
+Merchant Transactions contains Single Transaction, Bulk POS Import, Transaction History and Data Quality & Monitoring. The five-step wizard supports multi-file/folder CSV/XLSX acquisition, explicit mapping, decimal normalization, duplicate detection, count/financial reconciliation, signed staging and durable confirmation. Scoped grants protect Staff actions; administrator roles do not inherit business access. See the [complete workflow, APIs, guarantees and demo guide](docs/POS_TRANSACTION_IMPORT.md). Task 03 now projects these canonical records into the existing financial modules; the historical Task 02 report records the earlier deferred integration.
 
 [Task 02 verified implementation report](docs/TASK02_REPORT.md).
+
+## Gemini baseline assessment (before Task 03)
+
+See [assessment and configuration](docs/GEMINI_BASELINE_ASSESSMENT.md). The local `.env` now loads only LLM settings; environment variables take precedence. Real Gemini requests succeeded with a temporary `gemini-3.1-flash-lite` override. The tested `gemini-2.5-flash` key/model combination returned 404. The assessment records current capabilities, grounding/scope gaps and actual test evidence; Those findings describe the pre-Task 03 baseline; see the current implementation below.
+
+## AI Financial Partner (Task 03)
+
+The existing application now provides a persistent three-panel financial workspace, permission-filtered Gemini tools, canonical transaction/payment projection, exact backend claim verification, scoped conversation state and confirmed sandbox actions. See [run instructions, architecture, security limits and demo](docs/TASK03_FINANCIAL_PARTNER.md) and [actual verification results](docs/TASK03_REPORT.md). Select `gemini-3.1-flash-lite` through the nonsecret process model override; local credentials remain private. Changes are uncommitted for owner review. Task 03.1 is deferred.

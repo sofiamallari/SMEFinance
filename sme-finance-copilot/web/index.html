@@ -66,11 +66,15 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:18px}
 .app-layout{display:grid;grid-template-columns:250px minmax(0,1fr);align-items:start;min-height:calc(100vh - 110px)}
 #tabs{position:sticky;top:0;display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line);border-bottom:0;padding:18px 10px;min-height:calc(100vh - 100px);gap:5px;overflow:visible}
 #tabs button{display:flex;align-items:center;gap:9px;white-space:normal;text-align:left;border-bottom:0;border-left:3px solid transparent;border-radius:8px;padding:13px 10px;font-size:.88rem}
-#tabs button:hover{background:var(--bg)}#tabs button.active{background:var(--soft);border-left-color:var(--brand2);color:var(--brand)}
+#tabs [aria-expanded="true"] .chevron{transform:rotate(180deg)}#tabs button:hover{background:var(--bg)}#tabs button.active{background:var(--soft);border-left-color:var(--brand2);color:var(--brand)}
 #merchant-submenu button,.finance-secondary button{margin-left:17px;width:calc(100% - 17px);font-size:.78rem;padding:11px 8px}.chevron{margin-left:auto}.nav-icon svg{height:19px;width:19px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0}.nav-icon{display:flex}.alert-badge{margin-left:auto;border-radius:20px;padding:2px 6px;background:#fee2e2;color:#991b1b;font-size:.7rem}
-main{width:100%;min-width:0;padding:24px}#sidebar-toggle{display:none}.secondary-nav{margin-top:0!important}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;text-align:left}th,td{padding:10px;border-bottom:1px solid var(--line);font-size:.8rem;vertical-align:top}pre{white-space:pre-wrap;overflow-wrap:anywhere}
+main{width:100%;min-width:0;padding:24px;margin:0;max-width:none}#sidebar-toggle{display:none}.secondary-nav{margin-top:0!important}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;text-align:left}th,td{padding:10px;border-bottom:1px solid var(--line);font-size:.8rem;vertical-align:top}pre{white-space:pre-wrap;overflow-wrap:anywhere}
 #wizard-progress{display:flex;flex-wrap:wrap;list-style:none;padding:0;gap:8px}#wizard-progress li{padding:9px 12px;border-radius:8px;background:var(--bg);color:var(--muted);font-size:.82rem}#wizard-progress li.current{background:var(--brand);color:#fff}#wizard-progress li.complete{background:var(--soft);color:var(--brand)}[hidden]{display:none!important}.wizard-step input,.wizard-step select{max-width:100%}.mapping-file{border:1px solid var(--line);border-radius:12px;padding:16px;margin:16px 0}.mapping-file select,.mapping-file input:not([type=checkbox]){width:100%;margin:5px 0 10px}.history-filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}.history-filters label{flex:1;min-width:120px}.history-filters input,.history-filters select{width:100%}#run-dialog{max-width:1000px;width:95%;max-height:90vh;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:20px}#run-dialog::backdrop{background:#0f172a88}.tab>.card{margin-bottom:18px}#tabs button:focus-visible{outline:3px solid #38bdf8;outline-offset:2px}
 @media(max-width:850px){.app-layout{display:block}#sidebar-toggle{display:block;margin:10px}#tabs{display:none;position:static;min-height:0;border-right:0}#tabs.mobile-open{display:flex}main{padding:14px}.controls{width:100%}.history-filters{gap:8px}.g2,.g3{grid-template-columns:1fr}}
+
+.app-layout{grid-template-columns:220px minmax(0,1fr) 350px}.ai-collapsed .app-layout{grid-template-columns:220px minmax(0,1fr)}.ai-collapsed #partner-panel{display:none}#partner-panel{position:sticky;top:0;height:calc(100vh - 108px);min-height:560px;padding:15px 12px;border-left:1px solid var(--line);background:var(--card);overflow:auto}#partner-panel>.card{padding:12px;border:0;box-shadow:none}#partner-panel #chatlog{height:calc(100vh - 390px);min-height:240px}.msg{max-width:100%;overflow-wrap:anywhere}.chatin input{min-width:0;width:100%}.legacy-nav{display:none!important}main .g2,main .g3{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}#ai-toggle{color:white;border-color:#ffffff88}#ai-backdrop{position:fixed;inset:0;background:#0f172a77;border:0;z-index:29}#partner-panel details{font-size:.78rem;white-space:normal}#partner-panel summary{cursor:pointer;margin-top:8px}#financing-parent .chevron{margin-left:auto}.provenance-summary{padding:12px;background:var(--soft);border-radius:10px;margin-bottom:14px;font-size:.8rem}
+@media(max-width:1100px){.app-layout,.ai-collapsed .app-layout{grid-template-columns:220px minmax(0,1fr)}#partner-panel{position:fixed;right:0;top:0;bottom:0;width:min(94vw,380px);height:100dvh;min-height:0;z-index:30;box-shadow:-8px 0 24px #0f172a33}#partner-panel #chatlog{height:calc(100dvh - 355px)}#ai-close{display:inline-block}}
+@media(max-width:850px){.app-layout,.ai-collapsed .app-layout{display:block}#tabs{min-height:0}header{padding:12px}main{padding:12px}#partner-panel{padding:12px 6px}}
 </style>
 </head>
 <body>
@@ -82,17 +86,12 @@ main{width:100%;min-width:0;padding:24px}#sidebar-toggle{display:none}.secondary
       <option value="owner">Role: Business Owner</option><option value="staff">Role: Staff</option><option value="coach">Role: Progression coach</option>
       <option value="lender_analyst">Role: Financing Agent</option><option value="demo_guest">Role: Demo guest</option>
     </select>
-    <label class="chk" id="demo-consent"><input type="checkbox" id="consent" checked> Demo consent</label><a id="consent-link" href="/consents" style="color:white" hidden>Financing consent</a><span id="account-name"></span><button class="btn" id="signout">Sign out</button>
+    <label class="chk" id="demo-consent"><input type="checkbox" id="consent" checked> Demo consent</label><a id="consent-link" href="/consents" style="color:white" hidden>Financing consent</a><span id="account-name"></span><button class="btn ghost" id="ai-toggle" aria-controls="partner-panel" aria-expanded="true">AI Financial Partner</button><button class="btn" id="signout">Sign out</button>
   </div>
 </header>
 <button class="btn" id="sidebar-toggle" aria-controls="tabs" aria-expanded="false">☰ Navigation</button>
 <div class="app-layout"><nav id="tabs" aria-label="Business modules">
  <button data-tab="dashboard" class="active"><span class="nav-icon" data-icon="layout-dashboard"></span>Dashboard</button>
- <button data-tab="copilot"><span class="nav-icon" data-icon="bot"></span>AI Copilot</button>
- <button data-tab="financing"><span class="nav-icon" data-icon="landmark"></span>Financing</button>
- <div class="finance-secondary"><button data-tab="applications" class="secondary-nav">Financing applications</button></div>
- <button data-tab="cashflow"><span class="nav-icon" data-icon="wallet"></span>Cash Flow</button>
- <button data-tab="payments"><span class="nav-icon" data-icon="credit-card"></span>Payment Sandbox</button>
  <button id="merchant-parent" aria-expanded="false" aria-controls="merchant-submenu"><span class="nav-icon" data-icon="receipt-text"></span>Merchant Transactions<span class="chevron">⌄</span></button>
  <div id="merchant-submenu" hidden>
   <button data-tab="transactions"><span class="nav-icon" data-icon="circle-plus"></span>Single Transaction</button>
@@ -100,21 +99,25 @@ main{width:100%;min-width:0;padding:24px}#sidebar-toggle{display:none}.secondary
   <button data-tab="transaction-history"><span class="nav-icon" data-icon="history"></span>Transaction History</button>
   <button data-tab="data-quality"><span class="nav-icon" data-icon="shield-check"></span>Data Quality &amp; Monitoring <span id="quality-badge" class="alert-badge" hidden></span></button>
  </div>
+ <button data-tab="payments"><span class="nav-icon" data-icon="credit-card"></span>Digital Payments</button>
+ <button data-tab="cashflow"><span class="nav-icon" data-icon="wallet"></span>Cash Flow</button>
+ <button id="financing-parent" aria-expanded="false" aria-controls="financing-submenu"><span class="nav-icon" data-icon="landmark"></span>Financing<span class="chevron">⌄</span></button>
+ <div id="financing-submenu" class="finance-secondary" hidden>
+  <button data-tab="financing">Overview</button><button data-tab="rbf">RBF Calculator</button><button data-tab="applications">Applications</button>
+ </div>
+ <button data-tab="copilot" class="legacy-nav" hidden>AI Financial Partner</button>
 </nav>
 <main>
 <section class="tab active" id="tab-copilot">
   <div class="grid g2">
-    <div class="card">
-      <div class="row" style="border:0;padding:0"><h2>Ask your copilot</h2><span id="modebadge" class="pill">…</span></div>
-      <p class="sub" id="modesub">Advisory only — it never approves credit or moves real money.</p>
-      <div id="chatlog"></div>
-      <div class="chips" id="chips"></div>
-      <form class="chatin" id="chatform"><input type="text" id="chatinput" maxlength="2000" placeholder="Search or ask anything, e.g. Why is my operational capacity low and what should I do first?" aria-label="Message"><button class="btn">Send</button></form>
-    </div>
     <div class="card" id="progress"><h2>Progression engine</h2><p class="sub">Identify → Profile → Place → Activate → Measure</p><div id="progressbody" class="muted">Loading…</div></div>
   </div>
 </section>
 <section class="tab" id="tab-financing">
+<div class="card"><h2>Financing overview</h2><p class="sub">Configured indicative options for your authorized merchant. Quotes, readiness and simulated applications are not lender approval.</p></div>
+  <div class="card" style="margin-top:18px"><h2>Matched financing & support options</h2><p class="sub">Ranked by constraint fit, stage fit, readiness and affordability.</p><div id="matches"></div></div>
+</section>
+<section class="tab" id="tab-rbf">
   <div class="grid g2">
     <div class="card">
       <h2>Revenue-based financing calculator</h2><p class="sub">Repay as a % of daily digital sales — slower days, smaller payments.</p>
@@ -124,9 +127,8 @@ main{width:100%;min-width:0;padding:24px}#sidebar-toggle{display:none}.secondary
       <div class="row muted"><span id="rbfmin"></span><span id="rbfmax"></span></div>
       <div id="rbfsummary"></div>
     </div>
-    <div class="card"><h2>Daily repayment flow</h2><p class="sub">Based on this merchant's real sales pattern.</p><div id="rbfdays"></div><div id="rbfcmp" class="muted" style="margin-top:10px"></div></div>
+    <div class="card"><h2>Daily repayment flow</h2><p class="sub">Based on recorded merchant sales. Sandbox and historical sources are labeled separately.</p><div id="rbfdays"></div><div id="rbfcmp" class="muted" style="margin-top:10px"></div></div>
   </div>
-  <div class="card" style="margin-top:18px"><h2>Matched financing & support options</h2><p class="sub">Ranked by constraint fit, stage fit, readiness and affordability.</p><div id="matches"></div></div>
 </section>
 <section class="tab" id="tab-cashflow">
   <div class="grid g3" id="cfkpis"></div>
@@ -194,13 +196,20 @@ main{width:100%;min-width:0;padding:24px}#sidebar-toggle{display:none}.secondary
  <div class="card"><h2>Predefined Quality Rules</h2><p class="muted">Rule results appear in run details. No executable custom rules are supported.</p><div id="quality-rules"></div></div>
 </section>
 <dialog id="run-dialog"><h2>Import Run Details</h2><div id="run-detail"></div><button class="btn" id="close-run">Close</button></dialog>
-</main></div>
+</main><aside id="partner-panel" aria-label="AI Financial Partner">    <div class="card">
+      <div class="row" style="border:0;padding:0"><h2>AI Financial Partner</h2><span id="modebadge" class="pill">…</span></div>
+      <button id="ai-close" class="btn ghost sm" aria-label="Close AI Financial Partner">Close</button><p id="partner-module" class="muted">Dashboard</p><p class="sub" id="modesub">Advisory only — it never approves credit or moves real money.</p>
+      <div id="chatlog"></div>
+      <div class="chips" id="chips"></div>
+      <form class="chatin" id="chatform"><input type="text" id="chatinput" maxlength="2000" placeholder="Ask about recorded sales, payments, cash flow or financing" aria-label="Message"><button class="btn">Send</button></form>
+    </div>
+</aside></div><button id="ai-backdrop" aria-label="Close AI panel" hidden></button>
 <footer>Synthetic data only · Indicative estimates, not credit offers · Lenders make all credit decisions</footer>
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let M=null, merchants=[], cart=[], chatHistory=[], AGENT="rule_engine";
 const SYM={IDR:"Rp",PHP:"₱",MYR:"RM",THB:"฿",VND:"₫",SGD:"S$"};
-const fmt=(v,c)=>v==null?"n/a":(v<0?"-":"")+(SYM[c||M?.currency]||"")+Math.abs(Number(v)).toLocaleString("en-US",{maximumFractionDigits:Math.abs(v)<100?2:0});
+const fmt=(v,c)=>v==null?"n/a":(v<0?"-":"")+(SYM[c||M?.currency]||"")+Math.abs(Number(v)).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 const short=v=>(v<0?"-":"")+(SYM[M.currency]||"")+((v=Math.abs(v))>=1e9?(v/1e9).toFixed(1)+"B":v>=1e6?(v/1e6).toFixed(1)+"M":v>=1e3?(v/1e3).toFixed(0)+"k":Math.round(v));
 const CHL={qr_pay:"QR Pay",tap_pay:"Tap Pay",pay_link:"Pay Link",external_wallet:"external e-wallet",external_card:"external card"};
 const pct=v=>v==null?"n/a":(v*100).toFixed(1)+"%";
@@ -208,7 +217,7 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const COLORS=["#0b3b5c","#127a8a","#38bdf8","#94a3b8","#f59e0b","#a3a3a3"];
 let SESSION=null;
 const scopedActions=["create_transactions","bulk_import","acknowledge_quality_alerts","resolve_quality_alerts"];
-const can=permission=>SESSION?.demo ? ({owner:["use_copilot","view_financing","view_forecasts","view_dashboard","simulate_payments","view_transactions","create_transactions","bulk_import","manage_transactions","view_assessment","view_applications"],staff:["use_copilot","view_forecasts","view_dashboard","simulate_payments","view_transactions","create_transactions","bulk_import"],lender_analyst:["use_copilot","view_financing","view_forecasts"],coach:["use_copilot","view_financing","view_forecasts","view_dashboard","view_assessment"],demo_guest:["use_copilot","view_dashboard","simulate_payments"]}[$("#role").value]||[]).includes(permission) : SESSION?.permissions.includes(permission)&&(!(SESSION?.user.role==="staff"&&scopedActions.includes(permission))||SESSION.user.transaction_grants?.[M?.id]?.includes(permission));
+const can=permission=>SESSION?.demo ? ({owner:["use_copilot","view_financing","view_forecasts","view_dashboard","simulate_payments","view_transactions","create_transactions","bulk_import","manage_transactions","view_assessment","view_applications"],staff:["use_copilot","view_forecasts","view_dashboard","simulate_payments","view_transactions","create_transactions","bulk_import"],lender_analyst:["use_copilot","view_financing","view_forecasts"],coach:["use_copilot","view_financing","view_forecasts","view_dashboard","view_assessment"],demo_guest:["use_copilot","view_dashboard","simulate_payments"]}[$("#role").value]||[]).includes(permission) : SESSION?.permissions.includes(permission)&&(!SESSION?.effective_permissions||SESSION.effective_permissions.merchant!==M?.id||SESSION.effective_permissions.allowed.includes(permission))&&(!(SESSION?.user.role==="staff"&&scopedActions.includes(permission))||SESSION.user.transaction_grants?.[M?.id]?.includes(permission));
 async function api(path,opt={}){
   const h={"Content-Type":"application/json","X-CSRF-Token":SESSION?.csrf_token||""};
   if(SESSION?.demo){h["X-Demo-Role"]=$("#role").value;h["X-Demo-Consent"]=$("#consent").checked?"yes":"no"}
@@ -217,15 +226,15 @@ async function api(path,opt={}){
   if(r.status>=400) throw new Error(j.error||"Request failed");return {status:r.status,...(Array.isArray(j)?{list:j}:j)};
 }
 const q=extra=>`?merchant=${M.id}${extra||""}`;
-const routes={dashboard:'/dashboard',copilot:'/copilot',financing:'/financing',cashflow:'/cash-flow',payments:'/payment-sandbox',transactions:'/merchant-transactions/single','pos-import':'/merchant-transactions/import','transaction-history':'/merchant-transactions/history','data-quality':'/merchant-transactions/data-quality',applications:'/financing/applications'};
-const routePermissions={dashboard:'view_dashboard',copilot:'use_copilot',financing:'view_financing',cashflow:'view_forecasts',payments:'simulate_payments',transactions:'create_transactions','pos-import':'bulk_import','transaction-history':'view_transactions','data-quality':'view_quality_monitoring',applications:'view_applications'};
+const routes={dashboard:'/dashboard',copilot:'/copilot',financing:'/financing',rbf:'/financing/rbf',cashflow:'/cash-flow',payments:'/payment-sandbox',transactions:'/merchant-transactions/single','pos-import':'/merchant-transactions/import','transaction-history':'/merchant-transactions/history','data-quality':'/merchant-transactions/data-quality',applications:'/financing/applications'};
+const routePermissions={dashboard:'view_dashboard',copilot:'use_copilot',financing:'view_financing',rbf:'view_financing',cashflow:'view_forecasts',payments:'simulate_payments',transactions:'create_transactions','pos-import':'bulk_import','transaction-history':'view_transactions','data-quality':'view_quality_monitoring',applications:'view_applications'};
 function active(){return $('#tabs [data-tab].active')?.dataset.tab||'dashboard'}
-function refreshNavigation(){ $$('#tabs [data-tab]').forEach(b=>b.hidden=!can(routePermissions[b.dataset.tab]));$('#merchant-parent').hidden=!$$('#merchant-submenu [data-tab]').some(b=>!b.hidden); }
-function navigate(tab,push=true){if(!routes[tab]||!can(routePermissions[tab])){showErr(active(),Error('This view is not authorized'));return}$$('#tabs [data-tab]').forEach(b=>{b.classList.toggle('active',b.dataset.tab===tab);if(b.dataset.tab===tab)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});$$('.tab').forEach(t=>t.classList.remove('active'));$('#tab-'+tab).classList.add('active');const child=['transactions','pos-import','transaction-history','data-quality'].includes(tab);$('#merchant-parent').classList.toggle('active',child);if(child){$('#merchant-submenu').hidden=false;$('#merchant-parent').setAttribute('aria-expanded','true')}if(push&&M)history.pushState(null,'',routes[tab]+'?merchant='+encodeURIComponent(M.id));$('#tabs').classList.remove('mobile-open');$('#sidebar-toggle').setAttribute('aria-expanded','false');loadTab(tab);}
+function refreshNavigation(){ $$('#tabs [data-tab]').forEach(b=>b.hidden=!can(routePermissions[b.dataset.tab]));$('#merchant-parent').hidden=!$$('#merchant-submenu [data-tab]').some(b=>!b.hidden);$('#financing-parent').hidden=!$$('#financing-submenu [data-tab]').some(b=>!b.hidden); }
+function navigate(tab,push=true){if(!routes[tab]||!can(routePermissions[tab])){showErr(active(),Error('This view is not authorized'));return}$$('#tabs [data-tab]').forEach(b=>{b.classList.toggle('active',b.dataset.tab===tab);if(b.dataset.tab===tab)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});$$('.tab').forEach(t=>t.classList.remove('active'));$('#tab-'+tab).classList.add('active');const child=['transactions','pos-import','transaction-history','data-quality'].includes(tab);$('#merchant-parent').classList.toggle('active',child);if(child){$('#merchant-submenu').hidden=false;$('#merchant-parent').setAttribute('aria-expanded','true')}if(push&&M)history.pushState(null,'',routes[tab]+'?merchant='+encodeURIComponent(M.id));$('#tabs').classList.remove('mobile-open');$('#sidebar-toggle').setAttribute('aria-expanded','false');if(['financing','rbf','applications'].includes(tab)){$('#financing-submenu').hidden=false;$('#financing-parent').setAttribute('aria-expanded','true')}$('#financing-parent').classList.toggle('active',['financing','rbf','applications'].includes(tab));if(typeof partnerModule==='function')partnerModule(tab);loadTab(tab);}
 $$('#tabs [data-tab]').forEach(b=>b.onclick=()=>navigate(b.dataset.tab));$('#merchant-parent').onclick=()=>{const expanded=$('#merchant-parent').getAttribute('aria-expanded')==='true';$('#merchant-parent').setAttribute('aria-expanded',String(!expanded));$('#merchant-submenu').hidden=expanded};$('#sidebar-toggle').onclick=()=>{const opened=$('#tabs').classList.toggle('mobile-open');$('#sidebar-toggle').setAttribute('aria-expanded',String(opened))};
 window.addEventListener('popstate',()=>{const params=new URLSearchParams(location.search),mid=params.get('merchant');if(mid&&merchants.some(m=>m.id===mid)){$('#merchant').value=mid;M=merchants.find(m=>m.id===mid);resetMerchantTransactions();refreshNavigation()}const tab=Object.keys(routes).find(k=>routes[k]===location.pathname)||'dashboard';navigate(tab,false);updateQualityBadge()});
-function loadTab(t){const fn={copilot:loadProgress,financing:loadFinancing,cashflow:loadCashflow,dashboard:loadDashboard,payments:loadPayments,transactions:loadTransactions,'pos-import':loadPOSImport,'transaction-history':loadTransactionHistory,'data-quality':loadDataQuality,applications:loadApplications}[t];Promise.resolve().then(()=>fn()).catch(e=>showErr(t,e))}
-function showErr(t,e){const el={copilot:'#progressbody',financing:'#matches',cashflow:'#cfalerts',dashboard:'#dkpis',payments:'#pout',transactions:'#tresult','pos-import':'#wizard-message','transaction-history':'#tledger','data-quality':'#quality-message',applications:'#applications'}[t];$(el).innerHTML=`<div class="banner err">${esc(e.message)}</div>`}
+function loadTab(t){const fn={copilot:loadProgress,financing:loadFinancing,rbf:loadFinancing,cashflow:loadCashflow,dashboard:loadDashboard,payments:loadPayments,transactions:loadTransactions,'pos-import':loadPOSImport,'transaction-history':loadTransactionHistory,'data-quality':loadDataQuality,applications:loadApplications}[t];Promise.resolve().then(()=>fn()).catch(e=>showErr(t,e))}
+function showErr(t,e){const el={copilot:'#progressbody',financing:'#matches',rbf:'#rbfsummary',cashflow:'#cfalerts',dashboard:'#dkpis',payments:'#pout',transactions:'#tresult','pos-import':'#wizard-message','transaction-history':'#tledger','data-quality':'#quality-message',applications:'#applications'}[t];$(el).innerHTML=`<div class="banner err">${esc(e.message)}</div>`}
 // ---------- COPILOT
 const CHIPS=["How am I doing?","What financing fits my business?","How much can I borrow with RBF?","Any cash-flow alerts?","Show my sales dashboard","Which incentive milestone am I on?","Generate a QR for 500","Submit a financing application","Approve my loan now"];
 function addMsg(t,who){const d=document.createElement("div");d.className="msg "+who;d.textContent=t;$("#chatlog").appendChild(d);$("#chatlog").scrollTop=1e9;return d}
@@ -300,14 +309,16 @@ async function loadDashboard(){
   const d=await api("/api/dashboard"+q(`&granularity=${$("#dgran").value}${s?"&start="+s:""}${e?"&end="+e:""}`));
   if(!s){$("#dstart").value=d.period.start;$("#dend").value=d.period.end}
   const inc=d.incentive;
-  $("#dkpis").innerHTML=[["Expenses",fmt(d.expenses),`${d.expense_transactions} expense transactions`],["Net income",fmt(d.net_income),"Revenue minus recorded expenses"],["Gross revenue",fmt(d.mix.gross_revenue),`${d.mix.total_transactions.toLocaleString()} transactions`],["Digital capture",pct(d.capture.digital_share),`own rails ${pct(d.capture.ecosystem_share)} · cash ${pct(d.capture.cash_share)}`],["Incentive milestone",inc.tier?`Tier ${inc.tier}`:"—",inc.mom_growth!=null?`MoM own-rail growth ${pct(inc.mom_growth)} · ${inc.tier_name}`:(inc.note||"")]].map(([k,v,sub])=>`<div class="card"><div class="muted">${k}</div><div class="kpi">${v}</div><div class="muted">${esc(sub)}</div></div>`).join("")+`<div class="card" style="grid-column:1/-1"><b>Receivables insight:</b> <span class="pill">${esc(d.receivables.classification.replace("_"," "))}</span> ${esc(d.receivables.explanation)}</div>`;
+  const quick=document.createElement('div');quick.id='dashboard-quick-actions';quick.className='row';for(const [permission,tab,label] of [['bulk_import','pos-import','Import historical POS'],['simulate_payments','payments','Try simulated payments'],['create_transactions','transactions','Encode transaction']]){if(can(permission)){const button=document.createElement('button');button.className='btn ghost sm';button.textContent=label;button.onclick=()=>navigate(tab);quick.appendChild(button)}}$('#dashboard-quick-actions')?.remove();$('#tab-dashboard').prepend(quick);if(d.financial_metrics?.record_count===0){const empty=document.createElement('p');empty.className='banner note';empty.textContent='No completed transaction records for this period. Actual business revenue is unknown. Historical POS import and simulated payments are independent options.';quick.prepend(empty)}
+  const metadata=document.createElement("div");metadata.className="provenance-summary";metadata.id="dashboard-provenance";metadata.textContent="Period: "+d.period.start+" to "+d.period.end+" · retrieved "+new Date(d.data_freshness).toLocaleString()+" · sources: "+Object.entries(d.provenance||{}).map(([name,count])=>name.replace(/_/g," ")+" ("+count+")").join(", ");$("#dashboard-provenance")?.remove();$("#tab-dashboard").prepend(metadata);
+  $("#dkpis").innerHTML=[["Expenses",fmt(d.expenses),`${d.expense_transactions} expense transactions`],["Net income",fmt(d.net_income),"Revenue minus recorded expenses"],["Recorded net sales",fmt(d.mix.gross_revenue),`${d.mix.total_transactions.toLocaleString()} sales/refund transactions`],["Digital capture",pct(d.capture.digital_share),`own rails ${pct(d.capture.ecosystem_share)} · cash ${pct(d.capture.cash_share)}`],["Incentive milestone",inc.tier?`Tier ${inc.tier}`:"—",inc.mom_growth!=null?`MoM own-rail growth ${pct(inc.mom_growth)} · ${inc.tier_name}`:(inc.note||"")]].map(([k,v,sub])=>`<div class="card"><div class="muted">${k}</div><div class="kpi">${v}</div><div class="muted">${esc(sub)}</div></div>`).join("")+`<div class="card" style="grid-column:1/-1"><b>Receivables insight:</b> <span class="pill">${esc(d.receivables.classification.replace("_"," "))}</span> ${esc(d.receivables.explanation)}</div>`;
   const ch=Object.values(d.mix.by_channel);
   $("#dvol").innerHTML=donut(ch.map(c=>c.volume_share),ch.map(c=>c.label),d.mix.total_transactions.toLocaleString()+"<br><small>txns</small>");
-  $("#drev").innerHTML=donut(ch.map(c=>c.revenue_share),ch.map(c=>c.label),short(d.mix.gross_revenue)+"<br><small>gross</small>");
+  $("#drev").innerHTML=donut(ch.map(c=>c.revenue_share),ch.map(c=>c.label),short(d.mix.gross_revenue)+"<br><small>net</small>");
   $("#dvoltrend").innerHTML=bars(d.trend.map(t=>t.period),d.trend.map(t=>t.transactions),"vol");
   $("#drevtrend").innerHTML=bars(d.trend.map(t=>t.period),d.trend.map(t=>t.revenue),"rev");
 }
-function donut(shares,labels,center){let deg=0;const parts=shares.map((s,i)=>{const a=deg,b=deg+s*360;deg=b;return `${COLORS[i%6]} ${a}deg ${b}deg`});
+function donut(shares,labels,center){if(shares.some(s=>!Number.isFinite(s)||s<0)||shares.reduce((a,b)=>a+b,0)<=0)return `<div class="banner note">${center}<br>Net channel shares cannot be shown as a pie for zero or negative totals. Review the recorded payment-method totals.</div>`;let deg=0;const parts=shares.map((s,i)=>{const a=deg,b=deg+s*360;deg=b;return `${COLORS[i%6]} ${a}deg ${b}deg`});
   return `<div class="donutwrap"><div class="donut" style="background:conic-gradient(${parts.join(",")})"><div class="hole">${center}</div></div><div class="legend">${labels.map((l,i)=>`<div><span class="sw" style="background:${COLORS[i%6]}"></span><span style="flex:1">${esc(l)}</span><b>${(shares[i]*100).toFixed(1)}%</b></div>`).join("")}</div></div>`}
 function bars(labels,vals,type){const mx=Math.max(...vals,1),lab=v=>type=="rev"?short(v):(v>=1000?(v/1000).toFixed(1)+"k":v);
   return `<div class="bars">${vals.map((v,i)=>`<div class="bcol ${type}"><b>${lab(v)}</b><i style="height:${Math.max(4,v/mx*80)}%"></i><span>${esc(labels[i])}</span></div>`).join("")}</div>`}
@@ -320,7 +331,10 @@ async function loadPayments(){const r=await api("/api/pos/catalog"+q());catalog=
 function renderCart(){const st=cart.reduce((s,i)=>s+i.qty*i.price,0);$("#cart").innerHTML=cart.length?cart.map(i=>`<div class="row"><span>${i.qty}× ${esc(i.name)}</span><span>${fmt(i.qty*i.price)}</span></div>`).join("")+`<div class="row"><b>Subtotal (tax added at checkout)</b><b>${fmt(st)}</b></div>`:`<p class="muted">Cart is empty — tap products to add.</p>`;$("#posqr").disabled=$("#postap").disabled=$("#poscash").disabled=!cart.length}
 function qrEl(m){const d=document.createElement("div");d.className="qr";d.style.gridTemplateColumns=`repeat(${m.length},8px)`;d.setAttribute("aria-label","Sandbox QR placeholder");d.innerHTML=m.flat().map(b=>`<i class="${b?"on":""}"></i>`).join("");return d}
 async function createPayment(method,body){
-  try{const p=await api("/api/payments",{method:"POST",body:JSON.stringify({merchant:M.id,method,idempotency_key:crypto.randomUUID(),...body})});renderPayment(p)}catch(e){$("#pout").innerHTML=`<div class="banner err">${esc(e.message)}</div>`}}
+  try{const proposal=await api("/api/partner/actions",{method:"POST",body:JSON.stringify({merchant:M.id,kind:"payment_create",parameters:{method,...body}})});
+    const box=$("#pout");box.innerHTML=`<div class="banner note">Review simulated payment: ${esc(proposal.parameters.amount)} ${esc(M.currency)} · ${esc(method)}. No payment has been created yet.</div><button class="btn" id="confirm-payment">Confirm exact simulated payment</button>`;
+    $("#confirm-payment").onclick=async()=>{const button=$("#confirm-payment");button.disabled=true;try{const result=await api("/api/partner/actions/confirm",{method:"POST",body:JSON.stringify({merchant:M.id,action_id:proposal.action_id,confirmed:true})});const payment=result.result;renderPayment(payment)}catch(error){box.insertAdjacentHTML("beforeend",`<div class="banner err">${esc(error.message)}</div>`);button.disabled=false}};
+  }catch(error){$("#pout").innerHTML=`<div class="banner err">${esc(error.message)}</div>`}}
 function renderPayment(p){
   const o=$("#pout");o.innerHTML=`<div class="row"><b>${esc(p.ref)}</b><span class="pill ${p.status=="PAID"?"sev-info":""}">${p.status}</span></div><div class="kpi">${fmt(p.amount)}</div>${p.tax?`<div class="muted">incl. tax ${fmt(p.tax)} on subtotal ${fmt(p.subtotal)}</div>`:""}`;
   if(p.method=="qr_pay"&&p.qr_matrix){const w=document.createElement("div");w.style.textAlign="center";w.style.margin="12px 0";w.appendChild(qrEl(p.qr_matrix));o.appendChild(w);const ttl=Math.max(0,Math.round(p.expires_at-Date.now()/1000));o.insertAdjacentHTML("beforeend",`<p class="muted" style="text-align:center">Valid ~${Math.round(ttl/60)} min · Payload (sandbox, scheme-style TLV):</p><div class="mono">${esc(p.qr_payload)}</div>`)}
@@ -340,7 +354,7 @@ $("#poscash").onclick=()=>{$("#pout").innerHTML=`<div class="banner note">Cash s
 $("#posclear").onclick=()=>{cart=[];renderCart()};
 
 // ---------- init
-async function selectMerchant(){M=merchants.find(m=>m.id==$('#merchant').value);cart=[];chatHistory=[];$('#chatlog').innerHTML='';$('#dstart').value=$('#dend').value='';resetMerchantTransactions();refreshNavigation();addMsg(`Hi! I'm your finance copilot for ${M.name} (${M.country}, ${M.currency}).`,"bot");let tab=active();if(!can(routePermissions[tab]))tab=$$('#tabs [data-tab]').find(b=>!b.hidden)?.dataset.tab;if(tab)navigate(tab);await updateQualityBadge()}
+async function selectMerchant(){M=merchants.find(m=>m.id==$('#merchant').value);cart=[];chatHistory=[];$('#dstart').value=$('#dend').value='';resetMerchantTransactions();SESSION.effective_permissions=await api('/api/capabilities'+q());refreshNavigation();addMsg(`Hi! I'm your finance copilot for ${M.name} (${M.country}, ${M.currency}).`,"bot");let tab=active();if(!can(routePermissions[tab]))tab=$$('#tabs [data-tab]').find(b=>!b.hidden)?.dataset.tab;if(tab)navigate(tab);await updateQualityBadge()}
 $('#merchant').onchange=selectMerchant;$('#role').onchange=()=>{refreshNavigation();loadTab(active())};$('#consent').onchange=()=>loadTab(active());
 async function loadApplications(){
   const r=await api('/api/applications'+q());$('#applications').innerHTML=r.applications.map(a=>`<div class="card"><b>${esc(a.application_id)}</b><p>${esc(a.status)} · ${fmt(a.requested_amount)} · ${esc(a.product_id)}</p>${a.reviews.map(r=>`<p>${esc(r.outcome)} · ${esc(r.note)}</p>`).join('')}${can('review_application')?`<button data-review="${a.application_id}">Record simulated review</button>`:''}</div>`).join('')||'No assigned applications. Owners can submit an application through Copilot after granting financing consent.';
@@ -351,11 +365,11 @@ async function initializeApp(){
   SESSION=await api('/api/auth/me');
   if(SESSION.user.must_change_password){location.href='/login';return}
   if(!SESSION.demo){$('#role').innerHTML=`<option value="${esc(SESSION.user.role)}">${esc({owner:'Business Owner',staff:'Staff',lender_analyst:'Financing Agent',coach:'Progression Coach'}[SESSION.user.role]||SESSION.user.role)}</option>`;$('#role').disabled=true;$('#demo-consent').hidden=true;$('#account-name').textContent=SESSION.user.display_name;$('#consent-link').hidden=!can('manage_consents');}
-  try{const h=await api('/api/health');AGENT=h.agent_mode;$('#modebadge').textContent=AGENT==='ai_agent'?'AI agent connected':'Rule engine';}catch(e){}
+  try{const h=await api('/api/health');AGENT=h.agent_mode;$('#modebadge').textContent=AGENT==='ai_agent'?'Gemini configured · not yet verified':'Deterministic mode';}catch(e){}
   const r=await api('/api/merchants');merchants=r.list;$('#merchant').innerHTML=merchants.map(m=>`<option value="${esc(m.id)}">${esc(m.name)} · ${esc(m.country)}</option>`).join('');
-  if(!merchants.length){$('#tab-dashboard').textContent='No authorized merchants. Contact your administrator.';return}const requested=new URLSearchParams(location.search).get('merchant');$('#merchant').value=merchants.some(m=>m.id===requested)?requested:merchants.some(m=>m.id==='M002')?'M002':merchants[0].id;M=merchants.find(m=>m.id==$('#merchant').value);resetMerchantTransactions();refreshNavigation();let tab=Object.keys(routes).find(k=>routes[k]===location.pathname);if(!tab||!can(routePermissions[tab]))tab=$$('#tabs [data-tab]').find(b=>!b.hidden)?.dataset.tab;if(tab)navigate(tab,false);await updateQualityBadge();
+  if(!merchants.length){$('#tab-dashboard').textContent='No authorized merchants. Contact your administrator.';return}const requested=new URLSearchParams(location.search).get('merchant');$('#merchant').value=merchants.some(m=>m.id===requested)?requested:merchants.some(m=>m.id==='M002')?'M002':merchants[0].id;M=merchants.find(m=>m.id==$('#merchant').value);resetMerchantTransactions();SESSION.effective_permissions=await api('/api/capabilities'+q());refreshNavigation();let tab=Object.keys(routes).find(k=>routes[k]===location.pathname);if(!tab||!can(routePermissions[tab]))tab=$$('#tabs [data-tab]').find(b=>!b.hidden)?.dataset.tab;if(tab)navigate(tab,false);await updateQualityBadge();
 }
 document.addEventListener('DOMContentLoaded',()=>initializeApp().catch(e=>showErr('dashboard',e)),{once:true});
 </script>
-<script src="/assets/merchant-transactions.js" defer></script></body>
+<script src="/assets/merchant-transactions.js" defer></script><script src="/assets/financial-partner.js" defer></script></body>
 </html>
