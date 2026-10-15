@@ -1,29 +1,5 @@
-# Security Controls — scenario pathways
+# Documentation moved
 
-Entry: /admin/security. Use synthetic data and separately signed-in authorized role accounts. Detailed UI steps: [module guide](../2%20README_Security_Controls_and_JSON_Configuration.md); rules: [permissions](../../SECURITY_PERMISSIONS.md). These pathways are instructions, not new test-execution evidence or an exhaustive input enumeration.
+Use the [current maintained reference](../../user-guide/system-administration.md).
 
-## 11-01: Review/change bounded policy
-
-**Path:** System Admin reviews sections → saves supported changes → reauthenticates.
-
-**Expected result / boundary:** No financial access or T4 enablement.
-
-## 11-02: Export/validate/preview/import
-
-**Path:** Export current four-key policy → review → validate/preview → explicit apply.
-
-**Expected result / boundary:** Preview does not save; local identities, delegation and Bank authorizations are not portable.
-
-## 11-03: Old/unsafe JSON
-
-**Path:** Try six-role or out-of-bound policy.
-
-**Expected result / boundary:** Rejected; templates require current keys and supported actions.
-
-## 11-04: Audit/access boundary
-
-**Path:** Review administrative events; Staff/Owner/Bank attempt security API.
-
-**Expected result / boundary:** Only authorized System Admin accesses platform security; merchant audit scope is separate.
-
-Capture role, authorized merchant, dates/currency, nonsecret reference, and expected versus actual outcome. Never capture passwords/tokens/provider keys. See [testing](../../TESTING.md) for recorded evidence.
+The original is preserved as a [historical snapshot](../../archive/task04/possible%20scenarios/11_Security_Controls.md); do not use its older setup, navigation or permission instructions as current policy.

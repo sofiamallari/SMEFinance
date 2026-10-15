@@ -1,14 +1,5 @@
-# Historical documents and diagrams
+# Documentation moved
 
-The following retained artifacts describe the earlier Task 04/pre-four-role baseline and are **historical snapshots**, not current operational security instructions:
+Use the [current maintained reference](../README.md).
 
-- [SME Finance Copilot System Guide](SME_Finance_Copilot_System_Guide.docx)
-- [SME Finance Copilot Team Run Guide](SME_Finance_Copilot_Team_Run_Guide.docx)
-- [Business-logic provenance audit](README_Business_Logic_Provenance_Audit.md)
-- Existing source/rendered diagrams under `diagrams/`.
-
-Do not follow obsolete Coach/Agent access, implicit Staff permission, overlapping case-assignment, automatic recipient routing or Bank review-decision instructions from these snapshots. Current references: [permissions](../SECURITY_PERMISSIONS.md), [Bank review](../BANK_FINANCIAL_REVIEW.md), [workflow](../SECURITY_SME_BANK_WORKFLOW.md), [testing](../TESTING.md) and the [module index](README.md).
-
-The Word documents and their embedded screenshots are intentionally preserved rather than relabeled as verified current documents. Word lock files were present during review; no open document, screenshot package or diagram was overwritten. Current maintained guides are Markdown. A newly rendered current Word edition would be a separate artifact task, not a silent replacement of historical evidence.
-
-The historical provenance audit remains relevant to unapproved financial assumptions. The approved four-role POC security replacement does not approve lending, scoring, incentive or other commercial formulas.
+The original is preserved as a [historical snapshot](../archive/task04/HISTORICAL_DOCUMENTS.md); do not use its older setup, navigation or permission instructions as current policy.

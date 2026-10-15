@@ -1,21 +1,41 @@
-# SME Finance Copilot application
+# SME Finance Copilot
 
-Start with the [repository README](../README.md) for installation and project scope, or the [documentation index](docs/README.md) for detailed guides.
+Synthetic CNY financial-management and SME-to-Bank review POC for the Shenzhen International FinTechathon. The existing Python/static-web architecture is preserved. This is not a live payment service or credit approval engine.
 
-Run commands from this directory. Migrate with `python -m copilot.auth migrate`, bootstrap only a fresh installation, then start `python -m copilot.server --host 127.0.0.1 --port 8000`. Sign in at `/login` using your own account. Bank accounts land at `/bank`; System Admin uses `/admin/security` and `/admin/users`; SME users use the existing merchant workspace.
+## Start locally
 
-Current modules: Dashboard, Merchant Transactions, Digital Payments, Cash Flow, Financing (Overview, Progression Engine, RBF Calculator, Applications), AI Financial Partner, own-business delegation/Bank authorization and platform administration. Their visibility and actions are governed by [one four-role policy](docs/SECURITY_PERMISSIONS.md).
+Use Python 3.12 from this application directory:
 
-Local `.env` automatically loads only the four LLM keys described in the [AI guide](docs/TASK03_FINANCIAL_PARTNER.md). Configure database paths, HTTPS and other server settings through process/service environment variables. Never commit `.env`, credentials, session tokens or private databases.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+# First-time source-only ZIP/clone: follow the private-password seed procedure below.
+.\.venv\Scripts\python.exe -m copilot.cny_demo verify
+.\.venv\Scripts\python.exe -m copilot.server --host 127.0.0.1 --port 8000
+```
 
-Use `python scripts/verify_four_role_workflow.py --full` for isolated regression verification. [Testing](docs/TESTING.md) covers browser verification and historical provider assessments.
+Open http://127.0.0.1:8000/login. A source-only download normally excludes initialized logs: **seed before verify/start**, using [the complete setup guide](docs/operations/local-setup.md). Existing initialized copies use their matching assigned credentials. Bootstrap is not a password reset. A preparer-specific credentials JSON file is private and not guaranteed on another machine; the supported CLI uses the seed password supplied by that recipient.
 
-The original long README is retained as a [historical snapshot](docs/history/README_before_four_role.md). It is not current security/setup guidance.
+## Modules and architecture
 
-Merchant-scoped [Transaction Settings, currency catalog and intelligent POS mapping](docs/MULTI_WORKSHEET_IMPORT.md) extend Merchant Transactions. Install runtime dependencies using `python -m pip install -r requirements.txt`; Babel supplies currency metadata and tzdata supplies portable IANA zones. Run `python scripts/run_isolated_regression.py` for backend tests with temporary startup databases and logs.
+Owner/Staff workspace: Dashboard (Overview, Sales & Payments, Business Growth, Alerts); Merchant Transactions (single, CSV/XLSX import, history, monitoring, settings); Digital Payments; Cash Flow; Financing (Overview, RBF Calculator, Applications); existing AI Financial Partner and optional Owner-only Business Stress Test. Owner also manages Bank Authorization and delegated Staff access.
 
+Bank portal: Overview, Financing Applications, Authorized Merchants, with request/financial/review/history dialog tabs. System Admin: accounts, merchant profiles and bounded security configuration, without merchant financial authority. Current simulated Bank outcomes never approve/reject or disburse financing.
 
-CNY demonstration preparation, private backup locations, verification, retirement approval and Railway setup: [CNY Demo and Railway Guide](docs/CNY_DEMO_AND_RAILWAY.md).
+The standard-library HTTP server serves the static UI, JSON API and authenticated MCP. SQLite stores identity, scoped policy and workflow/payment state; checksummed JSONL stores canonical transactions and audit/execution evidence. Active default storage is logs/shenzhen_cny_demo. Missing initialization fails closed. Shared formatting uses CNY codes and ¥ display; original foreign-currency evidence is inactive in private backups.
 
+## Documentation
 
-**Active demonstration dataset:** Shenzhen CNY, stored under `logs/shenzhen_cny_demo`. Ordinary server startup uses it by default and fails closed if it is unavailable. See [CNY deployment, backups and cutover](docs/CNY_DEMO_AND_RAILWAY.md).
+- [User guides](docs/user-guide/README.md)
+- [Canonical roles, delegation and Bank consent](docs/technical/security-permissions.md)
+- [Architecture and financial algorithms](docs/technical/README.md)
+- [Setup, environment, recovery and Railway preparation](docs/operations/README.md)
+- [Hackathon overview, six scenarios and end-to-end journey](docs/hackathon/README.md)
+- [Evidence and verification scope](docs/hackathon/evidence.md)
+- [Known limitations](docs/technical/known-limitations.md)
+- [Historical archive](docs/archive/README.md)
+- [Full documentation navigation](docs/README.md)
+
+Do not publish .env, API keys, session/reset tokens, credential files or private DB/backups. Seed code and reviewed synthetic examples can be distributed; recipients initialize their own password. General storage/hosting variables require process/service configuration; only the supported LLM/feature allowlist auto-loads from .env. Runtime dependencies are in requirements.txt. Node/Playwright are optional verification tools.
+
+Financial/security parameters are a provisional POC baseline. No live cash/bank verification, lending decisions or guaranteed forecasts. Docker build/volume permissions, secure hosting and provider availability remain separate deployment checks; nothing is deployed by this documentation consolidation.

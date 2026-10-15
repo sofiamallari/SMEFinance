@@ -1,6 +1,6 @@
 # Synthetic CNY POS reports
 
-Current access rules: [four-role permissions](../../docs/SECURITY_PERMISSIONS.md).
+Current access rules: [four-role permissions](../../docs/technical/security-permissions.md).
 
 Use any authorized CNY merchant, such as M002. All amounts are new RMB scenario values, not converted or relabeled legacy examples. CSV timestamps include UTC+08:00; native Excel dates require source timezone confirmation. Supported currency code is CNY; display is ¥.
 
@@ -14,3 +14,6 @@ Use any authorized CNY merchant, such as M002. All amounts are new RMB scenario 
 - Reconciliation example totals CNY 76.30, deliberately mismatching sidecar control 999.00; validation must reject that control.
 
 Files are not automatically imported. Use Merchant Transactions → Bulk POS Import, inspect/match columns, validate, review preview, and explicitly confirm. Never upload README or the JSON control sidecar as transaction files. CSV/XLSX use the existing validation and duplicate rules. Regenerate with `python scripts/generate_pos_demo.py`; `--output PATH` selects a separate fixture directory. No database or persistent ledger is opened by this command.
+
+
+The reconciliation control sidecar is a backend-verification fixture, not an upload file or a promise of a visible Preview reconciliation panel. Follow the [current Validate/Preview workflow](../../docs/user-guide/merchant-transactions.md).

@@ -1,35 +1,5 @@
-# Digital Payments — scenario pathways
+# Documentation moved
 
-Entry: /payment-sandbox. Use synthetic data and separately signed-in authorized role accounts. Detailed UI steps: [module guide](../7%20README_Digital_Payments.md); rules: [permissions](../../SECURITY_PERMISSIONS.md). These pathways are instructions, not new test-execution evidence or an exhaustive input enumeration.
+Use the [current maintained reference](../../user-guide/digital-payments.md).
 
-## 04-01: QR/Tap/Link lifecycle
-
-**Path:** Authorized user proposes → reviews → confirms → simulates customer completion.
-
-**Expected result / boundary:** Pending is not revenue; no real money moves.
-
-## 04-02: POS cart
-
-**Path:** Select items → review computed total → confirm QR/Tap.
-
-**Expected result / boundary:** Clear resets cart, not persisted activity.
-
-## 04-03: External wallet
-
-**Path:** Complete offered external Link channel.
-
-**Expected result / boundary:** Recorded sale does not credit the internal wallet.
-
-## 04-04: Cash/refund boundary
-
-**Path:** Use POS Cash notice or ask for linked refund UI.
-
-**Expected result / boundary:** Cash button is not a saved entry; no end-user linked-refund endpoint exists.
-
-## 04-05: Expiry/repeat/denial
-
-**Path:** Try expired request or repeated/foreign action, or Bank/admin payment request.
-
-**Expected result / boundary:** Existing confirmation/status and role checks reject unsafe writes.
-
-Capture role, authorized merchant, dates/currency, nonsecret reference, and expected versus actual outcome. Never capture passwords/tokens/provider keys. See [testing](../../TESTING.md) for recorded evidence.
+The original is preserved as a [historical snapshot](../../archive/task04/possible%20scenarios/04_Digital_Payments.md); do not use its older setup, navigation or permission instructions as current policy.
