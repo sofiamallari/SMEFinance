@@ -62,24 +62,56 @@ target. Payoff can be unavailable. These are existing demonstration parameters;
 fees are not a regulated APR disclosure and rounding is not an approved currency policy.
 
 
-## Applications: drafts and Owner confirmation
+## Financing Applications: drafts and Owner confirmation
 
-1. Owner or draft-authorized Staff opens Applications and saves a valid RBF draft with amount and scoped Bank selection.
-2. Staff can edit its own permitted drafts using Edit amount / Bank. It cannot submit; the UI and API enforce that restriction.
-3. Owner reviews/edits merchant drafts and grants current Bank authorization at `/consents` when needed. The `applications` category is required for the selected Bank.
-4. Owner selects Review submission proposal, checks exact merchant, amount, product, recipient and expiry, then explicitly confirms.
-5. Inspect the saved `SUBMITTED_FOR_LENDER_REVIEW` packet and submitted draft state. This is a simulation, not approval.
+The page heading is **Financing Applications**: “Manage your financing requests and track their review status.” The compact sandbox notice remains visible. Nothing on this page is a real credit approval, disbursement or payment.
 
-Recipient selection is explicit; the first qualifying authorization does not choose it automatically. Missing/inactive/out-of-scope recipients, stale/expired/foreign confirmations or changed drafts are rejected. Already-submitted drafts cannot be edited. Existing idempotent exact-action confirmation remains in place; uncertain outcomes require review rather than blind retries.
+1. Open **Financing → Applications** for the selected merchant. The responsive New Financing Application form supports only **Revenue-Based Financing**. Requested Amount uses the merchant currency from the existing merchant API, with readable ISO-currency formatting and a preview. Enter a positive decimal with at most two places, up to the existing draft limit of one trillion. The unchanged RBF quote/limit checks still run when proposing submission; the draft input limit is not an underwriting offer.
+2. Choose **Bank for Review** from the existing active, merchant-assigned routing list. This is **routing**, not data-access consent. A Bank is optional when saving a draft under current backend rules. If no Bank is available, the UI explains that an unassigned draft can be saved but a Bank must be selected before submission. Unavailable historical recipients are not introduced as eligible selectable options.
+3. Select **Save Draft**. Saving does not submit. Invalid/missing amounts show an accessible error without making a write request. Backend errors preserve the form/list and provide Refresh. Edit Draft opens a responsive native dialog; Cancel/Escape do not persist changes. Staff may create/edit only their own drafts with explicit delegated permissions. Staff cannot submit or fetch submitted packets.
+4. The Owner must separately grant current authorization to the selected Bank at `/consents`, including the `applications` category. The page refreshes existing capabilities when loading; unavailable submission permissions/authorization are explained rather than implying that selecting a Bank grants access. Role policy, merchant membership, current authorization and selected recipient remain backend-enforced.
+5. When available, the Owner selects **Review Submission**. The existing proposal API checks the selected Bank and RBF amount. A readable dialog shows the exact merchant, product, amount, Bank and proposal expiry. **Cancel** does not submit. **Confirm and Submit** is the explicit Owner action calling the existing session-bound confirmation endpoint. Data changes, expiry, stale drafts and authorization changes remain protected by the backend. No automatic retry or approval was introduced.
+6. Submitted packets display **Submitted for Bank Review**, mapping the actual `SUBMITTED_FOR_LENDER_REVIEW` value. `DRAFT` displays Draft; linked `SUBMITTED` draft records retain Submitted where that is the only available data. A submitted packet and its linked draft are not duplicated for the Owner. Already-submitted drafts cannot be edited or resubmitted. Staff still see only the draft data supplied for their own records.
 
-Bank sees only currently authorized packets routed to its identity through [Bank Financial Review](../BANK_FINANCIAL_REVIEW.md). No recommendation/decline/approval mutation is supported; historical review records remain. Revocation blocks subsequent protected access without deleting history.
+### Cards and View Application
 
-General financing analysis remains available to authorized AI tools. A submission request without an explicit selected Bank is directed to Applications; chat cannot grant permissions or bypass confirmation. No real funds move.
+Structured cards show Financing Type, requested amount, selected Bank label from the authorized routing response, actual status, available dates and a concise reference. Raw IDs are not primary headings. **View Application** shows the full reference, business fields, actual permitted actions, recorded submission/review events when returned, and collapsed Technical Details. The native dialog supports keyboard Escape, focus handling, a fixed heading/Close area and one scrollable body. Mobile form fields stack; identifiers and amounts wrap safely.
+
+The current draft API does **not** return creation timestamps, update timestamps or a draft event history. These display Unavailable or “No lifecycle event history is supplied”; local browser time is not fabricated as a creation date. Submitted packets expose `submitted_at`, so the UI can show that actual event. Historical review rows are read-only evidence and do not add new decision functionality or alter the current packet status. Dates use the viewer’s locale/timezone. Historical Bank labels may be unavailable if that account is no longer in the current routing list; its existing recipient ID remains in Technical Details.
+
+“No financing applications yet.” appears when the authorized response is empty, with a Create a Draft focus action only when permitted. A Refresh control reloads the existing APIs. Loading, write-in-progress and error states are accessible. Merchant changes clear the prior request context and close financial dialogs; stale responses cannot replace the newly selected merchant’s records. A refresh after a capability denial clears the protected application display. Draft creation/editing/confirmation retain existing audit mechanisms.
+
+Bank sees only currently authorized packets routed to its identity through [Bank Financial Review](../BANK_FINANCIAL_REVIEW.md). Bank cannot create/edit SME drafts or make approval/rejection decisions. System Admin gains no financial access. Revocation blocks subsequent protected access without deleting history. General authorized AI financing analysis remains separate; chat cannot grant permission or bypass confirmation.
 
 ## Technical references
 
-Existing calculation modules: `assessment.py`, `matching.py`, `rbf.py`. Scoped workflows: `bank_workflow.py`, `auth.py`, `partner_state.py`; UI: `web/index.html`.
+Existing calculation modules: `assessment.py`, `matching.py`, `rbf.py`. Scoped workflows: `bank_workflow.py`, `auth.py`, `partner_state.py`; UI: `web/index.html` and `web/financing-applications.js`. The HTTP server adds only an authenticated static asset route for that script; business APIs and calculations are unchanged.
 
 Draft APIs: GET/POST `/api/financing-drafts`, PATCH `/api/financing-drafts/<id>`, POST `/api/financing-drafts/<id>/propose`. Supply `merchant` and the supported `draft` body for create/edit. Owner confirmation uses POST `/api/partner/actions/confirm` with merchant, action_id and confirmed:true. Submitted packets use GET `/api/applications`; Staff use drafts, not this submitted-packet API. Legacy POST `/api/applications/<id>/review` is denied.
 
 [End-to-end demo](../SECURITY_SME_BANK_WORKFLOW.md) · [Progression guide](10%20README_Progression_Engine.md) · [Tests](../TESTING.md) · [Limits](../KNOWN_LIMITATIONS.md).
+
+## UI verification and change inventory
+
+Application files: `web/index.html` (heading, form/card/dialog styles, merchant-context hooks), `web/financing-applications.js` (dedicated presentation/controller), and `copilot/server.py` (serve the new static asset only). Tests: `scripts/verify_financing_applications.cjs` and existing `scripts/verify_four_role_browser.cjs` adapted to the readable HTML confirmation. No dependency, migration, financial formula, permission or new financing endpoint.
+
+Run `node scripts/verify_financing_applications.cjs` with Playwright and installed Edge; configure `COPILOT_PLAYWRIGHT_MODULE` / `COPILOT_TEST_PYTHON` for custom runtimes. It uses the existing disposable four-role fixture on port 8126, so run browser scripts sequentially. Full backend verification uses `python scripts/run_isolated_regression.py`; set `COPILOT_BAO_WORKBOOK` for the actual workbook test. Evidence/screenshots are stored under `evidence/financing-applications/`. Persistent demo financial records are not modified.
+
+Remaining limitations: no real lending decisions/funds, no new products, no draft timestamp/history fields beyond the current API, no invented missing Bank labels, and no inferred approval timeline. Draft amounts use the merchant currency supplied by the existing API; no FX or currency migration is performed.
+
+### Financing Applications redesign — final executed results
+
+Branch `feature/security-sme-bank-workflow`; baseline HEAD `7e36f57fd89bd1b5aa7528d8ed9a2b3258a09846`. Existing Transaction Settings, currency, report-profile and monitoring work is preserved. No commit, push, merge, reset or discard.
+
+| Verification | Result |
+|---|---|
+| Full isolated backend regression with actual Bao workbook enabled | PASS — 346 tests, 0 failures, 0 errors, 0 skips |
+| New Financing Applications browser suite | PASS — 62 checks |
+| Existing four-role end-to-end browser workflow | PASS — provisioning, delegation, Owner authorization, Staff drafts, explicit submission, Bank review/charts/CSV/AI, revocation and isolation |
+| Python compilation, new JavaScript syntax, Git whitespace checks | PASS |
+
+The new browser checks cover five invalid amount cases without writes, ISO-currency formatting, exact routing choices, no submission on save/cancel, editing/cancelling, missing authorization, readable details, no invented dates/events, explicit Owner confirmation, unchanged packet amount/status, linked-draft deduplication, Staff/Bank backend denials, foreign-merchant denial, empty Bank routing, backend failures and no JavaScript errors. Screenshots and fit/no-overflow checks cover desktop 1600px, tablet 900px, mobile 390px and 320px. All accounts, consent grants, drafts, packets and financial records are disposable fixture data; production/demo records are untouched.
+
+API reuse: GET `/api/capabilities` supplies live merchant permissions; GET/POST `/api/financing-drafts` and PATCH `/api/financing-drafts/<id>` handle scoped records and allowed Bank options; GET `/api/applications` supplies Owner-visible submitted packets; POST `/api/financing-drafts/<id>/propose` and POST `/api/partner/actions/confirm` preserve proposal/explicit-confirmation safeguards. Bank authorization continues through the existing `/consents` workflow. The only server change is serving `/assets/financing-applications.js`; restart the local Python server after updating that handler. No financing/RBF calculation or backend authorization logic changed.
+
+Current evidence is in `evidence/financing-applications/assessment.json` and the responsive PNGs, with the full backend result copied into `evidence/financing-applications/backend-assessment.json`. No required check remains failed. Real deployment, external Gemini connectivity and real Bank credit decisions were NOT EXECUTED in this UI task.

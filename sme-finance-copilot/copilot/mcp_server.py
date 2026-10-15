@@ -197,6 +197,8 @@ def handle_http(mcp: MCPHandler, headers, raw: bytes):
 
 # ------------------------------------------------------------------ stdio
 def run_stdio(copilot):
+    from copilot.demo_environment import configure_storage
+    configure_storage()
     from copilot.auth import AuthStore
     from copilot.modules.transactions import TransactionStore
     auth = AuthStore(os.environ.get('COPILOT_IDENTITY_DB','logs/identity.sqlite3'),copilot.merchants)
@@ -223,6 +225,8 @@ def run_stdio(copilot):
 
 
 def main():
+    from copilot.demo_environment import configure_storage
+    dataset_root=configure_storage()
     ap = argparse.ArgumentParser(description="SME Finance Copilot MCP server")
     ap.add_argument("--http", action="store_true", help="serve Streamable HTTP at /mcp instead of stdio")
     ap.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
@@ -235,7 +239,7 @@ def main():
         server.main()
         return
     from copilot.agent import Copilot
-    log_dir = os.environ.get("COPILOT_LOG_DIR", "logs")
+    log_dir = str(dataset_root) if dataset_root else os.environ.get("COPILOT_LOG_DIR", "logs")
     run_stdio(Copilot(audit_path=os.path.join(log_dir, "mcp_audit.jsonl"),
                       exec_path=os.path.join(log_dir, "mcp_execution.jsonl")))
 

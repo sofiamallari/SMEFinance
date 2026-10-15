@@ -1,3 +1,5 @@
+> Historical implementation reference. The current three-menu portal and simulated review workflow are documented in [Bank Review Portal](BANK_REVIEW_PORTAL.md); earlier six-menu, read-only-only and Bank AI descriptions below are superseded.
+
 # Bank Financial Review Portal
 
 Sign in as **Bank**; `/` redirects to `/bank`. The portal is a read-only simulated review, not underwriting, approval or funds movement. [Security and permissions](SECURITY_PERMISSIONS.md) is the canonical policy reference. No financial formulas, scores, role bounds or consent categories were changed by the portal redesign.

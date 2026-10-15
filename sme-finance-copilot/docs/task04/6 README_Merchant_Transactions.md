@@ -1,6 +1,6 @@
 # Merchant Transactions User Guide
 
-For merchant Transaction Settings, currency metadata and eligibility, confirmed mapping templates, worksheet selection, mapping, pagination and financial limitations, see [Multi-worksheet import](../MULTI_WORKSHEET_IMPORT.md).
+For Revenue/Expense report profiles, unified type/payment controls, merchant Transaction Settings, confirmed mapping templates, worksheet selection, pagination and financial limitations, see [Multi-worksheet import](../MULTI_WORKSHEET_IMPORT.md).
 
 Current access rules: [four-role permissions](../SECURITY_PERMISSIONS.md). These user instructions use the current baseline; earlier dated results remain historical.
 

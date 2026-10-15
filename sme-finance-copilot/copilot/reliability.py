@@ -103,6 +103,7 @@ def domain(text):
     if re.search(r'\b(milestone|incentive|tier|reward)\b',t):return 'incentive'
     if re.search(r'\b(report)\b',t):return 'report'
     if re.search(r'\b(alerts?|risks?|warnings?)\b',t):return 'cashflow'
+    if re.search(r'digital capture|payment.method.*(?:breakdown|mix)|payment mix',t):return 'sales'
     if re.search(r'\b(sales|revenue|income|profits?|expenses?|refund|transactions?|dashboard|declin|growth|last month|this month)\b',t):return 'sales'
     if re.search(r'\b(rbf|advance|borrow|repay)\b',t):return 'rbf'
     if re.search(r'\b(financ\w*|loan|readiness|equipment|capital)\b',t):return 'financing'

@@ -1,0 +1,9 @@
+{
+  "tests_run": 7,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "seconds": 8.199,
+  "pattern": "test_dashboard_binding.py",
+  "isolated": true
+}

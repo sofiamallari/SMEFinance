@@ -194,4 +194,6 @@ def build_merchant(p: dict, as_of: date = AS_OF, days: int = HISTORY_DAYS) -> Me
 
 
 def load_all(as_of: date = AS_OF) -> dict[str, Merchant]:
+    from copilot.demo_environment import selected, merchants
+    if selected():return merchants(as_of)
     return {p["merchant_id"]: build_merchant(p, as_of) for p in PERSONAS}

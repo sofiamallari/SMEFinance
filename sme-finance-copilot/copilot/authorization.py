@@ -13,11 +13,12 @@ POLICY={
  'SYSTEM_ADMIN':{'manage_users','manage_staff_accounts','view_account_audit','manage_security','view_security_audit'},
  'SME_OWNER':OPERATIONAL|FINANCIAL|{'manage_transactions','manage_consents','request_staff_access','manage_merchant_staff','view_merchant_audit','create_financing_draft','edit_financing_draft','acknowledge_quality_alerts','resolve_quality_alerts'},
  'SME_STAFF':STAFF_ACTIONS,
- 'BANK':{'view_reports','view_assessment','view_forecasts','view_financing','view_financing_data','view_applications','use_copilot','view_bank_review','export_bank_review','view_bank_audit'},
+ 'BANK':{'record_bank_review','view_reports','view_assessment','view_forecasts','view_financing','view_financing_data','view_applications','use_copilot','view_bank_review','export_bank_review','view_bank_audit'},
 }
 BOUNDARIES={alias:POLICY[canonical] for alias,canonical in AUTHORITATIVE_ROLES.items()}
 DEFAULTS={role:set(actions) for role,actions in BOUNDARIES.items()}
 TOOL_ACTIONS = {
+    'transaction_settings_read':'use_copilot','staff_delegation_read':'manage_merchant_staff','bank_authorization_read':'manage_consents','financing_applications_read':'view_applications',
     'financing_journey':'view_financing',
     'data_quality':'view_quality_monitoring','latest_payment':'simulate_payments','application_status':'view_applications',
     'get_dashboard':'view_dashboard','financial_report':'view_reports','assess_business':'view_assessment',

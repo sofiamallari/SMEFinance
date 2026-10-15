@@ -18,7 +18,7 @@ STATUSES={'completed':'completed','paid':'completed','success':'completed','appr
           'void':'voided','voided':'voided','cancelled':'voided','canceled':'voided'}
 METHODS={'cash':'cash','card':'external_card','credit card':'external_card','debit card':'external_card',
          'external_card':'external_card','wallet':'external_wallet','e-wallet':'external_wallet','external_wallet':'external_wallet',
-         'qr':'qr_pay','qr pay':'qr_pay','qr_pay':'qr_pay','tap':'tap_pay','tap_pay':'tap_pay','pay link':'pay_link','pay_link':'pay_link'}
+         'qr':'qr_pay','qr pay':'qr_pay','qr_pay':'qr_pay','tap':'tap_pay','tap_pay':'tap_pay','tap-to-pay':'tap_pay','tap pay':'tap_pay','tap to pay':'tap_pay','pay link':'pay_link','pay_link':'pay_link'}
 OFFSETS={'CN':'+08:00','PH':'+08:00','MY':'+08:00','SG':'+08:00','ID':'+07:00','TH':'+07:00','VN':'+07:00'}
 ALIASES={
  'transaction_date':['date','datetime','timestamp','sale date','expense date','transaction date','sale_date','transaction_date'],
@@ -30,7 +30,7 @@ ALIASES={
  'payment_method':['channel','payment method','payment_method','tender type','tender_type','payment type'],
  'status':['status','transaction status','transaction_status'],
  'external_reference':['reference','reference number','external_reference','receipt no.','receipt no','receipt_no','receipt number','invoice id','transaction id','transaction_id','pos id','expense id'],
- 'description':['description','memo','details','notes'], 'category':['category','expense category']}
+ 'description':['description','memo','details','notes','description / vendor','vendor description'], 'category':['category','expense category']}
 
 class RowError(InputError):
     def __init__(self,field,message,correction='Correct the source value or mapping and validate again.'):
@@ -97,7 +97,9 @@ def normalize(values,merchant,settings,now,strict=True):
     if not isinstance(values,dict) or (strict and set(values)-FIELDS):raise RowError('record','Unsupported or protected transaction fields')
     for field in REQUIRED:
         if values.get(field) in (None,''):raise RowError(field,f'{field} is required')
-    currency=str(values['currency']).strip().upper()
+    from copilot.currency_policy import normalize_source
+    try:currency=normalize_source(values['currency'],settings.get('review',{}).get('currency_confirmed') is True or settings.get('source_currency_hints')==['CNY'])
+    except ValueError as error:raise RowError('currency',str(error)) from None
     if currency not in IMPORT_CURRENCIES or currency!=merchant.currency:raise RowError('currency','Currency must match this merchant; currency conversion is not supported')
     kind=TYPES.get(str(values['transaction_type']).strip().lower())
     status=STATUSES.get(str(values['status']).strip().lower())

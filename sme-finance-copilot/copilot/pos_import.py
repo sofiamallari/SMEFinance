@@ -9,7 +9,7 @@ from decimal import Decimal
 from statistics import median
 from copilot.auth import AuthError,InputError,digest
 from copilot.security import Principal,AccessDenied
-from copilot.canonical_transactions import FIELDS,REQUIRED,normalize,fingerprint,money,zone,safe_text,ALIASES
+from copilot.canonical_transactions import FIELDS,REQUIRED,normalize,fingerprint,money,zone,safe_text,ALIASES,RowError
 from copilot.pos_extract import extract_files,MAX_ROWS
 from copilot.transaction_journal import TransactionJournal,LedgerError,checksum
 
@@ -145,10 +145,18 @@ class POSImportService:
             return result
 
     def _mapping(self,file,mapping):
-        if not isinstance(mapping,dict) or set(mapping)-{'columns','defaults','timezone','date_format','control_totals','report_kind','payment_method_values','review','template'}:raise InputError('Unsupported mapping fields')
+        if not isinstance(mapping,dict) or set(mapping)-{'columns','defaults','timezone','date_format','control_totals','report_kind','payment_method_values','review','template','profile'}:raise InputError('Unsupported mapping fields')
         columns=mapping.get('columns',{});defaults=mapping.get('defaults',{})
+        if not isinstance(columns,dict) or not isinstance(defaults,dict):raise InputError('Columns and defaults must be mapping objects')
         review=mapping.get('review',{})
-        if not isinstance(review,dict) or set(review)-{'type_confirmed','amount_confirmed','currency_confirmed'} or any(type(v) is not bool for v in review.values()):raise InputError('Invalid mapping review confirmations')
+        if not isinstance(review,dict) or set(review)-{'type_confirmed','amount_confirmed','currency_confirmed','payment_method_confirmed'} or any(type(v) is not bool for v in review.values()):raise InputError('Invalid mapping review confirmations')
+        profile=mapping.get('profile')
+        if profile is not None:
+            if not isinstance(profile,dict) or set(profile)!={'kind','confirmed'} or profile.get('kind') not in ('revenue','expense') or profile.get('confirmed') is not True:raise InputError('Choose and explicitly confirm the report profile')
+            if 'transaction_type' not in columns:
+                permitted=('sale','refund','reversal') if profile['kind']=='revenue' else ('expense',)
+                if defaults.get('transaction_type') not in permitted:raise InputError('Worksheet default transaction type conflicts with the selected report profile')
+            if 'payment_method' not in columns and review.get('payment_method_confirmed') is not True:raise InputError('Missing source payment method: explicitly verify a worksheet payment method from trustworthy records')
         if 'transaction_type' not in columns and review.get('type_confirmed') is not True:raise InputError('Explicitly confirm the worksheet transaction type default')
         ambiguous=any(re.sub(r'\s*\([^)]*\)\s*$','',str(columns.get(k,'')).strip().casefold())=='amount' for k in ('net_amount','gross_amount'))
         if ambiguous and review.get('amount_confirmed') is not True:raise InputError('Confirm whether Amount represents net or gross before validation')
@@ -217,7 +225,8 @@ class POSImportService:
                         try:
                             values={field:raw['values'][header] for field,header in columns.items()};values={**defaults,**values}
                             if values.get('payment_method') in mapping.get('payment_method_values',{}):values['payment_method']=mapping['payment_method_values'][values['payment_method']]
-                            row=normalize(values,self.store.copilot.merchants[mid],{**mapping,'merchant_timezone':merchant_settings['timezone']},now)
+                            row=normalize(values,self.store.copilot.merchants[mid],{**mapping,'merchant_timezone':merchant_settings['timezone'],'source_currency_hints':file.get('currency_hints',[])},now)
+                            if mapping.get('profile') and ((mapping['profile']['kind']=='expense' and row['transaction_type']!='expense') or (mapping['profile']['kind']=='revenue' and row['transaction_type']=='expense')):raise RowError('transaction_type','Source transaction type conflicts with the selected report profile; correct the profile or split mixed revenue/expense sources')
                             row.update(transaction_id='TX-'+bid+'-'+str(ordinal),merchant_id=mid,source='pos_'+file['format'],
                                 import_batch_id=bid,source_filename=file['filename'],source_file_hash=file['sha256'],source_row_number=raw['row'],source_file_id=file['file_id'],source_worksheet=file.get('worksheet'),source_workbook_hash=file.get('workbook_hash'),source_values=raw['values'],
                                 mapping_version=version,created_by=actor.user_id,created_at=utc(now))
@@ -457,6 +466,7 @@ class POSImportService:
             invalid=sum(m.get('invalid_rows',0) for m in measured);duplicates=sum(m.get('duplicate_rows',0) for m in measured)
             alerts=[dict(r) for r in db.execute('SELECT * FROM quality_alerts WHERE merchant_id=? ORDER BY detected_at DESC',(mid,))]
             open_count=sum(a['state']!='resolved' for a in alerts)
+            attention=[a for a in alerts if a['state']!='resolved'][:5]
             for field in ('severity','state'):
                 if filters.get(field):alerts=[a for a in alerts if a[field]==filters[field]]
             for key in ('start','end'):
@@ -471,7 +481,13 @@ class POSImportService:
                 'duplicate_rate':duplicates/parsed if parsed else None,'reconciliation_failures':sum(m.get('reconciliation_failures',0) for m in measured),
                 'open_alerts':open_count,'last_successful_import':utc(successes[0]['completed_at']) if successes else None,
                 'formula':'Rates use latest validation of each retained POS run; valid=eligible+exact duplicates; parsed=eligible+duplicates+invalid. Unresolved=open+acknowledged.'}
-            return {'summary':summary,'runs':[self._run_public(r) for r in runs[:100]],'alerts':alerts[:100],'rules':RULES,'evaluated_at':utc(self.auth.clock())}
+            run_offset=int(filters.get('run_offset',0));run_limit=int(filters.get('run_limit',100))
+            alert_offset=int(filters.get('alert_offset',0));alert_limit=int(filters.get('alert_limit',100))
+            if min(run_offset,alert_offset)<0 or not 1<=run_limit<=100 or not 1<=alert_limit<=100:raise InputError('Invalid monitoring pagination')
+            run_offset=min(run_offset,max(0,(len(runs)-1)//run_limit)*run_limit)
+            alert_offset=min(alert_offset,max(0,(len(alerts)-1)//alert_limit)*alert_limit)
+            return {'summary':summary,'runs':[self._run_public(r) for r in runs[run_offset:run_offset+run_limit]],'alerts':alerts[alert_offset:alert_offset+alert_limit],
+                    'run_total':len(runs),'alert_total':len(alerts),'run_offset':run_offset,'alert_offset':alert_offset,'attention':attention,'rules':RULES,'evaluated_at':utc(self.auth.clock())}
 
     def run_details(self,token,mid,bid):
         with self.auth.db() as db:

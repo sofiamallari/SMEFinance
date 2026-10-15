@@ -42,3 +42,9 @@ Run browser scripts sequentially because both disposable fixtures use localhost 
 ## Transaction settings and intelligent import
 
 Use `python scripts/run_isolated_regression.py` (optional `--pattern test_transaction_settings.py` or `--pattern test_worksheet_detection.py`). Set `COPILOT_BAO_WORKBOOK` to run the supplied-workbook checks. Run `node scripts/verify_transaction_settings_ui.cjs`, `node scripts/verify_detection_review.cjs` and `node scripts/verify_multi_worksheet_ui.cjs` sequentially against their disposable fixtures. See [module behavior and safeguards](MULTI_WORKSHEET_IMPORT.md) for dependencies, API confirmations and limitations; actual recorded results are under `evidence/transaction-settings/`.
+
+Data Quality redesign: `node scripts/verify_quality_dashboard.cjs` verifies the four tabs, lifecycle-aware Import Summary, filters, explicit acknowledgment, evidence-only rules, role boundaries and responsive layouts using disposable fixtures. See [monitoring guide](HISTORY_MONITORING_UI.md).
+
+Report profiles: `python scripts/run_isolated_regression.py --pattern test_report_profiles.py` and `node scripts/verify_report_profiles.cjs` check column/value-based suggestions, independent confirmations, unified controls, missing-method blocking, fee/subcategory provenance and exact signed totals in disposable fixtures. The existing real-workbook browser test covers combined Revenue/Expense worksheets.
+
+Financing Applications: `node scripts/verify_financing_applications.cjs` exercises amounts, routing versus consent, draft/edit/cancel, explicit Owner submission, Staff/Bank denials, lifecycle accuracy, merchant scope and responsive layouts against disposable fixtures. `node scripts/verify_four_role_browser.cjs` verifies the existing end-to-end role workflow. See [Financing guide](task04/9%20README_Financing.md).

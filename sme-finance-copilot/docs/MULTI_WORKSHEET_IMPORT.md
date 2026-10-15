@@ -109,13 +109,35 @@ Single Transaction loads the base currency (not independently editable), timezon
 
 Explicit currency declarations or row values conflicting with the merchant are blocked. Symbols such as ¥ and $ are not definitive currency evidence; symbol-only evidence requires explicit confirmation. No FX, multi-currency aggregation, automatic conversion or historical relabeling is performed. Source detection uses bounded worksheet metadata/sample text and headers; mapped currency values are validated for every transaction. It is assistance, not a guarantee that arbitrary prose or every currency symbol is recognized.
 
-## Assisted mapping and confirmed templates
+## Revenue and Expense report profiles — current mapping workflow
 
-Five primary mappings remain visible: Transaction Date/Time, Net Transaction Amount (or map Gross under Additional Fields), Transaction Type, Payment Method, and Transaction Reference. Safe aliases include Expense Date, Expense ID, Payment Type, Details and Expense Category, and currency suffixes on clear Net/Gross headers. When an explicit net column and a processing/transaction/service fee column coexist, suggestions leave gross and its adjustments unmapped to avoid assuming an unsupported fee accounting treatment. Those source values remain in provenance and can still be mapped explicitly for strict validation. Generic Amount is deliberately not silently mapped as net; selecting it requires an explicit net/gross meaning confirmation. Defaults for transaction type must be chosen and confirmed when no type column exists; a worksheet name does not approve a default.
+For each selected worksheet, mapping now has four sections: **A. Report Type**, **B. Detected Column Mapping**, **C. Add or Adjust Fields** (collapsed), and **D. Import Settings & Reconciliation** (collapsed). The two-column table presents Application Field versus Excel Column / Worksheet Value, with actual source examples and Change Mapping buttons. Change Mapping opens the adjustment section and focuses the corresponding field. Existing optional canonical mappings remain available; unmapped source values stay in provenance.
 
-**Additional Fields** is initially collapsed and retains Gross, Discounts, Tax, Refund Component, Settlement, Category, Description and Status. **Import Settings & Reconciliation** is initially collapsed and retains source currency, timezone, source parsing format, translations, optional independent control totals and mapping/template controls. Source currency remains visible in the mapping summary. Filled controls alone do not mark a worksheet backend-validated: Needs Review remains until validation succeeds. Changing mappings invalidates the visible validation/commit state.
+### Profile suggestions and confirmation
 
-After successful validation, an Owner may name and save a confirmed worksheet mapping template before committing. Templates are merchant-scoped, append-versioned and tied to the exact ordered source headers. Apply a compatible template explicitly on a future source and confirm its financial meaning again. Revenue and Expense meanings are not inferred from column similarity. Independently reported control totals are excluded from templates and remain specific to each source. API updates to an existing template require its expected version; the UI currently creates/lists/applies templates, without a rename/delete/version-history editor. Latest templates are listed, at most 50 identities per merchant. Template writes are audited as `transaction_mapping_template_saved`.
+The backend suggests Revenue Report or Expense Report using recognized column structure and sampled source transaction-type values. It never uses a worksheet/file name alone. Multiple expense indicators (date/ID/category/subcategory/description) distinguish expense sources; revenue indicators include date/ID/net/gross/fee structure. Supported source type values can establish a candidate; mixed or uncertain types produce no automatic classification. These are bounded suggestions, not proof of every row’s meaning, and **no report profile is automatically confirmed**. Owners can correct the profile and must confirm it independently for each worksheet.
+
+A profile suggests a worksheet type only when there is no mapped transaction-type column: Sale for Revenue, Expense for Expense. Changing the profile clears its confirmation and the type-default confirmation, and discards a previously applied template identity; it does not rewrite source values. A mapped source transaction-type column remains authoritative, preserving existing Sale/Expense/Refund/Reversal semantics. Mixed Revenue/Expense source types are not automatically classified. In profile-aware imports, conflicting rows block the batch: separate revenue and expenses into compatible sources, or correct the profile/mapping using verified source meaning. No source type is silently rewritten. Previously supported unprofiled API imports retain their existing mixed-type handling. Defaults supplied with profile metadata must match the chosen meaning: Expense uses Expense; Revenue supports Sale/Refund/Reversal under existing canonical rules.
+
+### One control per business concept
+
+Transaction Type and Payment Method each have **one** select. Its grouped options choose either a source column or an explicit verified worksheet value. There is no second Default Transaction Type or Default Payment Method control. Transaction ID maps External Reference and remains recommended rather than newly mandatory. The existing duplicate/reference validation still applies.
+
+Revenue proposals prefer an explicit Net Amount, date, reference and payment column. Gross is never substituted for Net automatically. With a processing/transaction/service fee column, gross and adjustment fields remain unmapped by default because the existing canonical formula has no fee field. Users can map approved fields explicitly under adjustments; strict gross/net validation still applies.
+
+Expense proposals recognize Expense ID/Date, Category, Description / Vendor and a unique generic Amount column. Generic Amount is only a **tentative net proposal** that requires explicit net/gross confirmation; users can change its meaning under adjustments. Category is never suggested as Transaction Type. Subcategory has no canonical field and remains provenance. Original vendor/description text is retained, subject to existing source/text validation.
+
+Missing payment methods show an explicit import blocker. The application never guesses Cash or adds Unknown. If trustworthy external records establish one method for the worksheet, the single Payment Method select can use that canonical value, with a separate explicit source-verification confirmation. Selecting Cash alone does not resolve the blocker. The Bao expense acceptance fixture uses synthetic Cash only to exercise the pipeline; this is not evidence of actual Bao expense payment methods.
+
+### Fields, settings and templates
+
+The table shows the five shared concepts and, for Expense, relevant Category/Description mappings. Add or Adjust Fields exposes corrections and optional Gross, Discounts, Taxes, Refund Component, Settlement, Category, Description and Status. Arbitrary custom calculation fields cannot be added. Processing fees and unsupported extra columns stay original provenance. Changing financial mappings invalidates the visible validation/commit state; status remains Incomplete or Needs Review until requirements and backend validation are satisfied.
+
+Import Settings & Reconciliation retains source currency-column mapping, merchant currency default, timezone, source parsing format, confirmed payment translations, optional independently reported controls and mapping templates. Source currency evidence and merchant base remain distinct and visible. Date display preference is shown separately from source date parsing. No FX conversion is performed. The merchant’s settings remain initial defaults rather than source evidence.
+
+Templates are saved only from successfully validated mappings before commit. They remain merchant-scoped, append-versioned, tied to exact ordered headers, and exclude independent control totals. Explicit application requires fresh profile/financial confirmations. A template’s recorded Revenue/Expense meaning must match the selected profile before applying; the backend also protects its source columns and transaction meaning. No template is automatically applied across worksheets. Existing unprofiled templates are retained and require explicit review. UI creates/lists/applies templates; rename/delete/version-history editing is not implemented. Verified translation reuse is restricted to already identical mappings, defaults, headers and report profiles and does not copy independent confirmations or controls.
+
+Each worksheet keeps independent profile, mapping, source settings, confirmations and reconciliation. Combined validation/preview, cross-file/cross-sheet/history duplicate checks, signed staging, audit records, preview tokens and atomic confirmed commit remain unchanged.
 
 ## Persistence and API reference
 
@@ -129,7 +151,7 @@ Additive migration `008_transaction_settings.sql` adds `merchant_transaction_set
 | GET | `/api/merchant-transactions/templates?merchant=ID` | Latest merchant templates |
 | POST | `/api/merchant-transactions/templates` | `{merchant, template:{name,batch_id,file_id,confirmed:true}}`; validated session and Owner required; optional `template_id`/`expected_version` updates |
 
-The existing POS validate endpoint now accepts `review.type_confirmed`, `review.amount_confirmed`, and `review.currency_confirmed` booleans when their conditions apply. It does not accept absent confirmation for a default type or generic Amount meaning. Existing integrations must send genuine confirmations rather than blanket defaults. Template selection uses `{id,version}` and validates exact headers and unchanged type meaning on the backend. Existing preview-token, duplicate, reconciliation and atomic commit checks remain active.
+The existing POS validate endpoint accepts `review.type_confirmed`, `review.amount_confirmed`, `review.currency_confirmed`, and `review.payment_method_confirmed` booleans when applicable. The redesigned UI also sends `profile: {kind: "revenue" | "expense", confirmed: true}`. Profile-aware requests require confirmation, compatible worksheet type defaults, and verified constant payment methods. Previously supported unprofiled API mappings remain valid under their existing checks; canonical transaction records are unchanged. It does not accept absent confirmation for a default type or generic Amount meaning. Existing integrations must send genuine confirmations rather than blanket defaults. Template selection uses `{id,version}` and validates exact headers and unchanged type meaning on the backend. Existing preview-token, duplicate, reconciliation and atomic commit checks remain active.
 
 ## Financial boundaries and pending decisions
 
@@ -176,3 +198,33 @@ Feature implementation inventory (all paths relative to the application director
 - Recorded backend/browser JSON and responsive PNGs: `evidence/transaction-settings/`, `evidence/worksheet-detection/`, and `evidence/multi-worksheet-import/`.
 
 Remaining business decision: Unknown/Not Provided payment-method accounting and digital-capture interpretation are **not implemented, pending approval**. Historical currency migration, additional currency processing/simulator rules, and new processing-fee accounting are likewise not introduced. There are no remaining failed required tests in the final recorded run. Live deployment and provider/Gemini connectivity were NOT EXECUTED; they are outside this continuation's verification scope.
+
+## Report-profile change inventory
+
+Added `copilot/report_profiles.py` (deterministic suggestions), `tests/test_report_profiles.py` and `scripts/verify_report_profiles.cjs`. Modified `copilot/pos_extract.py` to include advisory `profile_suggestion` source metadata, `copilot/pos_import.py` to validate optional profile/confirmation metadata and malformed mapping objects, and `copilot/canonical_transactions.py` to recognize Description / Vendor aliases. Profile-aware requests additionally reject canonical Expense rows in Revenue profiles and non-Expense rows in Expense profiles. No monetary formula, fingerprint, canonical field, role permission, journal format or endpoint was changed. No dependency or database migration was added.
+
+UI changes are in `web/transaction-settings.js` (report-profile renderer, unified controls, mapping capture and template safeguards), `web/merchant-transactions.js` (entry points reuse the renderer) and `web/index.html` (responsive mapping table). The recently completed monitoring redesign is preserved. Existing settings, detection and multi-worksheet browser tests were adapted to the new explicit profile controls; evidence is under `evidence/report-profiles/` and the existing settings/import/detection evidence folders.
+
+Run `python scripts/run_isolated_regression.py --pattern test_report_profiles.py` for focused tests and `node scripts/verify_report_profiles.cjs` for browser checks. The normal full regression and actual Bao workbook commands above still apply. Browser scripts must run sequentially against temporary fixtures on port 8126. No persistent merchant data is modified.
+
+### Report-profile acceptance record — 15 October 2026
+
+Branch `feature/security-sme-bank-workflow`, baseline HEAD `7e36f57fd89bd1b5aa7528d8ed9a2b3258a09846`. Existing monitoring/settings/currency work and unrelated root README/ZIP changes were preserved. Changes remain uncommitted; no push, merge, reset or discard.
+
+| Actual executed verification | Result |
+|---|---|
+| Final isolated full backend regression, actual Bao workbook enabled | PASS — 346 tests, 0 failures, 0 errors, 0 skipped |
+| Focused report-profile tests | PASS — 14 tests, included in full regression |
+| New report-profile browser suite | PASS — 48 checks |
+| Actual Bao Revenue/Expense worksheet browser regression | PASS — 33 checks, 5,620 records |
+| Existing merchant settings browser regression | PASS — 45 checks |
+| Existing automatic detection/review browser regression | PASS — 18 checks |
+| Preserved monitoring-dashboard browser regression | PASS — 75 checks |
+| Python compilation, application JavaScript syntax, Git whitespace | PASS |
+| Updated module/index/testing/user-guide local links | PASS — 56 links, 0 broken |
+
+The new browser suite covers profile evidence independent of filenames, ambiguous profile selection, one type/method control each, collapsed adjustments/settings, actual examples, correction/focus behavior, independent mappings and confirmations, missing-method blocking, generic Amount review, extra-field provenance, and responsive Revenue/Expense screenshots at 1600/900/390/320px. Fixture totals verify 98 revenue minus 40 expense = 58 with no second fee subtraction. Source processing fee, Subcategory and exact vendor description are checked after a real temporary-journal commit. Backend tests additionally reject profile/type conflicts, missing/unverified methods, unconfirmed profiles and malformed mapping objects, while preserving legacy unprofiled imports.
+
+No new dependency, migration, permission, canonical accounting field or API endpoint. Existing inspect/stage responses add `profile_suggestion`; validate requests may include optional `profile` and `review.payment_method_confirmed`. Profile information is retained in existing signed source/mapping/session storage and audit workflows. No persistent demo financial records were modified.
+
+Remaining business decisions: Unknown/Not Provided payment-method analytics, canonical processing-fee accounting and a canonical Subcategory field are not introduced. Real expense sources with missing methods require trustworthy payment information; synthetic Cash in acceptance tests is explicitly a fixture assumption. Mixed revenue/expense records must be separated for profile-aware imports; legacy unprofiled API behavior is preserved. No deployment or external Gemini verification was executed in this mapping task.

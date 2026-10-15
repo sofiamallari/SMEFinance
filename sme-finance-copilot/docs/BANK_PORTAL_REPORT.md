@@ -1,3 +1,5 @@
+> Historical implementation reference. The current three-menu portal and simulated review workflow are documented in [Bank Review Portal](BANK_REVIEW_PORTAL.md); earlier six-menu, read-only-only and Bank AI descriptions below are superseded.
+
 # Modular Bank portal — delivery and verification
 
 Repository: `C:\Users\User\source\repos\SMEFinance`  

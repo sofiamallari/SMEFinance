@@ -65,6 +65,7 @@ class AuthStore:
         Path(self.path).parent.mkdir(parents=True,exist_ok=True)
         self.dummy_hash = password_hash(secrets.token_urlsafe(24))
         self.migrate()
+        with self.db() as db:self.merchants.update(row[0] for row in db.execute("SELECT merchant_id FROM merchant_profiles"))
         from copilot.security_configuration import SecurityConfiguration
         self.security_config = SecurityConfiguration(self)
 
@@ -282,6 +283,8 @@ class AuthStore:
         if reauth and self.clock()-row['reauthenticated_at']>self.policies(db)['admin_reauth_window']:
             raise AccessDenied('Administrator reauthentication required')
         if merchant is not None:
+            inactive=db.execute("SELECT 1 FROM merchant_profiles WHERE merchant_id=? AND status='inactive'",(merchant,)).fetchone()
+            if inactive:raise AccessDenied('Merchant is inactive')
             if merchant not in self.merchants or not db.execute('SELECT 1 FROM memberships WHERE user_id=? AND merchant_id=?',(row['user_id'],merchant)).fetchone():
                 raise AccessDenied('Merchant access denied')
             if role in ('lender_analyst','coach'):
@@ -565,35 +568,21 @@ class AuthStore:
                     try:self._authorize(db,token,'view_assessment',mid)
                     except AccessDenied:packet={k:v for k,v in packet.items() if k not in ('scores','stage')}
                 packet['submitted_at']=row['created_at']
-                packet['reviews']=[dict(x) for x in db.execute('SELECT outcome,note,created_at FROM application_reviews WHERE application_id=?',(row['application_id'],))]
+                packet['reviews']=self.application_reviews(db,row['application_id'])
                 result.append(packet)
             return result
 
     def review_application(self,token,aid,body):
-        raise AccessDenied('Bank review is read-only; financing decisions are not supported')
-        with self.db() as db:
-            row=db.execute('SELECT * FROM applications WHERE application_id=?',(aid,)).fetchone()
-            if not row:raise InputError('Application not found',404)
-            self.authorize(token,'review_application',row['merchant_id']);p=self.principal(token)
-            if row['recipient_id']!=p.user_id:raise AccessDenied('Application is not assigned to this agent')
-            outcome=body.get('outcome')
-            if outcome not in ('request_information','sandbox_recommended','sandbox_declined'):raise InputError('Invalid simulated review outcome')
-            note=str(body.get('note','')).strip()
-            if not 1<=len(note)<=1000:raise InputError('Review note required (max 1000 characters)')
-            db.execute('INSERT INTO application_reviews VALUES (?,?,?,?,?,?)',(secrets.token_hex(12),aid,p.user_id,outcome,note,self.clock()))
-            self.audit('financing_review_recorded',p,row['merchant_id'],aid,db=db)
-            return {'ok':True,'sandbox':True,'disclaimer':'Simulated review only; not a bank credit approval'}
+        from copilot.bank_workflow import BankWorkflow
+        return BankWorkflow(self,None).record_review(token,aid,body)
 
-    def staff_request(self,token,mid,details):
-        self.authorize(token,'request_staff_access',mid);p=self.principal(token)
-        if not isinstance(details,str) or not 1<=len(details.strip())<=1000:raise InputError('Request details required')
-        with self.db() as db:
-            rid=secrets.token_hex(12)
-            db.execute('INSERT INTO staff_access_requests VALUES (?,?,?,?,?)',(rid,mid,p.user_id,details.strip(),self.clock()))
-            self.audit('staff_access_requested',p,mid,rid,db=db)
-        return {'request_id':rid}
+    def application_reviews(self,db,aid):
+        return [dict(row) for row in db.execute("SELECT r.outcome,r.note,r.created_at,u.display_name AS reviewer,u.organization AS bank_name FROM application_reviews r LEFT JOIN users u ON u.user_id=r.actor_id WHERE r.application_id=? ORDER BY r.created_at,r.review_id",(aid,))]
+
 
 def main():
+    from copilot.demo_environment import configure_storage
+    configure_storage()
     parser=argparse.ArgumentParser(description='Migrate identity database or bootstrap the first Security Administrator')
     parser.add_argument('command',choices=['migrate','bootstrap'])
     parser.add_argument('--database',default=os.environ.get('COPILOT_IDENTITY_DB','logs/identity.sqlite3'))

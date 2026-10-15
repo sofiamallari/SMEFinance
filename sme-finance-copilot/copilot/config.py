@@ -10,7 +10,10 @@ team's reference prototypes; [ASSUMPTION] are design choices to be validated.
 # ---------------------------------------------------------------------------
 # Market settings (ASEAN, currency-agnostic)
 # ---------------------------------------------------------------------------
+from copilot.currency_policy import CODE,SYMBOL
+# Legacy entries below remain for existing data/operations, not new-merchant selection.
 CURRENCIES = {
+    CODE: (SYMBOL, 0.0),  # Provisional sandbox/exempt cart tax, not Chinese VAT.
     # code: (symbol, typical VAT/sales-tax rate used by the POS simulator)  [ASSUMPTION]
     "IDR": ("Rp", 0.11),
     "PHP": ("₱", 0.12),
@@ -19,7 +22,10 @@ CURRENCIES = {
     "VND": ("₫", 0.10),
     "SGD": ("S$", 0.09),
 }
-DEFAULT_CURRENCY = "PHP"
+# Restrict only the explicitly selected replacement; original data remains operable until approved retirement.
+from copilot.demo_environment import selected as cny_demo_selected
+if cny_demo_selected():CURRENCIES = {CODE: CURRENCIES[CODE]}
+DEFAULT_CURRENCY = CODE
 
 # ---------------------------------------------------------------------------
 # Payment channels (generic names; no provider brands)

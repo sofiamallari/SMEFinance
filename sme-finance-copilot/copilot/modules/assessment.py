@@ -10,6 +10,7 @@ the owner and auditable by a coach or lender.  Behavioural signals add context
 but never replace traditional underwriting (framework principle).
 """
 from __future__ import annotations
+from copilot.currency_policy import format_money
 
 import math
 from datetime import date, timedelta
@@ -151,7 +152,7 @@ def identify_constraints(merchant, s: dict, scores: dict) -> list[dict]:
         add("production_bottleneck", f"Capacity {m.capacity_utilization:.0%} used with unmet demand.", 1)
     if m.confirmed_orders_value > 0 and m.confirmed_orders_value > m.wallet_balance:
         add("confirmed_orders_no_capital",
-            f"Confirmed orders of {m.confirmed_orders_value:,.0f} {m.currency} exceed cash on hand.", 1)
+            format_money(m.confirmed_orders_value,m.currency)+" of confirmed orders exceed cash on hand.", 1)
     material_overdue = s["overdue_amount"] > 0.10 * s["monthly_sales"]
     if s["runway_days"] is not None or s["buffer_days"] < config.CASHFLOW["buffer_days_target"] \
             or material_overdue:

@@ -99,6 +99,8 @@ class TransactionStore:
     def __init__(self, copilot, path):
         self.copilot, self.path = copilot, path
         if getattr(copilot,"identity_store",None):
+            from copilot.merchant_management import restore_profiles
+            restore_profiles(copilot,copilot.identity_store)
             from copilot.transaction_settings import restore_currency_configuration
             restore_currency_configuration(copilot,copilot.identity_store)
         self.lock, self.previews, self.entries = threading.RLock(), {}, {}

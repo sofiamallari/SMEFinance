@@ -15,6 +15,7 @@ from copilot.auth import InputError
 from copilot.security import AccessDenied
 from copilot.canonical_transactions import suggest
 from copilot.worksheet_detection import detect_table
+from copilot.report_profiles import report_profile
 
 MAX_FILE_BYTES=3_000_000;MAX_TOTAL_BYTES=10_000_000;MAX_FILES=10;MAX_ROWS=10000;MAX_COLUMNS=30
 MAX_EXPANDED_BYTES=20_000_000;MAX_CELL=4096;MAX_PROCESSING_SECONDS=10
@@ -236,7 +237,8 @@ def extract_files(files,merchant_id,discover=False):
             if row_count>MAX_ROWS:raise InputError('Maximum 10,000 parsed rows per batch')
             kept=[headers[i] for i in keep]
             summary=any(re.search(r'daily total|monthly total|total sales|sales count|transaction count',h,re.I) for h in kept)
+            samples={h:sorted({r['values'][h] for r in rows if r['values'][h]})[:30] for h in kept}
             result.append({'file_id':secrets.token_hex(12),'upload_index':upload_index,'filename':name,'relative_path':relative,'format':extension[1:],'size':len(content),
                 'detection':{k:v for k,v in detections.get(sheet_name,{}).items() if k!='review_rows'},'currency_hints':currency_hints,'ambiguous_currency_symbols':sorted(set(ambiguous_currency_symbols)),'worksheet':sheet_name,'header_row':header,'last_data_row':last,'workbook_hash':hashlib.sha256(content).hexdigest(),'source_label':name+(' · '+sheet_name if sheet_name else ''),'sha256':hashlib.sha256(content+(('\0'+sheet_name).encode() if sheet_name and sheet_count>1 else b'')).hexdigest(),'headers':kept,'excluded_sensitive_columns':len(headers)-len(keep),
-                'value_samples':{h:sorted({r['values'][h] for r in rows if r['values'][h]})[:30] for h in kept},'summary_detected':summary,'suggestions':suggest(kept),'rows':rows})
+                'profile_suggestion':report_profile(kept,samples),'value_samples':samples,'summary_detected':summary,'suggestions':suggest(kept),'rows':rows})
     return result

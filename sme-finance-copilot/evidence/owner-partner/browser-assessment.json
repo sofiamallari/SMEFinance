@@ -1,0 +1,192 @@
+{
+  "checks": [
+    {
+      "name": "Compact empty-state welcome",
+      "status": "PASS"
+    },
+    {
+      "name": "All original and guidance suggestions",
+      "status": "PASS"
+    },
+    {
+      "name": "Provider badge, module label and large disclaimer removed",
+      "status": "PASS"
+    },
+    {
+      "name": "Suggestion populates composer without action or network call",
+      "status": "PASS"
+    },
+    {
+      "name": "QR suggestion sends explain-only request",
+      "status": "PASS"
+    },
+    {
+      "name": "Welcome hidden after first message",
+      "status": "PASS"
+    },
+    {
+      "name": "Excel help uses actual import route",
+      "status": "PASS"
+    },
+    {
+      "name": "Financial response contains verified evidence",
+      "status": "PASS"
+    },
+    {
+      "name": "Evidence preserves merchant scope and currency",
+      "status": "PASS"
+    },
+    {
+      "name": "In-page navigation preserves conversation",
+      "status": "PASS"
+    },
+    {
+      "name": "Server session history survives separate Owner page and return",
+      "status": "PASS"
+    },
+    {
+      "name": "Merchant switch clears prior protected financial conversation",
+      "status": "PASS"
+    },
+    {
+      "name": "New merchant receives clean welcome",
+      "status": "PASS"
+    },
+    {
+      "name": "Shift+Enter creates newline",
+      "status": "PASS"
+    },
+    {
+      "name": "Provider error payload not exposed",
+      "status": "PASS"
+    },
+    {
+      "name": "Safe question retry available",
+      "status": "PASS"
+    },
+    {
+      "name": "Retry retrieves verified backend answer",
+      "status": "PASS"
+    },
+    {
+      "name": "Close button visible desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Composer remains in viewport desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Readable composer width desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Fixed header visible desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "No horizontal overflow desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Close aligned upper-right desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Escape closes desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Close button visible tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Composer remains in viewport tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Readable composer width tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Fixed header visible tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "No horizontal overflow tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Close aligned upper-right tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Escape closes tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Close button visible mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Composer remains in viewport mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Readable composer width mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Fixed header visible mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "No horizontal overflow mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Close aligned upper-right mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Escape closes mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Close button visible small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Composer remains in viewport small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Readable composer width small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Fixed header visible small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "No horizontal overflow small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Close aligned upper-right small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Escape closes small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "No JavaScript errors",
+      "status": "PASS"
+    }
+  ],
+  "errors": [],
+  "browser": "headless Edge",
+  "fixture": "isolated synthetic",
+  "provider": "deterministic offline"
+}

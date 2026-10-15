@@ -2,7 +2,7 @@
 import csv,io,json,secrets
 from decimal import Decimal,InvalidOperation
 from copilot.auth import InputError
-from copilot.security import AccessDenied
+from copilot.security import AccessDenied,Principal
 from copilot.authorization import STAFF_ACTIONS
 
 class BankWorkflow:
@@ -32,10 +32,53 @@ class BankWorkflow:
         self.a.authorize(token,'view_bank_review')
         return result
 
+    def _routed(self,db,token,aid=None,action='view_bank_review'):
+        # Application routing is not authorization to financial data categories.
+        self.a._authorize(db,token,'view_bank_review')
+        if action!='view_bank_review':self.a._authorize(db,token,action)
+        session=self.a._session(db,token,touch=False)
+        actor=Principal(session['user_id'],session['role'])
+        if actor.role!='lender_analyst':raise AccessDenied('Bank role required')
+        query="SELECT a.* FROM applications a JOIN memberships m ON m.user_id=a.recipient_id AND m.merchant_id=a.merchant_id LEFT JOIN merchant_profiles p ON p.merchant_id=a.merchant_id WHERE a.recipient_id=? AND COALESCE(p.status,'active')='active'"
+        args=[actor.user_id]
+        if aid:query+=' AND a.application_id=?';args.append(aid)
+        rows=db.execute(query+' ORDER BY a.created_at DESC,a.application_id',args).fetchall()
+        rows=[row for row in rows if row['merchant_id'] in self.a.merchants]
+        if aid and not rows:raise AccessDenied('Application is not available to this Bank')
+        return actor,rows
+
+    def applications(self,token,aid=None):
+        with self.a.db() as db:
+            _,rows=self._routed(db,token,aid);result=[]
+            for row in rows:
+                packet=json.loads(row['packet'])
+                # Explicit safe request metadata; assessment snapshots are never exposed here.
+                item={k:packet.get(k) for k in ('product_id','requested_amount','currency','status')}
+                merchant=self.c.merchants.get(row['merchant_id'])
+                bank=db.execute('SELECT display_name,organization FROM users WHERE user_id=?',(row['recipient_id'],)).fetchone()
+                item.update(application_id=row['application_id'],merchant_id=row['merchant_id'],merchant_name=merchant.name if merchant else row['merchant_id'],created_at=row['created_at'],submitted_at=row['created_at'],bank_name=(bank['organization'] or bank['display_name']) if bank else 'Bank',reviews=self.a.application_reviews(db,row['application_id']))
+                result.append(item)
+            return result[0] if aid else result
+
+    def record_review(self,token,aid,body):
+        if not isinstance(body,dict) or set(body)-{'outcome','note'}:raise InputError('Unsupported review fields')
+        outcome=body.get('outcome');note=body.get('note','')
+        if outcome not in ('reviewed','more_information_needed','ready_for_further_assessment'):raise InputError('Select a supported simulated review outcome')
+        if not isinstance(note,str) or len(note.strip())>1000:raise InputError('Review notes must be text, at most 1000 characters')
+        note=note.strip()
+        if outcome=='more_information_needed' and not note:raise InputError('Review notes are required when more information is needed')
+        with self.a.db() as db:
+            db.execute('BEGIN IMMEDIATE');actor,rows=self._routed(db,token,aid,'record_bank_review');row=rows[0];packet=json.loads(row['packet'])
+            if packet.get('status')!='SUBMITTED_FOR_LENDER_REVIEW':raise InputError('Application is not in a reviewable submitted state',409)
+            stamp=self.a.clock()
+            db.execute('INSERT INTO application_reviews VALUES (?,?,?,?,?,?)',(secrets.token_hex(12),aid,actor.user_id,outcome,note,stamp))
+            self.a.audit('financing_review_recorded',actor,row['merchant_id'],aid,db=db,reason=outcome)
+            return {'ok':True,'outcome':outcome,'created_at':stamp,'sandbox':True,'disclaimer':'Simulated review only; not credit approval'}
+
     def staff(self,token,mid,uid=None,body=None):
         self.a.authorize(token,'manage_merchant_staff',mid);p=self.a.principal(token)
         with self.a.db() as db:
-            rows=db.execute("SELECT u.user_id,u.display_name,u.account_status FROM users u JOIN memberships m ON m.user_id=u.user_id WHERE m.merchant_id=? AND u.role='SME_STAFF'",(mid,)).fetchall()
+            rows=db.execute("SELECT u.user_id,u.username,u.display_name,u.account_status FROM users u JOIN memberships m ON m.user_id=u.user_id WHERE m.merchant_id=? AND u.role='SME_STAFF'",(mid,)).fetchall()
             if uid:
                 if not any(r['user_id']==uid for r in rows):raise AccessDenied('Staff account is not assigned to this merchant')
                 if not isinstance(body,dict) or set(body)!={'permissions'} or not isinstance(body['permissions'],list) or any(not isinstance(x,str) for x in body['permissions']) or not set(body['permissions'])<=STAFF_ACTIONS:raise InputError('Select supported delegated permissions only')
@@ -76,7 +119,7 @@ class BankWorkflow:
                 self.a.audit('financing_draft_saved',p,mid,did,db=db)
             rows=db.execute('SELECT * FROM financing_drafts WHERE merchant_id=? ORDER BY updated_at DESC',(mid,)).fetchall()
             banks=[dict(r) for r in db.execute("SELECT u.user_id,u.display_name,u.organization FROM users u JOIN memberships m ON m.user_id=u.user_id WHERE m.merchant_id=? AND u.role='BANK' AND u.account_status='active'",(mid,))]
-            return {'drafts':[dict(draft_id=r['draft_id'],state=r['state'],application_id=r['application_id'],**json.loads(r['body'])) for r in rows if p.role=='owner' or r['creator_id']==p.user_id],'banks':banks}
+            return {'drafts':[dict(draft_id=r['draft_id'],state=r['state'],application_id=r['application_id'],updated_at=r['updated_at'],**json.loads(r['body'])) for r in rows if p.role=='owner' or r['creator_id']==p.user_id],'banks':banks}
     def propose(self,token,mid,did):
         self.a.authorize(token,'submit_application',mid);p=self.a.principal(token)
         with self.a.db() as db:
@@ -107,6 +150,9 @@ class BankWorkflow:
             from copilot.modules import dashboard
             merchant=self.c.financial_data.project(mid);asof=self.c.financial_data.as_of(mid)
             data['sections']['trends']=self.c.financial_data.dashboard(mid)['trend']
+        if data['currency']!='CNY':
+            from copilot.currency_policy import legacy_note
+            data['disclaimer']+=' '+legacy_note(data['currency'])
         data['missing'].append('Historical bank cash and post-financing outcome baseline are unavailable; current cash-flow chart is a forecast.')
         self.a.authorize(token,'export_bank_review' if export else 'view_bank_review',mid)
         actions={'historical':'view_reports','recorded_metrics':'view_reports','trends':'view_reports','assessment':'view_assessment','forecast':'view_forecasts','risk_indicators':'view_forecasts','financing':'view_financing','journey':'view_financing','rbf':'view_financing'}

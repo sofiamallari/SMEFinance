@@ -1,5 +1,11 @@
 # AI Copilot User Guide
 
+Current Owner drawer, module coverage, secure session-history behavior and verification:
+[Owner Financial Partner reference](../OWNER_FINANCIAL_PARTNER.md).
+The Owner drawer provides explain-only sensitive-action guidance; use source modules
+for explicit operations. Earlier chat-action instructions below describe compatibility
+workflows, not permission to execute a suggested question.
+
 Current access rules: [four-role permissions](../SECURITY_PERMISSIONS.md). These user instructions use the current baseline; earlier dated results remain historical.
 
 The **AI Financial Partner** helps you understand the selected merchant's recorded
@@ -21,7 +27,7 @@ Financial figures come from backend calculations, not Gemini's invented arithmet
 4. Read **Evidence, period and limitations** before relying on a figure.
 5. A forecast is an estimate; a financing quote is not approval; a sandbox payment
    is not real bank settlement.
-6. Review the exact proposal before confirming any permitted simulated action.
+6. Follow the source module and explicitly review any permitted simulated action; the Owner assistant explains sensitive workflows.
 7. Never enter passwords, reset/session tokens, API keys, card numbers or customer
    personal information into chat.
 
@@ -29,15 +35,15 @@ Financial figures come from backend calculations, not Gemini's invented arithmet
 
 1. Sign in with your own business account and select an authorized merchant.
 2. Open **AI Financial Partner** if the right panel is collapsed.
-3. Type a question or select a module-specific suggested question; click **Send**.
-4. Read the reply, mode indicator, completed tool names and evidence details.
+3. Type a question or select an empty-state suggestion to populate the composer; click **Send**. Enter sends; Shift+Enter adds a newline.
+4. Read the reply and expand financial evidence details. Provider configuration is not displayed in the business drawer.
 5. Ask a follow-up while keeping the same merchant and subject.
 
 Conversation display survives navigation between business modules. Merchant
 threads are separated; changing merchants does not authorize cross-merchant analysis.
 For RBF, an explicit quote followed by “What about that fee?” can retain the advance.
 Server preferences are scoped to user/session/merchant; they do not make raw history
-financial evidence. Full displayed chat history is not restored after reload/logout.
+financial evidence. Plain messages can be restored after reload or a return from another Owner page within the same authenticated session using bounded server memory. They expire after 30 minutes idle or server restart and do not restore across logout/new sessions. Ask again for current evidence.
 
 ## 2. How the chatbot works
 
@@ -131,7 +137,9 @@ New imports/payments can invalidate prior findings. Ask again after changes; ear
 displayed replies do not update retroactively. An empty period means zero recorded
 totals, not proof that actual business revenue is zero.
 
-### Confirmed simulated actions
+### Source-module confirmed simulated actions
+
+The Owner drawer provides guidance for these actions. Existing source-module proposal/confirmation controls retain the behavior below; suggestions do not execute them.
 
 - Payment request: prepares an exact QR/Tap/Link proposal; no payment is created
   until you confirm. Customer-payment simulation is completed in Digital Payments.
@@ -150,7 +158,7 @@ an unrestricted chat write tool. T4 actions remain permanently prohibited.
 
 ## 5. Configuration testing and example prompts
 
-The core application uses Python's standard library. Gemini is optional.
+Install the project requirements, including its workbook, currency and timezone dependencies. Gemini is optional.
 Set these values locally in `sme-finance-copilot/.env`:
 
 ```ini
@@ -219,8 +227,7 @@ claim for this README.
   processing calls may take time; do not repeatedly submit while a response is pending.
 - Data stores are not a single distributed atomic snapshot. Stale/uncertain data
   can fail closed and require a fresh question or operator review.
-- Full transcript persistence after reload/logout, Task 03.1 survival simulation
-  and Task 05 QA automation are not implemented by this module/README.
+- Durable cross-session transcripts, Task 03.1 survival simulation and Task 05 QA automation are not implemented. Same-session bounded server-memory restoration is described above.
 
 Inspected sources: `web/financial-partner.js`, `copilot/agent.py`,
 `copilot/verified_agent.py`, `copilot/reliability.py`, `copilot/financial_data.py`,
@@ -229,3 +236,8 @@ and existing Task 03 evidence/tests. No code, account, permissions, provider key
 or financial records were changed to produce this guide.
 
 Current draft/confirmation journey: [Financing](9%20README_Financing.md). Current recorded checks: [Testing](../TESTING.md). Historical provider results do not establish live connectivity for this documentation update.
+
+
+## Optional Task 03.1 — Financial Survival Simulation
+
+An experimental Owner-only second drawer tab is available when explicitly enabled. See the [current feature guide](../SURVIVAL_SIMULATION.md) for data coverage limits, deterministic formulas, grounded explanation behavior and the single disable flag. This feature does not execute financial actions or provide a cash runway.

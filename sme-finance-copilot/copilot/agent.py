@@ -27,11 +27,8 @@ from copilot.security import (AccessDenied, ApprovalRequired, AuditLog, PolicyGu
 
 
 def money(x, cur):
-    if x is None:
-        return "n/a"
-    sym = config.CURRENCIES.get(cur, (cur, 0))[0]
-    sign, x = ("-" if x < 0 else ""), abs(x)
-    return f"{sign}{sym}{x:,.0f}" if x >= 100 else f"{sign}{sym}{x:,.2f}"
+    from copilot.currency_policy import format_money
+    return format_money(x,cur)
 
 
 @dataclass
@@ -100,6 +97,12 @@ class Copilot:
                 if not visible:raise ValueError("No authorized application record is available")
                 packet=__import__('json').loads(visible[0]['packet'])
             return {"application_reference":packet['application_id'],"application_status":packet['status'],"requested_amount":packet['requested_amount'],"currency":packet['currency'],"recorded_at":visible[0]['created_at']}
+        # New unseeded merchants have canonical records, not synthetic seed rows.
+        # Reuse the already-authoritative projection; retain existing MDR formulas/default tier.
+        if name in ('payment_create','mdr_compare') and not self.merchants[mid].transactions:
+            stage=assessment.assess(m,asof)['stage'] if m.transactions else 1
+            if name=='mdr_compare':return self.payments.mdr_comparison(args.get('amount',1000),stage)
+            return self.payments.create(m,args['method'],args.get('amount'),args.get('items'),stage,args.get('idempotency_key')).public()
         if name=="get_dashboard":return self.financial_data.dashboard(mid,**args)
         if name=="cashflow_forecast":return cashflow.forecast(m,asof,**args)
         if name=="cashflow_alerts":return cashflow.alerts(m,asof)
@@ -292,7 +295,7 @@ class Copilot:
         return "help"
 
     def handle(self, principal: Principal, merchant_id: str, message: str, approval_token: str | None = None,
-               history: list | None = None, module: str | None = None) -> dict:
+               history: list | None = None, module: str | None = None, owner_reader=None, explain_actions=False) -> dict:
         if not self.limiter.allow(principal.user_id):
             return {"reply": "Too many requests. Please wait a minute.", "intent": "rate_limited"}
         from copilot.authorization import require
@@ -306,8 +309,34 @@ class Copilot:
         if not mer or merchant_id not in principal.merchant_ids:
             return {"reply": "I can only help with businesses you are authorised to access.", "intent": "denied"}
         cur = mer.currency
+        if any(ref!=merchant_id for ref in re.findall(r"\bM[0-9]{3}\b",text)):
+            return {"reply":"Access denied: chat cannot change the selected merchant. Select an authorized merchant first.","classification":"UNAUTHORIZED","mode":"rule_engine","tools_used":[],"evidence":[],"data":{}}
+        # Explain-only registry runs after sanitization and authorization, before action routing.
+        if not flags and not approval_token:
+            try:
+                from copilot.partner_help import answer
+                guidance=answer(principal,merchant_id,text)
+                if guidance:
+                    self.audit.write(actor=principal.user_id,event="application_help",merchant_id=merchant_id,module=guidance["data"]["help_module"])
+                    return guidance
+                if owner_reader:
+                    result=owner_reader(text)
+                    if result:return result
+            except AccessDenied:
+                return {"reply":"Access denied: this capability is not authorized for your account and selected merchant.","classification":"UNAUTHORIZED","mode":"rule_engine","tools_used":[],"evidence":[],"data":{}}
+            except (ValueError,KeyError,TypeError):
+                return {"reply":"The requested information is unavailable. Open the authorized source module to review it.","classification":"INSUFFICIENT_EVIDENCE","mode":"rule_engine","tools_used":[],"evidence":[],"data":{}}
         action_requested=bool(re.search(r"(?:^|\b(?:can you|please|i want to)\s+)(?:create|generate|simulate|submit|apply|collect|charge|accept)\b",text,re.I))
         analysis_only=intent in ("payment","apply") and not action_requested
+        if explain_actions and action_requested and not flags:
+            from copilot.partner_help import answer
+            try:
+                guidance=answer(principal,merchant_id,"How do I "+text)
+                if guidance:
+                    self.audit.write(actor=principal.user_id,event="application_help",merchant_id=merchant_id,module=guidance["data"]["help_module"])
+                    return guidance
+            except AccessDenied:
+                return {"reply":"Access denied: use only the workflows delegated to your account.","classification":"UNAUTHORIZED","mode":"rule_engine","tools_used":[],"evidence":[],"data":{}}
         if intent in ("payment","apply") and action_requested and not flags:
             try:
                 kind="payment_create" if intent=="payment" else "prepare_financing_application"

@@ -8,7 +8,7 @@ async function start(){identity=await api('/api/auth/me');if(identity.user.must_
  $('#profile-username').textContent=identity.user.username;
  const role=identity.user.effective_role||identity.user.role;
  $('#profile-role').textContent=({SYSTEM_ADMIN:'System Admin',security_admin:'System Admin'}[role]||'Authenticated account');
- document.querySelectorAll('[data-admin-permission]').forEach(link=>{link.hidden=!link.dataset.adminPermission.split(' ').every(p=>identity.permissions.includes(p));const target=new URL(link.href,location.origin);const active=target.pathname===location.pathname&&(target.pathname==='/admin/users'||target.hash===(location.hash||'#overview'));if(active&&!link.hidden)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current')});
+ document.querySelectorAll('[data-admin-permission]').forEach(link=>{link.hidden=!link.dataset.adminPermission.split(' ').every(p=>identity.permissions.includes(p));const target=new URL(link.href,location.origin);const active=target.pathname===location.pathname&&(['/admin/users','/admin/merchants'].includes(target.pathname)||target.hash===(location.hash||'#overview'));if(active&&!link.hidden)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current')});
  $('#admin-profile').addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();$('#admin-profile').open=false;$('#admin-profile summary').focus()}});
  document.addEventListener('click',e=>{if(!$('#admin-profile').contains(e.target))$('#admin-profile').open=false});
  $('#admin-nav-toggle').onclick=()=>{const open=$('#admin-sidebar').classList.toggle('mobile-open');$('#admin-nav-toggle').setAttribute('aria-expanded',String(open))};

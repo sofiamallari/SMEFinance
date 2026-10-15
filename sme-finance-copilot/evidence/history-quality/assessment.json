@@ -117,7 +117,7 @@
       "status": "PASS"
     },
     {
-      "name": "Commit and quality statuses distinguished",
+      "name": "Recorded commit status is shown",
       "status": "PASS"
     },
     {

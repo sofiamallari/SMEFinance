@@ -58,10 +58,12 @@ class TransactionSettings:
     def get(self,token,mid,include_catalog=False):
         with self.auth.db() as db:
             actor=self.guard(db,token,mid);value=self.current(db,mid)
-            value.update(can_edit=actor.role=='owner',currency_locked=self.currency_locked(db,mid),
+            value.update(migration_required=value['base_currency']!='CNY',can_edit=actor.role=='owner',currency_locked=self.currency_locked(db,mid),
                          eligible_currencies=sorted(IMPORT_CURRENCIES),transaction_types=['sale','expense','refund','reversal'],
-                         statuses=['completed','pending','failed','voided'],payment_methods=sorted(set(METHODS.values())))
-            if include_catalog:value.update(currencies=search(),timezones=timezones())
+                         statuses=['completed','pending','failed','voided'],payment_methods=sorted(set(METHODS.values())),payment_method_aliases=dict(METHODS))
+            if include_catalog:
+                from copilot.demo_environment import selected
+                value.update(currencies=[c for c in search() if not selected() or c['code']=='CNY'],timezones=timezones())
             return value
 
     def save(self,token,mid,body):
@@ -74,7 +76,7 @@ class TransactionSettings:
             db.execute('BEGIN IMMEDIATE');actor=self.guard(db,token,mid,True);old=self.current(db,mid)
             if type(body.get('expected_version')) is not int or body['expected_version']!=old['version']:raise InputError('Settings changed; reload before saving',409)
             config={k:body.get(k,old[k]) for k in ('base_currency','timezone','display_date_format','default_status','payment_method_values')}
-            if not isinstance(config['base_currency'],str) or config['base_currency'] not in IMPORT_CURRENCIES:raise InputError('Catalog currency is not enabled for transaction processing; no FX or simulator tax assumptions are supplied')
+            if not isinstance(config['base_currency'],str) or (config['base_currency']!='CNY' and config['base_currency']!=old['base_currency']):raise InputError('Catalog currency is not enabled for transaction processing; no FX or simulator tax assumptions are supplied')
             if config['base_currency']!=old['base_currency'] and self.currency_locked(db,mid):raise InputError('Base currency is locked by existing financial data, balances or import runs; historical currency migration is not supported',409)
             if not isinstance(config['timezone'],str) or config['timezone'] not in timezones():raise InputError('Select a valid IANA timezone')
             if config['display_date_format'] not in DISPLAY_FORMATS:raise InputError('Invalid display date format')

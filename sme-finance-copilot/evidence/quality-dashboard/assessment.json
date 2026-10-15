@@ -1,0 +1,308 @@
+{
+  "results": [
+    {
+      "name": "Four internal monitoring tabs",
+      "status": "PASS"
+    },
+    {
+      "name": "Only active panel visible",
+      "status": "PASS"
+    },
+    {
+      "name": "Overview initially active",
+      "status": "PASS"
+    },
+    {
+      "name": "All ten monitoring metrics",
+      "status": "PASS"
+    },
+    {
+      "name": "Backend metric unchanged valid_row_rate",
+      "status": "PASS"
+    },
+    {
+      "name": "Backend metric unchanged invalid_row_rate",
+      "status": "PASS"
+    },
+    {
+      "name": "Backend metric unchanged duplicate_rate",
+      "status": "PASS"
+    },
+    {
+      "name": "Backend unresolved count unchanged",
+      "status": "PASS"
+    },
+    {
+      "name": "Plain language metric definitions",
+      "status": "PASS"
+    },
+    {
+      "name": "Original formula retained",
+      "status": "PASS"
+    },
+    {
+      "name": "Arrow navigation selects and focuses next tab",
+      "status": "PASS"
+    },
+    {
+      "name": "End key selects final tab",
+      "status": "PASS"
+    },
+    {
+      "name": "Eleven validation rules described",
+      "status": "PASS"
+    },
+    {
+      "name": "No invented rule pass before selecting run",
+      "status": "PASS"
+    },
+    {
+      "name": "Home key returns to first tab",
+      "status": "PASS"
+    },
+    {
+      "name": "History starts with ten runs",
+      "status": "PASS"
+    },
+    {
+      "name": "Primary history hides technical batch IDs",
+      "status": "PASS"
+    },
+    {
+      "name": "Import history pagination",
+      "status": "PASS"
+    },
+    {
+      "name": "History supports 25 rows",
+      "status": "PASS"
+    },
+    {
+      "name": "Commit status resets pagination",
+      "status": "PASS"
+    },
+    {
+      "name": "Readable lifecycle labels",
+      "status": "PASS"
+    },
+    {
+      "name": "Business friendly summary title",
+      "status": "PASS"
+    },
+    {
+      "name": "Summary title has readable contrast",
+      "status": "PASS"
+    },
+    {
+      "name": "Raw JSON hidden by default",
+      "status": "PASS"
+    },
+    {
+      "name": "Readable validation findings",
+      "status": "PASS"
+    },
+    {
+      "name": "Failed validation not called completed",
+      "status": "PASS"
+    },
+    {
+      "name": "Technical details collapsed",
+      "status": "PASS"
+    },
+    {
+      "name": "Technical mapping and audit metadata retained",
+      "status": "PASS"
+    },
+    {
+      "name": "Native dialog Escape and focus behavior",
+      "status": "PASS"
+    },
+    {
+      "name": "Staged rows not fabricated as committed zeros",
+      "status": "PASS"
+    },
+    {
+      "name": "Staged lifecycle explanation",
+      "status": "PASS"
+    },
+    {
+      "name": "Staged imported rows unavailable",
+      "status": "PASS"
+    },
+    {
+      "name": "Staged findings not declared passed",
+      "status": "PASS"
+    },
+    {
+      "name": "Committed summary uses real lifecycle",
+      "status": "PASS"
+    },
+    {
+      "name": "Unavailable source controls remain explicit",
+      "status": "PASS"
+    },
+    {
+      "name": "No invented reconciliation differences",
+      "status": "PASS"
+    },
+    {
+      "name": "Alert cards rendered",
+      "status": "PASS"
+    },
+    {
+      "name": "Technical alert codes normalized",
+      "status": "PASS"
+    },
+    {
+      "name": "Open filter excludes acknowledgment-only resolve actions",
+      "status": "PASS"
+    },
+    {
+      "name": "Explicit authorized acknowledgment updates state",
+      "status": "PASS"
+    },
+    {
+      "name": "Foreground refresh failure permits retry",
+      "status": "PASS"
+    },
+    {
+      "name": "Active tab survives filtering and refresh",
+      "status": "PASS"
+    },
+    {
+      "name": "Successful refresh clears error styling",
+      "status": "PASS"
+    },
+    {
+      "name": "Severity and status filtering match backend",
+      "status": "PASS"
+    },
+    {
+      "name": "From/Through filter has meaningful empty state",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow desktop overview",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow desktop history",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow desktop alerts",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow desktop rules",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow tablet overview",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow tablet history",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow tablet alerts",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow tablet rules",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow mobile overview",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow mobile history",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow mobile alerts",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow mobile rules",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow small-mobile overview",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow small-mobile history",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow small-mobile alerts",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow small-mobile rules",
+      "status": "PASS"
+    },
+    {
+      "name": "Mobile tabs scroll horizontally",
+      "status": "PASS"
+    },
+    {
+      "name": "Summary fits mobile viewport",
+      "status": "PASS"
+    },
+    {
+      "name": "Merchant switch isolates history",
+      "status": "PASS"
+    },
+    {
+      "name": "Empty merchant rate stays N/A",
+      "status": "PASS"
+    },
+    {
+      "name": "Foreign merchant backend denial",
+      "status": "PASS"
+    },
+    {
+      "name": "Existing monitoring permission staff",
+      "status": "PASS"
+    },
+    {
+      "name": "Undelegated acknowledgment denied staff",
+      "status": "PASS"
+    },
+    {
+      "name": "Existing monitoring permission lender_analyst",
+      "status": "PASS"
+    },
+    {
+      "name": "Undelegated acknowledgment denied lender_analyst",
+      "status": "PASS"
+    },
+    {
+      "name": "Run summary denied lender_analyst",
+      "status": "PASS"
+    },
+    {
+      "name": "Existing monitoring permission security",
+      "status": "PASS"
+    },
+    {
+      "name": "Undelegated acknowledgment denied security",
+      "status": "PASS"
+    },
+    {
+      "name": "Run summary denied security",
+      "status": "PASS"
+    },
+    {
+      "name": "No JavaScript runtime errors",
+      "status": "PASS"
+    }
+  ],
+  "browser": "headless Edge",
+  "data": "disposable synthetic",
+  "backend_changed": false,
+  "staged_batch": "59c798d516b72661f662f0ef4d4aac16"
+}
