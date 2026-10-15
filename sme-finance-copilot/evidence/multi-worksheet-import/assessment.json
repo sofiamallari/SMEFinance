@@ -17,6 +17,14 @@
       "status": "PASS"
     },
     {
+      "name": "No default manual row-number inputs",
+      "status": "PASS"
+    },
+    {
+      "name": "Automatic Bao worksheet counts",
+      "status": "PASS"
+    },
+    {
       "name": "Independent selected worksheet mappings",
       "status": "PASS"
     },

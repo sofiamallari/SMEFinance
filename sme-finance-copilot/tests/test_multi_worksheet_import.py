@@ -65,10 +65,10 @@ class MultiWorksheet(POSFixture):
   try:import openpyxl
   except ImportError:self.skipTest('The optional supplied-workbook test requires openpyxl')
   w=openpyxl.load_workbook(BAO,read_only=True,data_only=False);expense=list(w['Expense Report'].values);last=max(i for i,row in enumerate(expense,1) if row and isinstance(row[0],str) and row[0].startswith('EXP-'))
-  f={'filename':BAO.name,'content':base64.b64encode(BAO.read_bytes()).decode(),'worksheets':[{'name':'Revenue Report','header_row':5,'last_data_row':5413},{'name':'Expense Report','header_row':5,'last_data_row':last}]}
-  st=self.stage([f]);m={}
+  f={'filename':BAO.name,'content':base64.b64encode(BAO.read_bytes()).decode(),'worksheets':[{'name':'Revenue Report','detection_mode':'auto'},{'name':'Expense Report','detection_mode':'auto'}]}
+  st=self.stage([f]);self.assertEqual([len(src['detection']['excluded_summary_rows']) for src in st['files']],[1,1]);m={}
   for src in st['files']:
-   revenue=src['worksheet']=='Revenue Report';headers=src['headers'];m[src['file_id']]={'columns':{'transaction_date':headers[1],'external_reference':headers[0],'net_amount':headers[5]},'defaults':{'currency':'CNY','status':'completed','transaction_type':'sale' if revenue else 'expense','payment_method':'cash'},'timezone':'+08:00','payment_method_values':{'Tap-to-Pay':'tap_pay'}}
+   revenue=src['worksheet']=='Revenue Report';headers=src['headers'];m[src['file_id']]={'columns':{'transaction_date':headers[1],'external_reference':headers[0],'net_amount':headers[5]},'defaults':{'currency':'CNY','status':'completed','transaction_type':'sale' if revenue else 'expense','payment_method':'cash'},'timezone':'+08:00','payment_method_values':{'Tap-to-Pay':'tap_pay'},'review':{'type_confirmed':True,'amount_confirmed':not revenue}}
    if revenue:m[src['file_id']]['columns']['payment_method']=headers[2]
    else:m[src['file_id']]['columns'].update(category=headers[2],description=headers[4])
   wrong_defaults={key:{**value,'defaults':{**value['defaults'],'currency':'IDR'}} for key,value in m.items()};wrong=self.pos.validate(self.owner,self.mid,st['batch_id'],wrong_defaults);self.assertFalse(wrong['valid']);self.assertEqual(self.pos.history(self.owner,self.mid)['total'],0)

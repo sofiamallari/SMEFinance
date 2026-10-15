@@ -1,0 +1,187 @@
+{
+  "results": [
+    {
+      "name": "Existing finances lock base currency",
+      "status": "PASS"
+    },
+    {
+      "name": "Reliable original merchant timezone",
+      "status": "PASS"
+    },
+    {
+      "name": "Searchable IANA timezone",
+      "status": "PASS"
+    },
+    {
+      "name": "Settings save returns persisted timezone",
+      "status": "PASS"
+    },
+    {
+      "name": "Display format and translations survive refresh",
+      "status": "PASS"
+    },
+    {
+      "name": "Merchant switch isolates configuration",
+      "status": "PASS"
+    },
+    {
+      "name": "Empty merchant can select eligible base currency",
+      "status": "PASS"
+    },
+    {
+      "name": "Currency selector search by ISO code",
+      "status": "PASS"
+    },
+    {
+      "name": "Currency selector search by currency name",
+      "status": "PASS"
+    },
+    {
+      "name": "Currency native selector supports selection",
+      "status": "PASS"
+    },
+    {
+      "name": "Returning merchant reloads its own saved settings",
+      "status": "PASS"
+    },
+    {
+      "name": "Settings no horizontal overflow desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Settings no horizontal overflow tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Settings no horizontal overflow mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Settings no horizontal overflow small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Single entry locks merchant currency",
+      "status": "PASS"
+    },
+    {
+      "name": "Single entry applies saved IANA timezone",
+      "status": "PASS"
+    },
+    {
+      "name": "Additional fields collapsed",
+      "status": "PASS"
+    },
+    {
+      "name": "Import settings collapsed",
+      "status": "PASS"
+    },
+    {
+      "name": "Five primary mappings visible",
+      "status": "PASS"
+    },
+    {
+      "name": "Safe mapping aliases",
+      "status": "PASS"
+    },
+    {
+      "name": "Unconfirmed type cannot validate",
+      "status": "PASS"
+    },
+    {
+      "name": "Choosing type alone does not confirm meaning",
+      "status": "PASS"
+    },
+    {
+      "name": "Explicit type confirmation permits backend validation",
+      "status": "PASS"
+    },
+    {
+      "name": "Filled mapping is not called backend Ready",
+      "status": "PASS"
+    },
+    {
+      "name": "Import defaults to merchant timezone",
+      "status": "PASS"
+    },
+    {
+      "name": "Confirmed merchant payment translation reused",
+      "status": "PASS"
+    },
+    {
+      "name": "Expense sign convention preserved",
+      "status": "PASS"
+    },
+    {
+      "name": "Validated mapping template persisted",
+      "status": "PASS"
+    },
+    {
+      "name": "Translated method reaches preview",
+      "status": "PASS"
+    },
+    {
+      "name": "Cancelling confirmation does not import",
+      "status": "PASS"
+    },
+    {
+      "name": "Explicitly confirmed settings-backed import commits",
+      "status": "PASS"
+    },
+    {
+      "name": "Only exact-column compatible merchant template listed",
+      "status": "PASS"
+    },
+    {
+      "name": "Explicit template application retains meaning but requires fresh confirmation",
+      "status": "PASS"
+    },
+    {
+      "name": "Source currency mismatch blocks preview without conversion",
+      "status": "PASS"
+    },
+    {
+      "name": "Settings read boundary staff",
+      "status": "PASS"
+    },
+    {
+      "name": "Settings edit denied staff",
+      "status": "PASS"
+    },
+    {
+      "name": "Direct settings page denied staff",
+      "status": "PASS"
+    },
+    {
+      "name": "Settings read boundary lender_analyst",
+      "status": "PASS"
+    },
+    {
+      "name": "Settings edit denied lender_analyst",
+      "status": "PASS"
+    },
+    {
+      "name": "Direct settings page denied lender_analyst",
+      "status": "PASS"
+    },
+    {
+      "name": "Settings read boundary security",
+      "status": "PASS"
+    },
+    {
+      "name": "Settings edit denied security",
+      "status": "PASS"
+    },
+    {
+      "name": "Direct settings page denied security",
+      "status": "PASS"
+    },
+    {
+      "name": "No browser JavaScript errors",
+      "status": "PASS"
+    }
+  ],
+  "browser": "headless Edge",
+  "data": "disposable synthetic",
+  "persistent_demo_data_changed": false
+}

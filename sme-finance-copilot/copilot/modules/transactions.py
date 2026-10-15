@@ -98,6 +98,9 @@ def parse_upload(filename, content):
 class TransactionStore:
     def __init__(self, copilot, path):
         self.copilot, self.path = copilot, path
+        if getattr(copilot,"identity_store",None):
+            from copilot.transaction_settings import restore_currency_configuration
+            restore_currency_configuration(copilot,copilot.identity_store)
         self.lock, self.previews, self.entries = threading.RLock(), {}, {}
         from copilot.transaction_journal import TransactionJournal
         self.journal=TransactionJournal(self)

@@ -1,5 +1,5 @@
 """
-Zero-dependency HTTP server (Python standard library only) exposing the
+HTTP server using standard-library transport and CLDR metadata, exposing the
 copilot as a JSON API, the unified web UI, and an MCP endpoint.
 
     python -m copilot.server --port 8000
@@ -166,6 +166,18 @@ class Handler(BaseHTTPRequestHandler):
         from copilot.bank_workflow import BankWorkflow
         workflow=BankWorkflow(AUTH,COPILOT)
         mid=q.get('merchant') or body.get('merchant')
+        if path=='/api/merchant-transactions/settings':
+            settings=pos_service().settings
+            if method=='GET':return self._send(200,settings.get(token,mid,q.get('catalog')=='1'))
+            if method=='PATCH':return self._send(200,settings.save(token,mid,body.get('settings')))
+        if path=='/api/merchant-transactions/templates':
+            settings=pos_service().settings
+            if method=='GET':return self._send(200,{'templates':settings.templates(token,mid)})
+            if method=='POST':return self._send(201,settings.save_template(token,mid,body.get('template')))
+        if path=='/api/transaction-currencies' and method=='GET':
+            with AUTH.db() as db:pos_service().settings.guard(db,token,mid)
+            from copilot.currency_catalog import search
+            return self._send(200,{'currencies':search(q.get('search',''))})
         if path=='/api/owner/staff':
             if method=='GET':return self._send(200,workflow.staff(token,mid))
             if method=='PATCH':return self._send(200,workflow.staff(token,mid,body.get('user_id'),{'permissions':body.get('permissions')}))
@@ -314,8 +326,8 @@ class Handler(BaseHTTPRequestHandler):
                 with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8' if path.endswith('.css') else 'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/financial-partner.js':
                 with open(os.path.join(ROOT,'..','web','financial-partner.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
-            if method=='GET' and path=='/assets/merchant-transactions.js':
-                with open(os.path.join(ROOT,'..','web','merchant-transactions.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
+            if method=='GET' and path in ('/assets/merchant-transactions.js','/assets/transaction-settings.js'):
+                with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/security-admin.js':
                 AUTH.authorize(token,'manage_security')
                 with open(os.path.join(ROOT,'..','web','security-admin.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
@@ -333,7 +345,7 @@ class Handler(BaseHTTPRequestHandler):
             if method=='GET' and path=='/admin/security':
                 AUTH.authorize(token,'manage_security');return self._page('security.html')
             business_routes={'/':'use_copilot','/dashboard':'view_dashboard','/copilot':'use_copilot','/financing':'view_financing','/financing/rbf':'view_financing','/financing/progression':'view_financing','/cash-flow':'view_forecasts','/payment-sandbox':'simulate_payments','/financing/applications':'view_applications',
-                '/merchant-transactions/single':'create_transactions','/merchant-transactions/import':'bulk_import','/merchant-transactions/history':'view_transactions','/merchant-transactions/data-quality':'view_quality_monitoring'}
+                '/merchant-transactions/single':'create_transactions','/merchant-transactions/import':'bulk_import','/merchant-transactions/history':'view_transactions','/merchant-transactions/data-quality':'view_quality_monitoring','/merchant-transactions/settings':'manage_transactions'}
             if method=='GET' and path in business_routes:
                 if p.role=='lender_analyst':
                     if path=='/':return self._send(303,b'',headers={'Location':'/bank'})

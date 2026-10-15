@@ -196,7 +196,17 @@ class Authentication(unittest.TestCase):
         before=Path(self.store.path).read_bytes()
         self.auth.migrate();self.auth.migrate()
         self.assertEqual(Path(self.store.path).read_bytes(),before)
-        with self.auth.db() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0],8)
+        expected=[p.name for p in sorted((Path(__file__).resolve().parents[1]/'copilot/migrations').glob('*.sql'))]
+        self.assertEqual(expected[-1],'008_transaction_settings.sql')
+        with self.auth.db() as db:
+            versions=[r[0] for r in db.execute('SELECT version FROM schema_migrations ORDER BY rowid')]
+            self.assertEqual([v for v in versions if v.endswith('.sql')],expected)
+            self.assertEqual(versions.count('four_role_permissions_v1'),1)
+            self.assertEqual(len(versions),len(expected)+1)
+            for table,columns in {'merchant_transaction_settings':{'merchant_id','config_json','version','updated_by','updated_at'},'merchant_mapping_templates':{'merchant_id','template_id','version','name','headers_json','mapping_json','updated_by','updated_at'}}.items():
+                self.assertEqual({r[1] for r in db.execute('PRAGMA table_info('+table+')')},columns)
+            self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
+
 
     def test_financing_data_master_permission_is_enforced(self):
         self.grant();self.submit()

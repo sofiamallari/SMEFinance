@@ -1,6 +1,6 @@
 # Merchant Transactions User Guide
 
-For the current worksheet selector, mapping, pagination and financial limitations, see [Multi-worksheet import](../MULTI_WORKSHEET_IMPORT.md).
+For merchant Transaction Settings, currency metadata and eligibility, confirmed mapping templates, worksheet selection, mapping, pagination and financial limitations, see [Multi-worksheet import](../MULTI_WORKSHEET_IMPORT.md).
 
 Current access rules: [four-role permissions](../SECURITY_PERMISSIONS.md). These user instructions use the current baseline; earlier dated results remain historical.
 
@@ -14,6 +14,7 @@ Expand **Merchant Transactions** to open:
 | Bulk POS Import | `/merchant-transactions/import` |
 | Transaction History | `/merchant-transactions/history` |
 | Data Quality & Monitoring | `/merchant-transactions/data-quality` |
+| Transaction Settings (Owner management) | `/merchant-transactions/settings` |
 
 Owners need the enabled transaction permissions for assigned merchants. Staff
 reads, encoding/upload/alert and AI actions require explicit per-merchant grants; upload also
@@ -37,12 +38,14 @@ places. Completed zero amounts, unsupported channels/statuses, incorrect currenc
 invalid/future dates, protected fields and sensitive/formula-like text are rejected.
 Do not enter card numbers, customer personal data, passwords or tokens.
 
+Current automatic worksheet detection and review rules: [Automatic XLSX detection](../AUTOMATIC_XLSX_DETECTION.md).
+
 ## 2. Upload POS reports
 
 The wizard is **Select Files → Map Columns → Validate → Preview → Import**.
 
 1. Select transaction-level CSV/XLSX files or a browser-selected folder.
-2. Click **Continue to Map Columns**.
+2. For Excel, select the transaction worksheets and check detected counts. No row numbers are normally needed. If flagged, open **Review Detected Data** and confirm an advanced range only after checking the source. Then click **Continue to Map Columns**.
 3. Review each file's mapping. Map date and **net or gross amount** explicitly;
    supply supported currency/type/status/channel mappings or explicit defaults.
 4. Select the correct date format/timezone. Reuse mapping only for matching schemas.

@@ -17,6 +17,10 @@ if os.environ.get('COPILOT_CNY_IMPORT_FIXTURE')=='yes':
  for merchant in (f.c.merchants['M002'],f.c.financial_data.base['M002']):
   merchant.currency='CNY';merchant.country='CN';merchant.transactions=[];merchant.expenses=[];merchant.receivables=[]
 # Recorded history/monitoring data only in this disposable browser fixture.
+if os.environ.get('COPILOT_SETTINGS_EMPTY_FIXTURE')=='yes':
+ for merchant in (f.c.merchants['M003'],f.c.financial_data.base['M003']):
+  for key in ('transactions','expenses','receivables','payables'):setattr(merchant,key,[])
+  for key in ('wallet_balance','monthly_debt_service','confirmed_orders_value','prior_loans'):setattr(merchant,key,0)
 if os.environ.get('COPILOT_HISTORY_QUALITY_FIXTURE')=='yes':
  from copilot.server import pos_service
  from tests.pos_fixtures import csv_file,mapping

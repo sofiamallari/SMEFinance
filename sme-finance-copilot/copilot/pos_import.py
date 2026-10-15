@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import secrets
+import re
 from datetime import datetime,timezone,date
 from decimal import Decimal
 from statistics import median
@@ -26,6 +27,8 @@ class POSImportService:
             db.execute('INSERT OR IGNORE INTO pos_integrity_key VALUES (1,?)',(secrets.token_hex(32),))
             self.key=bytes.fromhex(db.execute('SELECT secret FROM pos_integrity_key WHERE singleton=1').fetchone()[0])
         self.recover()
+        from copilot.transaction_settings import TransactionSettings
+        self.settings=TransactionSettings(self)
 
     def sign(self,batch_id,mid,actor,payload,session_hash=''):
         return hmac.new(self.key,dump([batch_id,mid,actor,session_hash,payload]).encode(),hashlib.sha256).hexdigest()
@@ -142,8 +145,14 @@ class POSImportService:
             return result
 
     def _mapping(self,file,mapping):
-        if not isinstance(mapping,dict) or set(mapping)-{'columns','defaults','timezone','date_format','control_totals','report_kind','payment_method_values'}:raise InputError('Unsupported mapping fields')
+        if not isinstance(mapping,dict) or set(mapping)-{'columns','defaults','timezone','date_format','control_totals','report_kind','payment_method_values','review','template'}:raise InputError('Unsupported mapping fields')
         columns=mapping.get('columns',{});defaults=mapping.get('defaults',{})
+        review=mapping.get('review',{})
+        if not isinstance(review,dict) or set(review)-{'type_confirmed','amount_confirmed','currency_confirmed'} or any(type(v) is not bool for v in review.values()):raise InputError('Invalid mapping review confirmations')
+        if 'transaction_type' not in columns and review.get('type_confirmed') is not True:raise InputError('Explicitly confirm the worksheet transaction type default')
+        ambiguous=any(re.sub(r'\s*\([^)]*\)\s*$','',str(columns.get(k,'')).strip().casefold())=='amount' for k in ('net_amount','gross_amount'))
+        if ambiguous and review.get('amount_confirmed') is not True:raise InputError('Confirm whether Amount represents net or gross before validation')
+        if file.get('ambiguous_currency_symbols') and not file.get('currency_hints') and review.get('currency_confirmed') is not True:raise InputError('Ambiguous currency symbol: explicitly confirm the source currency')
         translations=mapping.get('payment_method_values',{})
         if not isinstance(translations,dict) or len(translations)>30 or any(not isinstance(k,str) or len(k)>100 or v not in ('cash','qr_pay','tap_pay','pay_link','external_card','external_wallet') for k,v in translations.items()):raise InputError('Invalid explicit payment-method translations')
         if not isinstance(columns,dict) or set(columns)-FIELDS or any(not isinstance(v,str) or v not in file['headers'] for v in columns.values()) or len(set(columns.values()))!=len(columns):raise InputError('Column mapping contains unknown, protected or conflicting fields')
@@ -186,12 +195,21 @@ class POSImportService:
                     return self._integrity_failure(db,actor,mid,bid)
                 eligible=[];seen=[];findings=[];reconciliation=[];duplicates=0;invalid=0;all_valid=[];ambiguous=0
                 version=run['validation_version']+1;ordinal=0;now=self.auth.clock()
+                merchant_settings=self.settings.current(db,mid)
                 if not isinstance(mappings,dict) or set(mappings)!={f['file_id'] for f in source}:raise InputError('Provide one mapping for every source file')
                 for file in source:
                     mapping=mappings[file['file_id']];file_valid=[];file_errors=0
+                    if isinstance(mapping,dict):mapping={**mapping,'timezone':mapping.get('timezone',merchant_settings['timezone'])}
                     try:
                         if file.get('currency_hints') and file['currency_hints']!=[self.store.copilot.merchants[mid].currency]:raise InputError('Workbook currency declaration does not match this merchant; no FX conversion is supported')
                         columns,defaults,controls=self._mapping(file,mapping)
+                        if mapping.get('template'):
+                            template=mapping['template']
+                            if not isinstance(template,dict) or set(template)!={'id','version'} or not isinstance(template.get('id'),str) or type(template.get('version')) is not int:raise InputError('Invalid template selection')
+                            saved=db.execute('SELECT * FROM merchant_mapping_templates WHERE merchant_id=? AND template_id=? AND version=?',(mid,template['id'],template['version'])).fetchone()
+                            if not saved or json.loads(saved['headers_json'])!=file['headers']:raise InputError('Template does not match this merchant and exact source columns')
+                            original=json.loads(saved['mapping_json'])
+                            if original.get('columns',{}).get('transaction_type')!=columns.get('transaction_type') or original.get('defaults',{}).get('transaction_type')!=defaults.get('transaction_type'):raise InputError('Template transaction meaning changed; review a new independent mapping')
                     except InputError as error:
                         invalid+=len(file['rows']);findings.append({'filename':file.get('source_label',file['filename']),'file_id':file['file_id'],'worksheet':file.get('worksheet'),'row':file.get('header_row',1),'field':'mapping','error':str(error),'correction':'Correct the mapping or supply a transaction-level report.'});continue
                     for raw in file['rows']:
@@ -199,7 +217,7 @@ class POSImportService:
                         try:
                             values={field:raw['values'][header] for field,header in columns.items()};values={**defaults,**values}
                             if values.get('payment_method') in mapping.get('payment_method_values',{}):values['payment_method']=mapping['payment_method_values'][values['payment_method']]
-                            row=normalize(values,self.store.copilot.merchants[mid],mapping,now)
+                            row=normalize(values,self.store.copilot.merchants[mid],{**mapping,'merchant_timezone':merchant_settings['timezone']},now)
                             row.update(transaction_id='TX-'+bid+'-'+str(ordinal),merchant_id=mid,source='pos_'+file['format'],
                                 import_batch_id=bid,source_filename=file['filename'],source_file_hash=file['sha256'],source_row_number=raw['row'],source_file_id=file['file_id'],source_worksheet=file.get('worksheet'),source_workbook_hash=file.get('workbook_hash'),source_values=raw['values'],
                                 mapping_version=version,created_by=actor.user_id,created_at=utc(now))
@@ -380,7 +398,8 @@ class POSImportService:
             existing,batches=self.read_ledger(mid)
             with self.auth.db() as db:
                 db.execute('BEGIN IMMEDIATE');actor=self._guard(db,token,'create_transactions',mid)
-                row=normalize(values,self.store.copilot.merchants[mid],{},self.auth.clock())
+                config=self.settings.current(db,mid)
+                row=normalize(values,self.store.copilot.merchants[mid],{'timezone':config['timezone'],'merchant_timezone':config['timezone']},self.auth.clock())
                 request_hash=checksum(row)
                 old=db.execute("SELECT * FROM pos_import_runs WHERE actor_id=? AND merchant_id=? AND kind='manual' AND idempotency_key=?",(actor.user_id,mid,key)).fetchone()
                 if old:

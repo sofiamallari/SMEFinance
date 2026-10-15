@@ -14,6 +14,7 @@ from xml.etree import ElementTree as ET
 from copilot.auth import InputError
 from copilot.security import AccessDenied
 from copilot.canonical_transactions import suggest
+from copilot.worksheet_detection import detect_table
 
 MAX_FILE_BYTES=3_000_000;MAX_TOTAL_BYTES=10_000_000;MAX_FILES=10;MAX_ROWS=10000;MAX_COLUMNS=30
 MAX_EXPANDED_BYTES=20_000_000;MAX_CELL=4096;MAX_PROCESSING_SECONDS=10
@@ -51,7 +52,7 @@ def csv_table(content,deadline):
         return result
     except (UnicodeError,csv.Error):raise InputError('Malformed CSV or invalid UTF-8 encoding') from None
 
-def xlsx_table(content,deadline,worksheet=None,header_row=1,last_row=None,discover=False,sample=False):
+def xlsx_table(content,deadline,worksheet=None,header_row=1,last_row=None,discover=False,sample=False,scan=False):
     if not content.startswith(b'PK'):raise InputError('Encrypted or malformed XLSX is not supported')
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as archive:
@@ -77,7 +78,15 @@ def xlsx_table(content,deadline,worksheet=None,header_row=1,last_row=None,discov
             names_list=[sheet.get('name') for sheet in sheets]
             if any(not isinstance(n,str) or not n or len(n)>100 for n in names_list) or len(set(names_list))!=len(names_list):raise InputError('Invalid worksheet names')
             if discover:
-                return [{'name':name,'candidate_rows':[{'row':number,'values':[('[Redacted]' if SENSITIVE.search(v) or re.search(r'[\w.+-]+@[\w-]+\.[\w.]+|\b(?:\d[ -]?){13,19}\b|(?i:bearer\s+|sk-[a-z0-9]|gh[pousr]_)',v) else v) for v in values]} for number,values in xlsx_table(content,deadline,name,sample=True)]} for name in names_list]
+                detected=[]
+                for name in names_list:
+                    scanned=xlsx_table(content,deadline,name,scan=True)
+                    detection=detect_table(scanned)
+                    def public_row(row):
+                        return {**row,'values':[('[Redacted]' if SENSITIVE.search(v) or re.search(r'[\w.+-]+@[\w-]+\.[\w.]+|\b(?:\d[ -]?){13,19}\b|(?i:bearer\s+|sk-[a-z0-9]|gh[pousr]_)',v) else v) for v in row['values']]}
+                    detection['review_rows']=[public_row(row) for row in detection['review_rows']]
+                    detected.append({'name':name,'detection':detection,'candidate_rows':[public_row(row) for row in scanned if row['values']][:20]})
+                return detected
             if worksheet is None:
                 if len(sheets)!=1:raise InputError('Select at least one transaction worksheet before staging')
                 worksheet=names_list[0]
@@ -104,10 +113,10 @@ def xlsx_table(content,deadline,worksheet=None,header_row=1,last_row=None,discov
             result=[]
             for row in xml(archive.read(sheet_path)).findall('s:sheetData/s:row',NS):
                 check_time(deadline);number=int(row.get('r','0'))
-                if not sample and (number<header_row or (last_row is not None and number>last_row)):continue
-                values=[];positions=set()
+                if not sample and not scan and (number<header_row or (last_row is not None and number>last_row)):continue
+                values=[];positions=set();formula_columns=[]
                 for cell in row.findall('s:c',NS):
-                    if cell.find('s:f',NS) is not None and not sample:raise InputError('Formula cells in the selected transaction range are rejected; choose a last data row before totals or paste values')
+                    if cell.find('s:f',NS) is not None and not sample and not scan:raise InputError('Formula cells in the selected transaction range are rejected; choose a last data row before totals or paste values')
                     match=re.fullmatch(r'([A-Z]+)(\d+)',cell.get('r',''))
                     if not match:raise InputError('Invalid spreadsheet cell reference')
                     index=0
@@ -116,18 +125,22 @@ def xlsx_table(content,deadline,worksheet=None,header_row=1,last_row=None,discov
                     positions.add(index)
                     while len(values)<index:values.append('')
                     value=cell.findtext('s:v','',NS);kind=cell.get('t')
+                    if (sample or scan) and cell.find('s:f',NS) is not None:value='';kind=None
                     if kind=='s':value=strings[int(value)]
                     elif kind=='inlineStr':
                         inline=cell.find('s:is',NS);value=''.join(inline.itertext()) if inline is not None else ''
                     elif kind=='e':raise InputError('Worksheet contains error cells')
-                    elif int(cell.get('s','0')) in date_styles and value:
+                    elif int(cell.get('s','0')) in date_styles and value and not ((sample or scan) and cell.find('s:f',NS) is not None):
                         value=(epoch+timedelta(days=float(Decimal(value)))).isoformat()
-                    if sample and cell.find('s:f',NS) is not None:value='[Formula — not evaluated]'
+                    if (sample or scan) and cell.find('s:f',NS) is not None:
+                        value='[Formula — not evaluated]';formula_columns.append(index-1)
                     if len(value)>MAX_CELL:raise InputError('Worksheet cell limit exceeded')
                     values[index-1]=value
-                if any(v.strip() for v in values):result.append((int(row.get('r',len(result)+1)),values))
+                while values and not values[-1].strip():values.pop()
+                if scan:result.append({'row':number,'values':values,'formula_columns':formula_columns})
+                elif any(v.strip() for v in values):result.append((int(row.get('r',len(result)+1)),values))
                 if sample and len(result)>=20:break
-                if len(result)>MAX_ROWS+1:raise InputError('Maximum 10,000 rows per batch')
+                if len(result)>(20000 if scan else MAX_ROWS+1):raise InputError('Worksheet inspection exceeds 20,000 rows' if scan else 'Maximum 10,000 rows per batch')
             return result
     except (zipfile.BadZipFile,KeyError,IndexError,ValueError,OverflowError,RuntimeError) as error:
         if isinstance(error,InputError):raise
@@ -155,17 +168,9 @@ def extract_files(files,merchant_id,discover=False):
         if choices is not None:
             if extension!='.xlsx':raise InputError('CSV files do not have worksheets')
             if not isinstance(choices,list) or not 1<=len(choices)<=100:raise InputError('Select 1–100 worksheets')
-            if any(not isinstance(c,dict) or set(c)-{'name','header_row','last_data_row'} or not isinstance(c.get('name'),str) for c in choices):raise InputError('Invalid worksheet selection')
+            if any(not isinstance(c,dict) or set(c)-{'name','header_row','last_data_row','detection_mode','review_confirmed'} or not isinstance(c.get('name'),str) for c in choices):raise InputError('Invalid worksheet selection')
             if len({c['name'] for c in choices})!=len(choices):raise InputError('Worksheet selections must be unique')
-        currency_hints=[]
-        if extension=='.xlsx':
-            for sheet in (item.get('worksheets') or []):
-                sample=xlsx_table(content,deadline,sheet.get('name'),sample=True)
-                text=' '.join(v for _,row in sample for v in row)
-                currency_hints.extend(c for c in ('CNY','IDR','PHP','MYR','THB','VND','SGD') if re.search(r'\b'+c+r'\b',text,re.I))
-                if re.search(r'\bRMB\b|Chinese Yuan',text,re.I):currency_hints.append('CNY')
-        currency_hints=sorted(set(currency_hints))
-        choices=item.get('worksheets')
+        choices=item.get('worksheets');detections={}
         if extension=='.csv':
             if choices is not None:raise InputError('CSV files do not have worksheets')
             tables=[(None,1,None,csv_table(content,deadline))]
@@ -174,16 +179,43 @@ def extract_files(files,merchant_id,discover=False):
                 tables=[(None,1,None,xlsx_table(content,deadline))]
             else:
                 if not isinstance(choices,list) or not 1<=len(choices)<=100:raise InputError('Select 1–100 worksheets')
-                if any(not isinstance(c,dict) or set(c)-{'name','header_row','last_data_row'} for c in choices):raise InputError('Invalid worksheet selection')
+                if any(not isinstance(c,dict) or set(c)-{'name','header_row','last_data_row','detection_mode','review_confirmed'} for c in choices):raise InputError('Invalid worksheet selection')
                 if any(not isinstance(c.get('name'),str) for c in choices):raise InputError('Worksheet name must be text')
                 if len({c.get('name') for c in choices})!=len(choices):raise InputError('Worksheet selections must be unique')
-                tables=[(c.get('name'),c.get('header_row',1),c.get('last_data_row'),xlsx_table(content,deadline,c.get('name'),c.get('header_row',1),c.get('last_data_row'))) for c in choices]
+                tables=[];detections={}
+                for choice in choices:
+                    name_choice=choice['name'];mode=choice.get('detection_mode','legacy' if 'header_row' in choice or 'last_data_row' in choice else 'auto')
+                    if mode not in ('auto','reviewed','legacy'):raise InputError('Invalid worksheet detection mode')
+                    if mode in ('auto','reviewed'):
+                        scanned=xlsx_table(content,deadline,name_choice,scan=True);detection=detect_table(scanned);detections[name_choice]=detection
+                        if mode=='auto':
+                            if 'header_row' in choice or 'last_data_row' in choice:raise InputError('Automatic worksheet selection cannot override row boundaries')
+                            if detection['status']!='ready':raise InputError('Review Detected Data is required for worksheet '+name_choice+': '+' '.join(detection['reasons']))
+                            header,last=detection['header_row'],detection['last_data_row']
+                        else:
+                            if choice.get('review_confirmed') is not True:raise InputError('Explicit review confirmation is required for advanced worksheet ranges')
+                            header,last=choice.get('header_row'),choice.get('last_data_row')
+                            if last is None:raise InputError('Choose the last transaction row in the reviewed range')
+                            detection={**detection,'review_confirmed':True,'selected_header_row':header,'selected_last_data_row':last};detections[name_choice]=detection
+                    else:header,last=choice.get('header_row',1),choice.get('last_data_row')
+                    selected_table=xlsx_table(content,deadline,name_choice,header,last)
+                    if mode=='auto' and len(selected_table)-1!=detection['transaction_count']:raise InputError('Automatic row-count consistency check failed; review the worksheet')
+                    tables.append((name_choice,header,last,selected_table))
+                    if mode=='reviewed':detections[name_choice]['reviewed_excluded_rows']=[r['row'] for r in scanned if (r['row']<header or r['row']>last) and (r['values'] or r.get('formula_columns'))]
         sheet_count=0
         if extension=='.xlsx':
             with zipfile.ZipFile(io.BytesIO(content)) as archive:sheet_count=len(xml(archive.read('xl/workbook.xml')).findall('s:sheets/s:sheet',NS))
         for sheet_name,header,last,table in tables:
             if not table or table[0][0]!=header:raise InputError('Selected header row is empty or missing')
             if len(table)<2:raise InputError('Transaction report must contain a header and data rows')
+            from copilot.currency_catalog import catalog
+            codes={c['code'] for c in catalog()}
+            evidence=' '.join(str(v) for v in table[0][1])
+            if extension=='.xlsx':
+                evidence+=' '+' '.join(v for _,r in xlsx_table(content,deadline,sheet_name,sample=True) for v in r)
+            currency_hints=sorted({c for c in re.findall(r'\b[A-Z]{3}\b',evidence) if c in codes})
+            if re.search(r'\bRMB\b|Chinese Yuan',evidence,re.I):currency_hints=sorted(set(currency_hints)|{'CNY'})
+            ambiguous_currency_symbols=[symbol for symbol in ('¥','￥','$') if symbol in evidence]
             headers=[str(h).strip() for h in table[0][1]]
             if not all(headers) or len({h.casefold() for h in headers})!=len(headers):raise InputError('Source headers must be nonempty and unique')
             keep=[i for i,h in enumerate(headers) if not SENSITIVE.search(h) and not re.search(r'[\w.+-]+@[\w-]+\.[\w.]+|\b(?:\d[ -]?){13,19}\b',h)]
@@ -192,8 +224,8 @@ def extract_files(files,merchant_id,discover=False):
                 if len(values)>len(headers):raise InputError('CSV/XLSX row has more values than its header')
                 values+=['']*(len(headers)-len(values))
                 data={headers[i]:values[i] for i in keep}
-                for header,value in data.items():
-                    if header.casefold() in ('merchant_id','merchant id') and value and value!=merchant_id:raise AccessDenied('Source merchant does not match the authorized merchant')
+                for source_header,value in data.items():
+                    if source_header.casefold() in ('merchant_id','merchant id') and value and value!=merchant_id:raise AccessDenied('Source merchant does not match the authorized merchant')
                     if re.search(r'[\w.+-]+@[\w-]+\.[\w.]+',value) or re.search(r'\b(?:\d[ -]?){13,19}\b',value):
                         raise InputError('Unsupported personal/card information in transaction report')
                     if re.search(r'(?i)\bbearer\s+|\bgh[pousr]_|\bsk-[a-z0-9]',value):raise InputError('Authentication credentials are not accepted in POS reports')
@@ -205,6 +237,6 @@ def extract_files(files,merchant_id,discover=False):
             kept=[headers[i] for i in keep]
             summary=any(re.search(r'daily total|monthly total|total sales|sales count|transaction count',h,re.I) for h in kept)
             result.append({'file_id':secrets.token_hex(12),'upload_index':upload_index,'filename':name,'relative_path':relative,'format':extension[1:],'size':len(content),
-                'currency_hints':currency_hints,'worksheet':sheet_name,'header_row':header,'last_data_row':last,'workbook_hash':hashlib.sha256(content).hexdigest(),'source_label':name+(' · '+sheet_name if sheet_name else ''),'sha256':hashlib.sha256(content+(('\0'+sheet_name).encode() if sheet_name and sheet_count>1 else b'')).hexdigest(),'headers':kept,'excluded_sensitive_columns':len(headers)-len(keep),
+                'detection':{k:v for k,v in detections.get(sheet_name,{}).items() if k!='review_rows'},'currency_hints':currency_hints,'ambiguous_currency_symbols':sorted(set(ambiguous_currency_symbols)),'worksheet':sheet_name,'header_row':header,'last_data_row':last,'workbook_hash':hashlib.sha256(content).hexdigest(),'source_label':name+(' · '+sheet_name if sheet_name else ''),'sha256':hashlib.sha256(content+(('\0'+sheet_name).encode() if sheet_name and sheet_count>1 else b'')).hexdigest(),'headers':kept,'excluded_sensitive_columns':len(headers)-len(keep),
                 'value_samples':{h:sorted({r['values'][h] for r in rows if r['values'][h]})[:30] for h in kept},'summary_detected':summary,'suggestions':suggest(kept),'rows':rows})
     return result

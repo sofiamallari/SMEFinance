@@ -11,3 +11,5 @@ Local `.env` automatically loads only the four LLM keys described in the [AI gui
 Use `python scripts/verify_four_role_workflow.py --full` for isolated regression verification. [Testing](docs/TESTING.md) covers browser verification and historical provider assessments.
 
 The original long README is retained as a [historical snapshot](docs/history/README_before_four_role.md). It is not current security/setup guidance.
+
+Merchant-scoped [Transaction Settings, currency catalog and intelligent POS mapping](docs/MULTI_WORKSHEET_IMPORT.md) extend Merchant Transactions. Install runtime dependencies using `python -m pip install -r requirements.txt`; Babel supplies currency metadata and tzdata supplies portable IANA zones. Run `python scripts/run_isolated_regression.py` for backend tests with temporary startup databases and logs.

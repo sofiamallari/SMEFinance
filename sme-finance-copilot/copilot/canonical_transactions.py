@@ -4,6 +4,7 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from copilot.auth import InputError
 from copilot.config import CURRENCIES
 IMPORT_CURRENCIES = frozenset(CURRENCIES) | {"CNY"} # Import only; no simulator tax/FX assumptions.
@@ -20,16 +21,16 @@ METHODS={'cash':'cash','card':'external_card','credit card':'external_card','deb
          'qr':'qr_pay','qr pay':'qr_pay','qr_pay':'qr_pay','tap':'tap_pay','tap_pay':'tap_pay','pay link':'pay_link','pay_link':'pay_link'}
 OFFSETS={'CN':'+08:00','PH':'+08:00','MY':'+08:00','SG':'+08:00','ID':'+07:00','TH':'+07:00','VN':'+07:00'}
 ALIASES={
- 'transaction_date':['date','datetime','timestamp','sale date','transaction date','sale_date','transaction_date'],
- 'net_amount':['net amount','net_amount','total paid','total_paid','net sales'],
+ 'transaction_date':['date','datetime','timestamp','sale date','expense date','transaction date','sale_date','transaction_date'],
+ 'net_amount':['net amount','net_amount','total paid','total_paid','net sales','transaction amount'],
  'gross_amount':['gross amount','gross_amount','gross sales'], 'discount':['discount','discounts'],
  'tax':['tax','taxes','vat'], 'refund_amount':['refund amount','refund_amount'],
  'settlement_amount':['settlement amount','settlement_amount','settled amount'],
  'currency':['currency','currency code'], 'transaction_type':['type','transaction type','transaction_type'],
- 'payment_method':['channel','payment method','payment_method','tender type','tender_type'],
+ 'payment_method':['channel','payment method','payment_method','tender type','tender_type','payment type'],
  'status':['status','transaction status','transaction_status'],
- 'external_reference':['reference','reference number','external_reference','receipt no.','receipt no','receipt_no','receipt number','invoice id','transaction id','transaction_id','pos id'],
- 'description':['description','memo'], 'category':['category']}
+ 'external_reference':['reference','reference number','external_reference','receipt no.','receipt no','receipt_no','receipt number','invoice id','transaction id','transaction_id','pos id','expense id'],
+ 'description':['description','memo','details','notes'], 'category':['category','expense category']}
 
 class RowError(InputError):
     def __init__(self,field,message,correction='Correct the source value or mapping and validate again.'):
@@ -49,7 +50,10 @@ def money(value,field='amount',optional=False):
 
 def zone(value):
     if value in ('Z','UTC','+00:00'):return timezone.utc
-    if not isinstance(value,str) or not re.fullmatch(r'[+-]\d{2}:\d{2}',value):raise RowError('timezone','Choose an explicit UTC offset')
+    if isinstance(value,str) and '/' in value:
+        try:return ZoneInfo(value)
+        except (ZoneInfoNotFoundError,ValueError):raise RowError('timezone','Choose a valid IANA timezone')
+    if not isinstance(value,str) or not re.fullmatch(r'[+-]\d{2}:\d{2}',value):raise RowError('timezone','Choose an IANA timezone or explicit UTC offset')
     hours,minutes=map(int,value[1:].split(':'))
     if hours>14 or minutes>59 or (hours==14 and minutes):raise RowError('timezone','Invalid UTC offset')
     return timezone(timedelta(minutes=(hours*60+minutes)*(1 if value[0]=='+' else -1)))
@@ -67,7 +71,12 @@ def timestamp(value,offset,date_format,now):
                 except ValueError:continue
             if parsed is None:raise ValueError()
         else:parsed=datetime.fromisoformat(text.replace('Z','+00:00'))
-        parsed=parsed.replace(tzinfo=zone(offset)) if parsed.tzinfo is None else parsed
+        if parsed.tzinfo is None:
+            tz=zone(offset);local=parsed
+            parsed=local.replace(tzinfo=tz)
+            if isinstance(tz,ZoneInfo):
+                if parsed.astimezone(timezone.utc).astimezone(tz).replace(tzinfo=None)!=local or parsed.utcoffset()!=local.replace(tzinfo=tz,fold=1).utcoffset():
+                    raise RowError('transaction_date','Ambiguous or nonexistent local time; supply an explicit UTC offset')
         utc=parsed.astimezone(timezone.utc)
         if utc.year<2000 or utc.timestamp()>now+300:raise ValueError()
         return utc.isoformat().replace('+00:00','Z')
@@ -114,7 +123,7 @@ def normalize(values,merchant,settings,now,strict=True):
     if net==0 and status=='completed':raise RowError('net_amount','Completed transactions must have a nonzero amount')
     signed=net if kind=='sale' else -net
     stamp=timestamp(values['transaction_date'],settings.get('timezone',OFFSETS.get(merchant.country,'+00:00')),settings.get('date_format','iso'),now)
-    result={'transaction_date':stamp,'business_date':datetime.fromisoformat(stamp.replace('Z','+00:00')).astimezone(zone(OFFSETS.get(merchant.country,'+00:00'))).date().isoformat(),
+    result={'transaction_date':stamp,'business_date':datetime.fromisoformat(stamp.replace('Z','+00:00')).astimezone(zone(settings.get('merchant_timezone',OFFSETS.get(merchant.country,'+00:00')))).date().isoformat(),
         'amount':format(signed,'.2f'),'effective_amount':format(signed if status=='completed' else Decimal(0),'.2f'),
         'currency':currency,'transaction_type':kind,'payment_method':method,'status':status,
         'external_reference':safe_text(values.get('external_reference'),'external_reference',100),
@@ -132,8 +141,16 @@ def fingerprint(row):
     return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
 
 def suggest(headers):
-    normalized={h.strip().lower():h for h in headers};result={}
+    normalized={}
+    for h in headers:
+        key=re.sub(r'\s*\([^)]*\)\s*$','',h.strip().lower())
+        normalized.setdefault(key,[]).append(h)
+    result={}
     for field,aliases in ALIASES.items():
-        matches=[normalized[a] for a in aliases if a in normalized]
+        matches=[h for a in aliases for h in normalized.get(a,[])]
         if len(set(matches))==1:result[field]=matches[0]
+    # Fee accounting has no canonical field. Never auto-combine supplied net with
+    # gross/adjustments when a source fee could explain their difference.
+    if 'net_amount' in result and any(re.search(r'\b(?:processing|transaction|service)\s+fees?\b|^fees?$',h,re.I) for h in headers):
+        for field in ('gross_amount','discount','tax','refund_amount'):result.pop(field,None)
     return result

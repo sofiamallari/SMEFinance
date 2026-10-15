@@ -98,6 +98,8 @@ class POSPipeline(POSFixture):
         files=[csv_file(),csv_file(name='different.csv',headers=['Sale Date','Amount','Currency','Transaction Type','Tender Type','Status','Receipt No.'],rows=[['2026-10-02','75','IDR','sale','wallet','paid','DIFFERENT']])]
         stage=self.stage(files);maps=mapping(stage);second=stage['files'][1];self.assertNotIn('net_amount',second['suggestions'])
         maps[second['file_id']]['columns']['net_amount']='Amount'
+        blocked=self.pos.validate(self.owner,self.mid,stage['batch_id'],maps);self.assertFalse(blocked['valid'])
+        maps[second['file_id']]['review']['amount_confirmed']=True
         result=self.pos.validate(self.owner,self.mid,stage['batch_id'],maps);self.assertTrue(result['valid']);self.assertEqual(result['metrics']['eligible_total'],'225.00')
     def test_exact_duplicates_within_across_and_against_committed(self):
         file=csv_file();stage,result=self.validated([file,{**file,'filename':'same-again.csv'}]);self.assertEqual(result['metrics']['duplicate_rows'],2)

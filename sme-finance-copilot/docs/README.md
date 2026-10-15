@@ -15,9 +15,11 @@ Current four-role documentation reviewed **15 October 2026 (Asia/Manila)** again
 
 ## Business modules and journeys
 
+- [Automatic XLSX worksheet detection and ambiguity review](AUTOMATIC_XLSX_DETECTION.md)
+
 - [Transaction History and Data Quality UI, pagination and verification](HISTORY_MONITORING_UI.md)
 
-- [Merchant Transactions: worksheet selection, mapping and reconciliation](MULTI_WORKSHEET_IMPORT.md)
+- [Merchant Transactions: Transaction Settings, currency catalog, mapping, templates and reconciliation](MULTI_WORKSHEET_IMPORT.md)
 
 - [Business Overview Dashboard and verification](DASHBOARD_OVERVIEW.md)
 

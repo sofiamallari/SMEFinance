@@ -38,3 +38,7 @@ node scripts/verify_four_role_browser.cjs
 ```
 
 Run browser scripts sequentially because both disposable fixtures use localhost port 8126. The Bank verifier retains earlier successful captures before replacing its current evidence. Five focused tests in `tests/test_bank_portal.py` cover the guarded merchant directory, current/expired/inactive grants, stored submission timestamps and independent audit permission. No production database or provider secret is needed for these checks.
+
+## Transaction settings and intelligent import
+
+Use `python scripts/run_isolated_regression.py` (optional `--pattern test_transaction_settings.py` or `--pattern test_worksheet_detection.py`). Set `COPILOT_BAO_WORKBOOK` to run the supplied-workbook checks. Run `node scripts/verify_transaction_settings_ui.cjs`, `node scripts/verify_detection_review.cjs` and `node scripts/verify_multi_worksheet_ui.cjs` sequentially against their disposable fixtures. See [module behavior and safeguards](MULTI_WORKSHEET_IMPORT.md) for dependencies, API confirmations and limitations; actual recorded results are under `evidence/transaction-settings/`.
