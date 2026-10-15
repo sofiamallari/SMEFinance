@@ -1,95 +1,41 @@
-# Financing — Overview, RBF and Applications — User Journey Scenarios
+# Financing — scenario pathways
 
-**Entry point:** /financing; /financing/rbf; /financing/applications. Routes are relative to your application server.
+Entry: Financing Overview/RBF/Applications. Use synthetic data and separately signed-in authorized role accounts. Detailed UI steps: [module guide](../9%20README_Financing.md); rules: [permissions](../../SECURITY_PERMISSIONS.md). These pathways are instructions, not new test-execution evidence or an exhaustive input enumeration.
 
-## How to use these scenarios
+## 06-01: Matching/quote
 
-Use synthetic data in the intended local demo/test environment. Check the selected merchant, role, enabled permissions and currency before each journey. Run only actions you are authorized to perform. Administrator accounts do not inherit financial access. Do not include credentials or customer personal data in evidence.
+**Path:** Owner/delegated Staff reviews matches, exclusions and calculator.
 
-These are source-aligned scenario instructions, **not a claim that every scenario was newly executed**. The set covers meaningful implemented branches, not every possible input or combination. Unsupported pathways are explicitly marked in expected outcomes.
+**Expected result / boundary:** Indicative score/quote is not lender approval or automatic eligibility.
 
-## 06-01: Explore indicative options
+## 06-02: Staff draft
 
-**Prerequisites:** Authorized view_financing and required merchant/consent scope.
+**Path:** Delegate view/create/edit draft actions → Staff saves/edits own draft.
 
-**Pathway:** Overview → review ranked products/rationale → expand exclusions → ask AI what financing fits.
+**Expected result / boundary:** No Staff UI/API/AI submission authority.
 
-**Expected result / boundary:** Catalog matches and scores are not lender offers or approval probabilities.
+## 06-03: Owner routes and confirms
 
-## 06-02: Explore RBF quote
+**Path:** Owner selects active authorized Bank → reviews draft → proposes → confirms.
 
-**Prerequisites:** Authorized financing access and positive supported sales basis.
+**Expected result / boundary:** Recipient is explicit; no first-consent routing or automatic Bank authorization.
 
-**Pathway:** RBF Calculator → read eligibility → choose advance within displayed bounds → review fee, remittance and payoff scenarios.
+## 06-04: Invalid/changed recipient
 
-**Expected result / boundary:** Eligibility checks and quote validation are separate. Quote does not prove eligibility or approval.
+**Path:** Deactivate selected Bank or change draft/authorization after proposal.
 
-## 06-03: Not yet eligible
+**Expected result / boundary:** Current recipient and exact stored draft are rechecked; unsafe action cannot persist.
 
-**Prerequisites:** Actual merchant fails existing eligibility checks.
+## 06-05: Bank packet review
 
-**Pathway:** Read specific reasons → review source data/history through authorized modules.
+**Path:** Bank selects its routed authorized submitted packet through review view.
 
-**Expected result / boundary:** Do not invent milestones or manipulate data merely to show eligible. Calculator exploration may still be available.
+**Expected result / boundary:** No unrelated packets or financing decision mutations.
 
-## 06-04: Zero sales or unavailable payoff
+## 06-06: Revocation
 
-**Prerequisites:** Synthetic merchant/input with limited own-rail activity.
+**Path:** Owner revokes authorization → Bank attempts new reads/export.
 
-**Pathway:** Review sizing and unavailable estimate/warnings.
+**Expected result / boundary:** Denied; history remains.
 
-**Expected result / boundary:** No-sales days have zero sales-linked repayment; repeated-history payoff is not guaranteed.
-
-## 06-05: Owner submits RBF sandbox application
-
-**Prerequisites:** Owner prepare/submit authority, T3 ceiling, current recipient consent and valid amount.
-
-**Pathway:** Grant consent → request explicit supported application in AI → review exact proposal → Confirm exact simulated action → Applications.
-
-**Expected result / boundary:** Only confirmed authorized action saves the sandbox packet. SUBMITTED_FOR_LENDER_REVIEW is not credit approval.
-
-## 06-06: Missing consent or stale proposal
-
-**Prerequisites:** Owner lacks applicable current consent, or data/session/expiry changed.
-
-**Pathway:** Attempt request/confirmation → read denial → grant valid consent or request a fresh reviewed proposal as appropriate.
-
-**Expected result / boundary:** No bypass; old or mismatched confirmation must not create an application.
-
-## 06-07: Agent reviews assigned packet
-
-**Prerequisites:** Active assigned Agent, current relevant consent and review permission.
-
-**Pathway:** Sign in as Agent → Applications → Record simulated review → supported outcome and meaningful note → save.
-
-**Expected result / boundary:** Supported outcomes: request_information, sandbox_recommended, sandbox_declined. Reviews are simulated and append separately.
-
-## 06-08: Multiple Agents
-
-**Prerequisites:** Multiple properly assigned and consented recipients.
-
-**Pathway:** Inspect actual saved packet assignment → each Agent opens its authorized applications.
-
-**Expected result / boundary:** Consent to multiple Agents does not make every packet visible to all Agents.
-
-## 06-09: Revoked consent after submission
-
-**Prerequisites:** Existing packet and Owner consent control.
-
-**Pathway:** Owner revokes → Agent attempts fresh access/review.
-
-**Expected result / boundary:** Consent-dependent access stops; historical packets/reviews remain. Previously seen information cannot be recalled.
-
-## 06-10: Missing menu or prohibited action
-
-**Prerequisites:** Staff/admin or user requesting real approval.
-
-**Pathway:** Check actual role/scope; attempt controlled unauthorized request if testing.
-
-**Expected result / boundary:** No real credit approval, disbursement or credit-limit change; T4 remains prohibited.
-
-## Evidence to capture
-
-Record the scenario ID, account role (no password), authorized merchant, relevant dates, expected versus actual result, and any nonsecret record/reference or validation message. For financial comparisons, record metric definition, currency, source and reporting period. Do not label an estimate as a verified outcome.
-
-**Related guide:** See the existing Financing — Overview, RBF and Applications guide in the parent `docs/task04` folder. Review actual UI labels and errors on your installed version.
+Capture role, authorized merchant, dates/currency, nonsecret reference, and expected versus actual outcome. Never capture passwords/tokens/provider keys. See [testing](../../TESTING.md) for recorded evidence.

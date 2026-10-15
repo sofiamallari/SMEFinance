@@ -1,21 +1,6 @@
-# Financing User Guide
+# Financing — Overview, Progression Engine, RBF and Applications
 
-## Purpose access and submenus
-
-Expand **Financing** for three implemented views:
-
-| View | Route | Purpose |
-|---|---|---|
-| Overview | `/financing` | Indicative ranked financing/support options. |
-| RBF Calculator | `/financing/rbf` | Explore advance, fee, repayment and estimated payoff. |
-| Applications | `/financing/applications` | Saved confirmed sandbox packets and assigned reviews. |
-
-Owners need enabled financing permissions for assigned merchants. Financing
-Agents/legacy Coaches need current category consent and required scope; Agent
-application assignment also applies. Staff financing is restricted. Administrator
-authority does not grant financing access.
-
-**Quotes, matches and reviews are simulations/advice, not real credit approval.**
+Open Financing in the SME workspace. Its children are Overview (`/financing`), Progression Engine (`/financing/progression`), RBF Calculator (`/financing/rbf`) and Applications (`/financing/applications`). Owner uses assigned scope; Staff require explicit delegated actions. Bank receives authorized read-only counterparts through `/bank`, not these SME screens. System Admin has no financial access. See [permissions](../SECURITY_PERMISSIONS.md).
 
 ## 1. Overview
 
@@ -76,69 +61,25 @@ The replay stops at payoff or1,080 days. Warnings apply beyond540 days, with a36
 target. Payoff can be unavailable. These are existing demonstration parameters;
 fees are not a regulated APR disclosure and rounding is not an approved currency policy.
 
-## 3. Applications — Owner workflow
 
-1. Use **Financing consent** at `/consents` to grant an active assigned Agent the
-   necessary categories, purpose and expiry. Membership alone is insufficient.
-2. Request an explicit supported RBF application in the partner, for example:
-   “Submit my financing application for 10000000” — use an amount within this merchant's limit.
-3. Review the exact proposal, selected merchant, currency, amount/product and expiry.
-4. Click **Confirm exact simulated action** only when correct.
-5. Open **Financing → Applications** to inspect the saved reference and assigned packet.
+## Applications: drafts and Owner confirmation
 
-The current new confirmed workflow supports RBF applications. Proposal is not
-submission. Confirmation needs Owner submit/preparation authority, current consent,
-T3 approval, matching user/session/merchant and fresh financial version. Proposals
-expire after five minutes. Changed data requires a fresh reviewed proposal.
+1. Owner or draft-authorized Staff opens Applications and saves a valid RBF draft with amount and scoped Bank selection.
+2. Staff can edit its own permitted drafts using Edit amount / Bank. It cannot submit; the UI and API enforce that restriction.
+3. Owner reviews/edits merchant drafts and grants current Bank authorization at `/consents` when needed. The `applications` category is required for the selected Bank.
+4. Owner selects Review submission proposal, checks exact merchant, amount, product, recipient and expiry, then explicitly confirms.
+5. Inspect the saved `SUBMITTED_FOR_LENDER_REVIEW` packet and submitted draft state. This is a simulation, not approval.
 
-The saved status **SUBMITTED_FOR_LENDER_REVIEW** means sandbox submission, not a
-lender approval. Reconfirming the same executed action returns its saved outcome;
-a new proposal can be a separate request. Uncertain execution needs review, not blind retry.
-Multiple consented recipients do not imply every Agent can see every packet;
-access follows the actual saved application assignment.
+Recipient selection is explicit; the first qualifying authorization does not choose it automatically. Missing/inactive/out-of-scope recipients, stale/expired/foreign confirmations or changed drafts are rejected. Already-submitted drafts cannot be edited. Existing idempotent exact-action confirmation remains in place; uncertain outcomes require review rather than blind retries.
 
-## 4. Applications — Financing Agent review
+Bank sees only currently authorized packets routed to its identity through [Bank Financial Review](../BANK_FINANCIAL_REVIEW.md). No recommendation/decline/approval mutation is supported; historical review records remain. Revocation blocks subsequent protected access without deleting history.
 
-1. Sign out and sign in with the separate assigned Financing Agent account.
-2. Select the permitted merchant and open **Applications**.
-3. Click **Record simulated review** for the assigned packet.
-4. Enter one supported outcome: `request_information`, `sandbox_recommended`
-   or `sandbox_declined`.
-5. Enter a meaningful review note and inspect the saved review.
+General financing analysis remains available to authorized AI tools. A submission request without an explicit selected Bank is directed to Applications; chat cannot grant permissions or bypass confirmation. No real funds move.
 
-Only assigned, currently consent-authorized Agents can review. Review notes are
-required and limited to1,000 characters. Reviews append separately; they do not
-convert the original packet status into real credit approval. AI application-status
-answers report the saved submitted packet status, not an invented approval decision.
+## Technical references
 
-## 5. Consent revocation and boundaries
+Existing calculation modules: `assessment.py`, `matching.py`, `rbf.py`. Scoped workflows: `bank_workflow.py`, `auth.py`, `partner_state.py`; UI: `web/index.html`.
 
-Owner consent covers specified categories and expires within the implemented limit.
-Owners can revoke grants at `/consents`; new Agent access/reviews then stop.
-Historical packets/reviews remain local records. Previously displayed information
-cannot be recalled from someone's memory or an already captured screenshot.
+Draft APIs: GET/POST `/api/financing-drafts`, PATCH `/api/financing-drafts/<id>`, POST `/api/financing-drafts/<id>/propose`. Supply `merchant` and the supported `draft` body for create/edit. Owner confirmation uses POST `/api/partner/actions/confirm` with merchant, action_id and confirmed:true. Submitted packets use GET `/api/applications`; Staff use drafts, not this submitted-packet API. Legacy POST `/api/applications/<id>/review` is denied.
 
-No real lender submission, disbursement, credit-limit change, bank integration or
-T4 approval is performed. Staff and administrators cannot bypass this through chat.
-
-## 6. Common issues
-
-| Situation | Check |
-|---|---|
-| Financing menu missing | Account role, enabled permission, tier, merchant scope and Agent consent/assignment. |
-| Not yet eligible | Read actual reasons; do not interpret calculator exploration as eligibility approval. |
-| Quote rejected | Positive amount, displayed maximum and reconciled channel/net-sales data. |
-| No assigned applications | Owner must submit a confirmed packet; Agent must be its saved recipient. |
-| Application request denied | Owner role, prepare/submit permissions, active consent and T3 ceiling. |
-| Proposal expired or data changed | Request a new proposal and review exact parameters again. |
-| Agent cannot review | Assignment, category consent, membership and review permission. |
-| Payoff unavailable or excessive | Existing sales cannot repay within modeled limits; smaller size may help but is not guaranteed. |
-
-## Implementation reference
-
-UI: `web/index.html`, `web/financial-partner.js`, `web/consents.html`.
-Backend: `copilot/modules/assessment.py`, `copilot/modules/matching.py`,
-`copilot/modules/rbf.py`, `copilot/partner_state.py`, `copilot/auth.py`.
-API families: `/api/match`, `/api/rbf/limits`, `/api/rbf/quote`, `/api/consents`,
-`/api/applications`, `/api/partner/actions` and `/api/partner/actions/confirm`.
-No financing/consent/application records or formulas were changed to create this guide.
+[End-to-end demo](../SECURITY_SME_BANK_WORKFLOW.md) · [Progression guide](10%20README_Progression_Engine.md) · [Tests](../TESTING.md) · [Limits](../KNOWN_LIMITATIONS.md).

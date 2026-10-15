@@ -564,6 +564,7 @@ class AuthStore:
                 if p.role=='lender_analyst':
                     try:self._authorize(db,token,'view_assessment',mid)
                     except AccessDenied:packet={k:v for k,v in packet.items() if k not in ('scores','stage')}
+                packet['submitted_at']=row['created_at']
                 packet['reviews']=[dict(x) for x in db.execute('SELECT outcome,note,created_at FROM application_reviews WHERE application_id=?',(row['application_id'],))]
                 result.append(packet)
             return result

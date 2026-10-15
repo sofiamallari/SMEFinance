@@ -1,5 +1,7 @@
 # Implementation report — SME Finance Copilot v1.2
 
+> Historical snapshot: retained for chronology and original evidence. Role, consent, menu, API and test instructions below may be superseded. Use [current documentation](README.md) for the four-role baseline.
+
 Modified the existing application directly in `sme-finance-copilot`. The transaction module, financial calculations, payment simulator, merchant data and unified application remain in place.
 
 ## Phases delivered

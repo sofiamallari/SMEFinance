@@ -1,5 +1,7 @@
 # Task 02 — Merchant Transactions and secure POS import
 
+Current access rules: [four-role permissions](SECURITY_PERMISSIONS.md).
+
 Implemented in `sme-finance-copilot/` on `feature/pos-transaction-import`, based on `origin/main` commit `f1792ca416ed139505d96861871becf60992af9f`. Security Administration was already merged in that baseline.
 
 ## Architecture compatibility
@@ -20,13 +22,13 @@ python -m copilot.server --port 8000
 
 If Windows' `python` alias is unavailable, use your installed Python or this workspace's bundled executable: `C:\Users\User\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe`. Set environment variables in the process; `.env` is not automatically loaded. Restart an already-running server after updating source. Migrations are additive; do not replace the developer's database with fixture data.
 
-Log in as administrator, create a Business Owner with M002 membership, and use that separate owner login for transactions. Administrators do not automatically receive merchant access. New staff are read-only within Merchant Transactions by default; use User Management's per-merchant checkboxes to grant encoding, bulk upload, acknowledgment or resolution as appropriate. Role policy must also allow the action. Existing staff encoding/bulk authority is converted to explicit migration grants to preserve compatibility. Legacy optional `bulk_import` updates remain supported, but new explicit per-merchant grants are authoritative and revocable.
+Log in as administrator, create a SME Owner with M002 membership, and use that separate owner login for transactions. Administrators do not automatically receive merchant access. New Staff have no implicit module access; Owner delegation or System Admin per-merchant controls must explicitly grant reads, encoding, bulk upload and alert actions as appropriate. Role policy must also allow the action. Existing staff encoding/bulk authority is converted to explicit migration grants to preserve compatibility. Legacy optional `bulk_import` updates remain supported, but new explicit per-merchant grants are authoritative and revocable.
 
 For Docker, retain the existing Dockerfile/entry point and mount persistent `logs` storage for identity SQLite, the JSONL journal and its lock sidecar. Bootstrap your own account with the existing CLI, never ship a prepopulated identity DB or default password. Browser folder selection needs no host POS-directory mount. Use HTTPS and the existing Secure-cookie setting for non-local deployment.
 
 ### Recorded-demo walkthrough
 
-1. Log in as Business Owner for M002 (IDR). Expand Merchant Transactions below Payment Sandbox.
+1. Log in as SME Owner for M002 (IDR). Expand Merchant Transactions in the existing left sidebar.
 2. Open Single Transaction. Enter business-local date/time, net amount, currency (fixed to merchant), type, method, status, a unique external reference and optional description/category. Save and inspect its internal ID in Transaction History.
 3. Open Bulk POS Import. Select `examples/pos-reports/sample-pos-sales-october.csv` and optionally the different-column/refund files. Alternatively select `examples/pos-reports/folder/`; supported nested CSV/XLSX files are uploaded by the browser.
 4. Verify the suggested column mappings; explicit defaults apply only to unmapped fields. Generic “Amount” requires an explicit net/gross choice. Choose the correct UTC offset and ISO/day-first/month-first format. Reuse a mapping for identical headers if desired.
@@ -53,7 +55,7 @@ The sixth primary sidebar item is Merchant Transactions with receipt and chevron
 | Transaction History | `/merchant-transactions/history?merchant=M002` |
 | Data Quality & Monitoring | `/merchant-transactions/data-quality?merchant=M002` |
 
-Direct child routes are authorized on the server. Staff see only granted write/alert actions plus authorized read-only history/monitoring. Security/User Administrators and Financing Agents receive no new financial transaction access. The alert badge is the backend count of open plus acknowledged alerts for the current authorized merchant, hidden when zero, and refreshed after validation/import/lifecycle changes. Hiding UI elements never replaces backend checks.
+Direct child routes are authorized on the server. Staff require explicit grants for read, write, upload and monitoring actions. System Admin and Bank have no SME transaction access; unmapped legacy roles remain denied. The alert badge is the backend count of open plus acknowledged alerts for the current authorized merchant, hidden when zero, and refreshed after validation/import/lifecycle changes. Hiding UI elements never replaces backend checks.
 
 ## Five-step wizard and reusable ETL
 

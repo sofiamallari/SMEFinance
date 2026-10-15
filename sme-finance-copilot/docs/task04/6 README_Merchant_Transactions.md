@@ -1,5 +1,7 @@
 # Merchant Transactions User Guide
 
+Current access rules: [four-role permissions](../SECURITY_PERMISSIONS.md). These user instructions use the current baseline; earlier dated results remain historical.
+
 ## Purpose and menu
 
 Expand **Merchant Transactions** to open:
@@ -12,8 +14,8 @@ Expand **Merchant Transactions** to open:
 | Data Quality & Monitoring | `/merchant-transactions/data-quality` |
 
 Owners need the enabled transaction permissions for assigned merchants. Staff
-encoding/upload/alert actions require explicit per-merchant grants; upload also
-requires the individual optional bulk-upload permission. Financing Agents and
+reads, encoding/upload/alert and AI actions require explicit per-merchant grants; upload also
+requires the individual optional bulk-upload permission. Banks and
 administrators cannot modify transactions through administrative authority.
 
 ## 1. Save a single transaction
@@ -51,12 +53,9 @@ The wizard is **Select Files → Map Columns → Validate → Preview → Import
 No records are committed merely by selecting files, mapping, validating or previewing.
 **Cancel** leaves that batch uncommitted; **Import Another Batch** starts a new wizard.
 
-### File limits and known request-size gap
+### File limits
 
-Extractor/UI limits: 10 files, 3 MB per file, 10 MB total, 5,000 rows and 30 columns.
-The current HTTP body cap is about 4.1 MB and uploads contain base64 JSON overhead.
-Therefore a multi-file batch can be rejected below the advertised 10 MB limit.
-Use smaller combined batches when needed; this mismatch remains documented.
+Extractor/UI limits remain 10 files, 3 MB per file, 10 MB total, 5,000 rows and 30 columns. The stage-upload endpoint currently allows 14.1 MB encoded HTTP bodies; most other endpoints retain the 4.1 MB cap. The previously documented stage-upload 4.1 MB mismatch is historical, not the current limit. Oversized/unsupported content still fails validation.
 
 Only one transaction per row is supported. Aggregate daily/monthly summaries,
 unsafe file paths, sensitive headers and unsupported workbook/formula content fail.

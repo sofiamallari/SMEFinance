@@ -1,5 +1,7 @@
 # Task 03 verification and recovery report
 
+> Historical snapshot: retained for chronology and original evidence. Role, consent, menu, API and test instructions below may be superseded. Use [current documentation](README.md) for the four-role baseline.
+
 Repository: `C:\Users\User\source\repos\SMEFinance`. Application: `C:\Users\User\source\repos\SMEFinance\sme-finance-copilot`.
 Branch: `feature/ai-financial-partner`. HEAD/baseline: `32deb7034acd9e90b04011e9a7164c4a79adb6ba` (merged Task 02).
 Changes remain uncommitted and unstaged; no push or merge was performed.

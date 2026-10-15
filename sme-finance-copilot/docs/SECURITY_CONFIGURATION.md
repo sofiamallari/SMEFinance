@@ -1,6 +1,6 @@
 # Security Administration and portable configuration
 
-Security Administration remains at `/admin/security`, restricted to authenticated Security Administrators. Each team member keeps a local SQLite installation, its own accounts, and the existing JSONL transaction ledger. No central hosting or new identity system is introduced.
+Security Administration remains at `/admin/security`, restricted to authenticated System Admins. Each team member keeps a local SQLite installation, its own accounts, and the existing JSONL transaction ledger. No central hosting or new identity system is introduced.
 
 ## Sections
 
@@ -10,7 +10,7 @@ Security Administration remains at `/admin/security`, restricted to authenticate
 | Authentication | Existing bounded session, lockout, password and reauthentication settings |
 | Roles & Permissions | Role-level action matrix inside fixed role boundaries |
 | AI & MCP Controls | Reduced T0–T3 ceilings, session/consent requirements and immutable T4 restrictions |
-| Consent Policies | Read-only explanation of the existing owner-managed, category-specific consent model |
+| Bank Authorization Policies | Read-only explanation of the existing owner-managed, category-specific consent model |
 | Audit & Monitoring | Existing actor, event, result and date filters; configuration operation metadata |
 | Configuration | Export, server validation, complete difference preview, cancel and confirmed atomic import |
 
@@ -20,9 +20,9 @@ The desktop sidebar stays visible while scrolling. At smaller widths, a labeled 
 
 The designated security owner signs into their local installation, reviews policies through the first sections, and selects **Configuration → Export Configuration**. The download is named `security-config.json`. Share only that policy file after team review, never SQLite databases or credentials.
 
-Other developers clone/update the repository, run the existing migration and first-administrator bootstrap commands, and sign into their own Security Administrator account. They select **Configuration**, choose the approved `.json`, then **Validate and preview**. The table shows every supported field's current/imported values and whether it changes. **Cancel** discards the pending selection without saving policy changes. **Apply Configuration** requests the administrator password and sends explicit confirmation of that validated preview.
+Other developers clone/update the repository, run the existing migration and first-administrator bootstrap commands, and sign into their own System Admin account. They select **Configuration**, choose the approved `.json`, then **Validate and preview**. The table shows every supported field's current/imported values and whether it changes. **Cancel** discards the pending selection without saving policy changes. **Apply Configuration** requests the administrator password and sends explicit confirmation of that validated preview.
 
-The server binds each preview to its actor and session for ten minutes. A monotonic SQLite policy revision and a current-policy digest detect intervening changes, including a change that was subsequently reverted. Stale, expired, reused or substituted previews are rejected; validate again. A preview cannot be applied by another Security Administrator's session. A failed or cancelled reauthentication does not grant apply authority.
+The server binds each preview to its actor and session for ten minutes. A monotonic SQLite policy revision and a current-policy digest detect intervening changes, including a change that was subsequently reverted. Stale, expired, reused or substituted previews are rejected; validate again. A preview cannot be applied by another System Admin's session. A failed or cancelled reauthentication does not grant apply authority.
 
 ## Schema version 1
 
@@ -31,10 +31,10 @@ Required top-level properties are exactly:
 - `schema_version`: integer `1`.
 - `application`: `"sme-finance-copilot"`.
 - `authentication`: all eight existing supported settings.
-- `permissions`: action arrays for all six supported internal roles.
-- `ai_tiers`: integer ceilings for all six supported internal roles.
+- `permissions`: action arrays for exactly four compatibility identifiers: owner, staff, lender_analyst, security_admin.
+- `ai_tiers`: integer ceilings for exactly four compatibility identifiers: owner, staff, lender_analyst, security_admin.
 
-See [the JSON schema](security-config.schema.json) and [safe default example](../examples/security-config.json). The example contains real default action assignments, including the retained coach role; it is not a team approval or an instruction to erase permissions. Coach assignment enablement is a local environment setting and is not exported. `demo_guest` is not a configurable authenticated role.
+See [JSON schema](security-config.schema.json) and [default example](../examples/security-config.json), generated from the current policy. Templates are examples, not team-approved settings and must not be imported blindly. Coach/user_admin/demo_guest are not portable policy roles. Old six-role files are rejected; export a current four-role policy and review it instead.
 
 | Authentication property | Allowed value |
 |---|---|
@@ -47,15 +47,15 @@ See [the JSON schema](security-config.schema.json) and [safe default example](..
 | `reset_expiration` | integer 300–3600 seconds |
 | `admin_reauth_window` | integer 60–600 seconds |
 
-Permission arrays must contain unique, supported actions within each role's fixed boundary. Essential Security Administrator actions (`manage_users`, `manage_security`, `view_security_audit`) cannot be removed. Individual staff upload grants, memberships and account roles are separate local records and remain mandatory. Administrator roles never gain merchant financial authority.
+Permission arrays must contain unique, supported actions within each role's fixed boundary. Essential System Admin actions (`manage_users`, `manage_security`, `view_security_audit`) cannot be removed. Individual staff upload grants, memberships and account roles are separate local records and remain mandatory. Administrator roles never gain merchant financial authority.
 
-Tier maxima are owner T3, staff T2, lender analyst T1, coach T1 and both administrative roles T0. Reduced ceilings do not grant action permissions. T4, owner approval, merchant authorization, consent, authenticated MCP identity, password hashing and cookie protections remain immutable. Environment settings, API keys, secrets and filesystem paths are not portable policy fields.
+Tier maxima are Owner T3, Staff T2, Bank T1 and System Admin T0. Ceilings do not grant actions, Staff delegation or Bank categories. T4 is permanently prohibited. Identity, secrets, grants and protected local records are not portable configuration. See [permissions](SECURITY_PERMISSIONS.md).
 
 Only nonempty `.json` files up to 64 KiB are accepted. The backend rejects malformed/deeply nested JSON, duplicate properties, non-finite numbers, unknown/missing properties, unsupported application/version, wrong types, unsafe ranges, unsupported roles/actions, role escalation and T4. Booleans are not integers. JSON Schema documents the supported format; backend validation also enforces the timeout relationship and immutable business rules. Error/audit messages do not echo unexpected imported fields or payload values.
 
 ## API
 
-All operations use existing session authentication and Security Administrator authorization. Cookie-authenticated POST requests also require the existing CSRF token and same-origin protections. Legacy identity headers/API keys grant no configuration access.
+All operations use existing session authentication and System Admin authorization. Cookie-authenticated POST requests also require the existing CSRF token and same-origin protections. Legacy identity headers/API keys grant no configuration access.
 
 | Method and path | Response / request |
 |---|---|
@@ -79,7 +79,7 @@ Export and preview never change policy values or revision. The requested operati
 
 Recorded actions include `security_config_export`, `security_config_validate`, `security_config_import`, and an actual `security_policy_changed` when a configuration changes policy. Success, authorization denial, validation failure, stale import and transaction failure are recorded with actor/role, timestamp, request ID, reason code and schema version. Valid operations include a digest and non-sensitive change count. No full imported payload, credential, preview/session token or individual record is logged or exported. Existing hash chaining and audit filters remain in place. Rejected validation is a `failed` result; authorization/reauthentication denial is `denied`.
 
-Before changing policy, retain an approved export. To recover, sign in as an active authorized Security Administrator, reauthenticate, preview that known-good file against current state, and apply it. Alternatively use the relevant existing section editor within enforced bounds. If a preview is stale, validate again. If the active account is locked, an appropriately authorized second administrator can use existing account controls; do not bypass authentication or edit credentials/security tables directly. Essential administrator permissions and safe ranges reduce lockout risk but do not replace operational recovery planning.
+Before changing policy, retain an approved export. To recover, sign in as an active authorized System Admin, reauthenticate, preview that known-good file against current state, and apply it. Alternatively use the relevant existing section editor within enforced bounds. If a preview is stale, validate again. If the active account is locked, an appropriately authorized second administrator can use existing account controls; do not bypass authentication or edit credentials/security tables directly. Essential administrator permissions and safe ranges reduce lockout risk but do not replace operational recovery planning.
 
 Run `python -m unittest discover -s tests -v`. New configuration tests cover schema/bounds, authorization, CSRF, preview binding/expiry/staleness, atomic rollback, idempotence, restart, independent installation portability, preserved local records, audit hashing and live AI/MCP enforcement. Tests use isolated temporary databases, including the server import fixture; the developer's identity DB/ledger are never opened. Optional Playwright with installed Edge: `node scripts/verify_security_ui.cjs`; it starts a disposable synthetic server on port 8124, exercises desktop/mobile behavior and writes synthetic screenshots. The existing authenticated UI regression is `node scripts/verify_auth_ui.cjs`.
 

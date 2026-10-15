@@ -7,6 +7,31 @@ from copilot.authorization import STAFF_ACTIONS
 
 class BankWorkflow:
     def __init__(self,auth,copilot):self.a=auth;self.c=copilot
+    def merchants(self,token):
+        """Own active Owner grants only; never a directory of unrelated users."""
+        self.a.authorize(token,'view_bank_review');p=self.a.principal(token)
+        if p.role!='lender_analyst':raise AccessDenied('Bank review only')
+        result=[]
+        for mid,m in self.c.merchants.items():
+            try:self.a.authorize(token,'view_bank_review',mid)
+            except AccessDenied:continue
+            can_audit=True
+            try:self.a.authorize(token,'view_bank_audit',mid)
+            except AccessDenied:can_audit=False
+            with self.a.db() as db:
+                grants=[{'categories':json.loads(r['categories']),'granted_at':r['granted_at'],'expires_at':r['expires_at']} for r in db.execute("SELECT c.* FROM consents c JOIN users o ON o.user_id=c.owner_id WHERE c.merchant_id=? AND c.recipient_id=? AND c.revoked_at IS NULL AND c.expires_at>? AND o.account_status='active' AND o.role='SME_OWNER' AND EXISTS(SELECT 1 FROM memberships x WHERE x.user_id=o.user_id AND x.merchant_id=c.merchant_id)",(mid,p.user_id,self.a.clock()))]
+                last=None
+                for row in (db.execute('SELECT record FROM audit_events ORDER BY seq DESC') if can_audit else []):
+                    event=json.loads(row[0])
+                    if event.get('actor')==p.user_id and event.get('merchant_id')==mid and event.get('action')=='bank_review_accessed':last=event.get('ts');break
+            self.a.authorize(token,'view_bank_review',mid)
+            if can_audit:
+                try:self.a.authorize(token,'view_bank_audit',mid)
+                except AccessDenied:last=None
+            if grants:result.append({'id':mid,'name':m.name,'currency':m.currency,'authorizations':grants,'last_review_at':last})
+        self.a.authorize(token,'view_bank_review')
+        return result
+
     def staff(self,token,mid,uid=None,body=None):
         self.a.authorize(token,'manage_merchant_staff',mid);p=self.a.principal(token)
         with self.a.db() as db:

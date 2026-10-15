@@ -172,6 +172,7 @@ class Handler(BaseHTTPRequestHandler):
             parts=path.split('/')
             if len(parts)==4 and method=='PATCH':return self._send(200,workflow.draft(token,mid,parts[3],body.get('draft')))
             if len(parts)==5 and parts[4]=='propose' and method=='POST':return self._send(201,workflow.propose(token,mid,parts[3]))
+        if path=='/api/bank/merchants' and method=='GET':return self._send(200,workflow.merchants(token))
         if path=='/api/bank/review' and method=='GET':return self._send(200,workflow.review(token,mid,q.get('application_id')))
         if path=='/api/bank/export' and method=='GET':return self._send(200,workflow.review(token,mid,q.get('application_id'),True),'text/csv; charset=utf-8',{'Content-Disposition':'attachment; filename="simulated-bank-review.csv"'})
         if path=='/api/admin/roles' and method=='GET':
@@ -298,6 +299,9 @@ class Handler(BaseHTTPRequestHandler):
                 raise AccessDenied('Change your temporary password first')
             if method=='GET' and path=='/assets/icons.svg':
                 with open(os.path.join(ROOT,'..','web','icons.svg'),'rb') as f:return self._send(200,f.read(),'image/svg+xml')
+            if method=='GET' and path in ('/assets/bank.css','/assets/bank-components.js','/assets/bank-views.js','/assets/bank-portal.js'):
+                AUTH.authorize(token,'view_bank_review')
+                with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8' if path.endswith('.css') else 'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/financial-partner.js':
                 with open(os.path.join(ROOT,'..','web','financial-partner.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/merchant-transactions.js':

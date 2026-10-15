@@ -1,5 +1,7 @@
 # Synthetic POS demo reports
 
+Current access rules: [four-role permissions](../../docs/SECURITY_PERMISSIONS.md).
+
 Use merchant **M002** (IDR). Reports contain synthetic October 2026 transactions, never customer data. Each receipt is one transaction. Use the suggested mappings and UTC+07:00; generic amount columns require an explicit monetary mapping.
 
 Start with `sample-pos-sales-october.csv`: 2 completed sales, total 150.00 IDR. If source controls are desired, enter count 2 and completed net 150.00. Importing the same file again excludes exact duplicates.

@@ -1,79 +1,35 @@
-# User Management — User Journey Scenarios
+# User Management — scenario pathways
 
-**Entry point:** /admin/users. Routes are relative to your application server.
+Entry: /admin/users and /owner/users. Use synthetic data and separately signed-in authorized role accounts. Detailed UI steps: [module guide](../3%20README_User_Management.md); rules: [permissions](../../SECURITY_PERMISSIONS.md). These pathways are instructions, not new test-execution evidence or an exhaustive input enumeration.
 
-## How to use these scenarios
+## 10-01: Platform provisioning
 
-Use synthetic data in the intended local demo/test environment. Check the selected merchant, role, enabled permissions and currency before each journey. Run only actions you are authorized to perform. Administrator accounts do not inherit financial access. Do not include credentials or customer personal data in evidence.
+**Path:** System Admin creates canonical-role accounts and appropriate memberships.
 
-These are source-aligned scenario instructions, **not a claim that every scenario was newly executed**. The set covers meaningful implemented branches, not every possible input or combination. Unsupported pathways are explicitly marked in expected outcomes.
+**Expected result / boundary:** Bank membership alone grants no financial access.
 
-## 10-01: Create business account
+## 10-02: Owner delegation
 
-**Prerequisites:** Authorized User/Security Administrator.
+**Path:** Owner selects assigned Staff and per-merchant actions → Save.
 
-**Pathway:** Create user → fields, role, active status, merchant memberships → private temporary password → Save → reauthenticate.
+**Expected result / boundary:** Only owned merchant grants change; affected Staff signs in again.
 
-**Expected result / boundary:** New user must change password. Accounts are local; Git pull does not copy another installation database.
+## 10-03: Owner provisioning request
 
-## 10-02: Authorize Staff selectively
+**Path:** Request account/membership creation from System Admin.
 
-**Prerequisites:** Staff assigned to intended merchants.
+**Expected result / boundary:** Owner has no platform provisioning; membership approval rules remain pending.
 
-**Pathway:** Edit account → choose per-merchant entry/import/quality grants → Save → user signs in again as needed.
+## 10-04: Protected/legacy account
 
-**Expected result / boundary:** Upload optional permission is derived by current form; backend still checks optional plus merchant grant.
+**Path:** Try self-authority edit or unmapped-role login.
 
-## 10-03: Provision local demo Agent
+**Expected result / boundary:** Safeguards remain; explicit supported-role review is required.
 
-**Prerequisites:** Authorized administrator in local demo environment.
+## 10-05: Recovery/status
 
-**Pathway:** Create Financing Agent → organization/demo scope → only intended merchant → save → Owner consent workflow.
+**Path:** System Admin issues reset/revokes sessions/changes status.
 
-**Expected result / boundary:** No automatic production account creation; membership alone is not financing consent.
+**Expected result / boundary:** Private recovery secrets and session invalidation remain enforced.
 
-## 10-04: Owner requests Staff access change
-
-**Prerequisites:** Owner manage-request capability.
-
-**Pathway:** Consent page → Request a staff access change → administrator reviews request and edits account if appropriate.
-
-**Expected result / boundary:** Request is not an automatic permission grant.
-
-## 10-05: Reset password or revoke sessions
-
-**Prerequisites:** Administrator authorized for target account.
-
-**Pathway:** Find user → action → reauthenticate → privately deliver reset token or have user sign in again.
-
-**Expected result / boundary:** Reset secrets must not appear in shared docs/Git. Recovery does not grant new merchant access.
-
-## 10-06: Suspend, edit or reassign account
-
-**Prerequisites:** Authorized administrator and legitimate reason.
-
-**Pathway:** Find user → review details/history → edit status/role/membership → save.
-
-**Expected result / boundary:** Affected sessions are revoked; changed authority applies on subsequent access.
-
-## 10-07: Duplicate/invalid account
-
-**Prerequisites:** Synthetic attempt.
-
-**Pathway:** Try duplicate username/email, missing Agent organization or invalid memberships → correct validation.
-
-**Expected result / boundary:** Invalid create/update is rejected; admin accounts cannot hold merchant memberships.
-
-## 10-08: Privileged account boundaries
-
-**Prerequisites:** User Administrator test account.
-
-**Pathway:** Attempt privileged administrator changes or business financial route.
-
-**Expected result / boundary:** User Administrator cannot manage privileged admin accounts; neither admin role automatically gains financial access.
-
-## Evidence to capture
-
-Record the scenario ID, account role (no password), authorized merchant, relevant dates, expected versus actual result, and any nonsecret record/reference or validation message. For financial comparisons, record metric definition, currency, source and reporting period. Do not label an estimate as a verified outcome.
-
-**Related guide:** See the existing User Management guide in the parent `docs/task04` folder. Review actual UI labels and errors on your installed version.
+Capture role, authorized merchant, dates/currency, nonsecret reference, and expected versus actual outcome. Never capture passwords/tokens/provider keys. See [testing](../../TESTING.md) for recorded evidence.

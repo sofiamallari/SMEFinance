@@ -1,10 +1,12 @@
 # Digital Payments User Guide
 
+Current access rules: [four-role permissions](../SECURITY_PERMISSIONS.md). These user instructions use the current baseline; earlier dated results remain historical.
+
 ## Purpose and access
 
 Open **Digital Payments**, route `/payment-sandbox`, for an authorized merchant.
 Owners and permitted Staff need `simulate_payments` and sufficient AI/action tier.
-Coaches, Financing Agents and administrative accounts cannot use their read/admin
+Banks, System Admin and unmapped legacy accounts cannot use read/admin
 authority to perform sandbox payments.
 
 **This is a simulator. No real money moves.** The QR is a non-scannable visual

@@ -1,71 +1,35 @@
-# Financing Consent — User Journey Scenarios
+# Bank Authorization — scenario pathways
 
-**Entry point:** /consents. Routes are relative to your application server.
+Entry: /consents. Use synthetic data and separately signed-in authorized role accounts. Detailed UI steps: [module guide](../11%20README_Financing_Consent_and_Recipients.md); rules: [permissions](../../SECURITY_PERMISSIONS.md). These pathways are instructions, not new test-execution evidence or an exhaustive input enumeration.
 
-## How to use these scenarios
+## 09-01: Grant
 
-Use synthetic data in the intended local demo/test environment. Check the selected merchant, role, enabled permissions and currency before each journey. Run only actions you are authorized to perform. Administrator accounts do not inherit financial access. Do not include credentials or customer personal data in evidence.
+**Path:** Owner selects active scoped Bank, purpose, categories and expiry → authorize.
 
-These are source-aligned scenario instructions, **not a claim that every scenario was newly executed**. The set covers meaningful implemented branches, not every possible input or combination. Unsupported pathways are explicitly marked in expected outcomes.
+**Expected result / boundary:** Authorization is account/category/time scoped.
 
-## 09-01: Eligible recipient available
+## 09-02: Empty list
 
-**Prerequisites:** Owner plus active assigned Financing Agent or legacy Coach.
+**Path:** No eligible Bank exists → inspect message → ask System Admin to provision scoped account.
 
-**Pathway:** Select business → recipient → purpose → expiry → required categories → Grant consent → history.
+**Expected result / boundary:** Submission disabled; do not expose unrelated/unmapped users.
 
-**Expected result / boundary:** Grant is recipient/category/time scoped; save rechecks eligibility.
+## 09-03: Partial category
 
-## 09-02: Empty recipient list
+**Path:** Authorize reports only → Bank opens review.
 
-**Prerequisites:** No active Agent/Coach assigned to selected merchant.
+**Expected result / boundary:** Only permitted sections appear; missing forecast/assessment stays unavailable.
 
-**Pathway:** Read empty message → authorized administrator creates/assigns local demo Agent → Owner reloads matching business.
+## 09-04: No submitted case
 
-**Expected result / boundary:** Submission is disabled. Do not list unrelated users or weaken RBAC.
+**Path:** Authorized Bank reviews general permitted merchant information.
 
-## 09-03: API unavailable or business switched
+**Expected result / boundary:** Case assignment is not required for general reads.
 
-**Prerequisites:** Synthetic failure or rapid selection changes.
+## 09-05: Revoked/expired/changed Bank
 
-**Pathway:** Read loading/error state → retry by selecting business → confirm current recipient options.
+**Path:** Revoke/expire grant or change Bank status/scope → request new protected access.
 
-**Expected result / boundary:** Loading/failure disables submission; stale merchant responses cannot replace current options.
+**Expected result / boundary:** Denied despite another valid Bank grant; prior downloads cannot be recalled.
 
-## 09-04: Invalid expiry/categories/purpose
-
-**Prerequisites:** Owner uses synthetic invalid input.
-
-**Pathway:** Try invalid grant → correct reported field → resubmit.
-
-**Expected result / boundary:** At least one supported category, purpose 1–250 characters and future expiry within 366 days are required.
-
-## 09-05: Consent without application assignment
-
-**Prerequisites:** Agent is member and recipient but has no required assigned packet.
-
-**Pathway:** Grant categories → try Agent financial access.
-
-**Expected result / boundary:** Consent alone does not replace Agent application assignment or role permission checks.
-
-## 09-06: Revoke or expire
-
-**Prerequisites:** Existing consent.
-
-**Pathway:** Owner revokes with confirmation or grant expires → Agent attempts a fresh request.
-
-**Expected result / boundary:** Consent-dependent access stops; historical records remain.
-
-## 09-07: Recipient changed after loading
-
-**Prerequisites:** Recipient suspended or membership removed by authorized admin.
-
-**Pathway:** Owner submits previous selection.
-
-**Expected result / boundary:** Backend rejects no-longer-eligible recipient; refresh rather than bypass checks.
-
-## Evidence to capture
-
-Record the scenario ID, account role (no password), authorized merchant, relevant dates, expected versus actual result, and any nonsecret record/reference or validation message. For financial comparisons, record metric definition, currency, source and reporting period. Do not label an estimate as a verified outcome.
-
-**Related guide:** See the existing Financing Consent guide in the parent `docs/task04` folder. Review actual UI labels and errors on your installed version.
+Capture role, authorized merchant, dates/currency, nonsecret reference, and expected versus actual outcome. Never capture passwords/tokens/provider keys. See [testing](../../TESTING.md) for recorded evidence.

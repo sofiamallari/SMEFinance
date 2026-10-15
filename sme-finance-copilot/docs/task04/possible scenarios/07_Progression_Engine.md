@@ -1,71 +1,35 @@
-# Progression Engine — Merchant Financing Journey — User Journey Scenarios
+# Progression Engine — scenario pathways
 
-**Entry point:** /financing/progression. Routes are relative to your application server.
+Entry: /financing/progression; Bank evidence through /bank. Use synthetic data and separately signed-in authorized role accounts. Detailed UI steps: [module guide](../10%20README_Progression_Engine.md); rules: [permissions](../../SECURITY_PERMISSIONS.md). These pathways are instructions, not new test-execution evidence or an exhaustive input enumeration.
 
-## How to use these scenarios
+## 07-01: Five-step evidence
 
-Use synthetic data in the intended local demo/test environment. Check the selected merchant, role, enabled permissions and currency before each journey. Run only actions you are authorized to perform. Administrator accounts do not inherit financial access. Do not include credentials or customer personal data in evidence.
+**Path:** Owner/delegated Staff opens journey → reviews evidence and missing requirements.
 
-These are source-aligned scenario instructions, **not a claim that every scenario was newly executed**. The set covers meaningful implemented branches, not every possible input or combination. Unsupported pathways are explicitly marked in expected outcomes.
+**Expected result / boundary:** No invented completion criteria; accessible steps remain Not Yet Assessed.
 
-## 07-01: Review five-step journey
+## 07-02: Permission-dependent evidence
 
-**Prerequisites:** Authorized financing access.
+**Path:** Use scoped source grants and links; Bank reads permitted journey categories in review.
 
-**Pathway:** Financing → Progression Engine → review Identify, Profile, Place, Activate, Measure.
+**Expected result / boundary:** Source permissions remain independent; Blocked can mean inaccessible linked views.
 
-**Expected result / boundary:** Accessible steps are Not Yet Assessed because completion rules are not implemented.
+## 07-03: AI agreement
 
-## 07-02: Follow linked modules
+**Path:** Ask stage/completed/missing/next-action questions.
 
-**Prerequisites:** Permission to each linked view.
+**Expected result / boundary:** Shared provider; current stage cannot be inferred without rules.
 
-**Pathway:** Identify → Cash Flow; Profile → Dashboard/History; Place → Overview; Activate → Applications; Measure → Cash Flow/Dashboard.
+## 07-04: Application exists
 
-**Expected result / boundary:** Only permitted links are exposed. Page visits do not complete stages.
+**Path:** Confirm packet then refresh journey.
 
-## 07-03: Ask AI about journey
+**Expected result / boundary:** Saved application evidence does not complete Activate.
 
-**Prerequisites:** Journey and use_copilot access.
+## 07-05: Incentive distinction
 
-**Pathway:** Ask AI About My Journey → ask current stage/next action → follow up Why?.
+**Path:** Inspect existing milestone panel.
 
-**Expected result / boundary:** AI uses shared authorized provider and cannot determine a current stage without completion rules.
+**Expected result / boundary:** Provisional incentive tiers, six maturity stages and five journey steps differ.
 
-## 07-04: Step blocked
-
-**Prerequisites:** Account can open journey but lacks a linked-view permission.
-
-**Pathway:** Read Blocked explanation → ask appropriate administrator/Owner to review access.
-
-**Expected result / boundary:** Blocked denotes access restrictions, not lending ineligibility.
-
-## 07-05: Saved application appears
-
-**Prerequisites:** Authorized saved simulated packet.
-
-**Pathway:** Return to journey after confirmed submission → inspect Activate explanation.
-
-**Expected result / boundary:** Saved packet may change explanation; submission does not mark Activate complete.
-
-## 07-06: Refresh or merchant change
-
-**Prerequisites:** Authorized merchant scope.
-
-**Pathway:** Refresh route or change merchant → read current backend result.
-
-**Expected result / boundary:** Journey derives from current scope/data; no persisted completion history is created.
-
-## 07-07: Request automatic advancement or incentives
-
-**Prerequisites:** User asks for unsupported milestones.
-
-**Pathway:** Explain current limitations and separate existing business maturity/incentive displays.
-
-**Expected result / boundary:** Five journey steps are distinct from six maturity stages. No new progression scores, incentive eligibility or approval rules exist.
-
-## Evidence to capture
-
-Record the scenario ID, account role (no password), authorized merchant, relevant dates, expected versus actual result, and any nonsecret record/reference or validation message. For financial comparisons, record metric definition, currency, source and reporting period. Do not label an estimate as a verified outcome.
-
-**Related guide:** See the existing Progression Engine — Merchant Financing Journey guide in the parent `docs/task04` folder. Review actual UI labels and errors on your installed version.
+Capture role, authorized merchant, dates/currency, nonsecret reference, and expected versus actual outcome. Never capture passwords/tokens/provider keys. See [testing](../../TESTING.md) for recorded evidence.

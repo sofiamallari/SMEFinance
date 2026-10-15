@@ -1,5 +1,7 @@
 # Task 02 implementation report
 
+> Historical snapshot: retained for chronology and original evidence. Role, consent, menu, API and test instructions below may be superseded. Use [current documentation](README.md) for the four-role baseline.
+
 ## Branch and baseline
 
 All work is in `feature/pos-transaction-import`, created from the fetched latest `origin/main` at **f1792ca416ed139505d96861871becf60992af9f** (Security Administration merge). The working tree was clean before branch creation; no unrelated changes were discarded. Main is not committed/pushed/merged by this task. The delivery commit hash is reported in the final response and `git log -1`. No pull request is required by this task; the committed branch is left for user review.

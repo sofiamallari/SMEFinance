@@ -1,5 +1,7 @@
 # SME Finance Copilot — Business Logic Provenance Audit
 
+> Historical snapshot: retained for chronology and original evidence. Role, consent, menu, API and test instructions below may be superseded. Use [current documentation](../README.md) for the four-role baseline.
+
 Date: 14 October 2026 (Asia/Manila). Branch: `feature/task04-documentation`; inspected HEAD: `84036de`.
 Application root: `C:\Users\User\source\repos\SMEFinance\sme-finance-copilot`.
 All source paths below are relative to this exact root. Functions identify relevant locations where line numbers are omitted.

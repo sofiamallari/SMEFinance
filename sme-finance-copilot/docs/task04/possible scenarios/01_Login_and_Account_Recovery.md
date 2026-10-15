@@ -1,71 +1,35 @@
-# Login and Account Recovery — User Journey Scenarios
+# Login and recovery — scenario pathways
 
-**Entry point:** /login. Routes are relative to your application server.
+Entry: /login. Use synthetic data and separately signed-in authorized role accounts. Detailed UI steps: [module guide](../1%20README_Login_Admin_User_and_Password_Reset.md); rules: [permissions](../../SECURITY_PERMISSIONS.md). These pathways are instructions, not new test-execution evidence or an exhaustive input enumeration.
 
-## How to use these scenarios
+## 01-01: Existing account
 
-Use synthetic data in the intended local demo/test environment. Check the selected merchant, role, enabled permissions and currency before each journey. Run only actions you are authorized to perform. Administrator accounts do not inherit financial access. Do not include credentials or customer personal data in evidence.
+**Path:** Sign in with saved credentials → follow role landing page → select permitted merchant.
 
-These are source-aligned scenario instructions, **not a claim that every scenario was newly executed**. The set covers meaningful implemented branches, not every possible input or combination. Unsupported pathways are explicitly marked in expected outcomes.
+**Expected result / boundary:** Current session, active account and effective permissions govern access.
 
-## 01-01: Existing business user
+## 01-02: Temporary password
 
-**Prerequisites:** Active assigned business account.
+**Path:** Sign in → change temporary password → sign in again.
 
-**Pathway:** Sign in → select an authorized merchant → open an enabled module.
+**Expected result / boundary:** Password change invalidates sessions.
 
-**Expected result / boundary:** Menus and backend access follow the saved role and scope, not a visible role selector.
+## 01-03: Recovery
 
-## 01-02: New user first login
+**Path:** System Admin issues private token → intended user resets on login page.
 
-**Prerequisites:** Administrator has created an account with a temporary password.
+**Expected result / boundary:** Used/expired/replaced tokens are rejected; no shared default password.
 
-**Pathway:** Sign in → complete Change password → sign in again.
+## 01-04: Unmapped legacy role
 
-**Expected result / boundary:** Password change invalidates prior sessions; use the new private password.
+**Path:** Attempt Coach/demo_guest/restricted user_admin access.
 
-## 01-03: Forgotten password
+**Expected result / boundary:** Denied pending explicit supported mapping, not an environment-enabled demo path.
 
-**Prerequisites:** Authorized administrator can manage the target account.
+## 01-05: Session invalidated
 
-**Pathway:** Administrator issues reset token → shares it privately → user selects administrator-issued reset option → sets a compliant password → signs in.
+**Path:** Sign out, change delegation/role/status, or reach expiry → try a protected request.
 
-**Expected result / boundary:** Token is single-use and time-limited. It is not a password, API key or action approval token.
+**Expected result / boundary:** Sign in again; prior session cannot preserve revoked authority.
 
-## 01-04: Expired or reused reset token
-
-**Prerequisites:** Previously issued recovery token.
-
-**Pathway:** Try the reset → if rejected, request a new token from the administrator.
-
-**Expected result / boundary:** Rejected token does not reset the password. Do not delete the database to recover access.
-
-## 01-05: Wrong password or unavailable account
-
-**Prerequisites:** Synthetic test account; avoid intentionally locking a teammate out.
-
-**Pathway:** Attempt sign-in → read failure → use authorized recovery if needed.
-
-**Expected result / boundary:** Invalid credentials, restricted account status or lockout prevent access under current policy.
-
-## 01-06: Session expiry or sign-out
-
-**Prerequisites:** Signed-in user.
-
-**Pathway:** Sign out or allow configured timeout → attempt a protected page → sign in again.
-
-**Expected result / boundary:** Protected operations require a current session; merchant authorization is checked again.
-
-## 01-07: Administrator versus business login
-
-**Prerequisites:** Separate appropriately authorized accounts.
-
-**Pathway:** Sign in as administrator for administration → sign out → sign in as Owner for business work.
-
-**Expected result / boundary:** Administrative authority does not grant merchant financial access.
-
-## Evidence to capture
-
-Record the scenario ID, account role (no password), authorized merchant, relevant dates, expected versus actual result, and any nonsecret record/reference or validation message. For financial comparisons, record metric definition, currency, source and reporting period. Do not label an estimate as a verified outcome.
-
-**Related guide:** See the existing Login and Account Recovery guide in the parent `docs/task04` folder. Review actual UI labels and errors on your installed version.
+Capture role, authorized merchant, dates/currency, nonsecret reference, and expected versus actual outcome. Never capture passwords/tokens/provider keys. See [testing](../../TESTING.md) for recorded evidence.

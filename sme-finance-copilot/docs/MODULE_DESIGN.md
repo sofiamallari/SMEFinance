@@ -1,5 +1,7 @@
 # SME Finance Copilot: Prototype Module Design
 
+> Historical snapshot: retained for chronology and original evidence. Role, consent, menu, API and test instructions below may be superseded. Use [current documentation](README.md) for the four-role baseline.
+
 ## 1. Design intent
 The framework describes a **broken loop** between MSME business activity, the bank's visibility into it, interventions, and the business's upgrading. Its answer is a **closed-loop progression engine** built on **EQUIP**, **EXPAND** and **ENTICE**. This prototype puts that engine in the hands of the business owner as a copilot. It can be reached three ways: from the web UI, from an in-app AI agent, or from external AI agents over MCP.
 

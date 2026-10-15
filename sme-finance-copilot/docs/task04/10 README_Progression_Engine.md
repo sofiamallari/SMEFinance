@@ -1,5 +1,7 @@
 # Progression Engine — Merchant Financing Journey
 
+Current access rules: [four-role permissions](../SECURITY_PERMISSIONS.md). These user instructions use the current baseline; earlier dated results remain historical.
+
 ## Overview
 
 The Progression Engine brings the five-step financing journey into the existing Financing module:
@@ -113,12 +115,10 @@ If the LLM is unavailable, a deterministic response can explain the backend jour
 
 ## Permissions and safety
 
-- **Business Owner (`owner`):** may access the journey for authorized merchants and follow permitted module links.
-- **Staff (`staff`):** does not gain financing access from this page. The current role boundary denies journey access.
-- **Financing Agent (`lender_analyst`) and compatible Coach (`coach`) workflows:** remain subject to existing role boundaries, merchant scope, applicable consent, and the permissions of each linked view.
-- **User Administrator and Security Administrator:** do not automatically gain merchant financial access from their administrative roles.
+Owner accesses assigned merchants; Staff need explicit financing delegation and relevant evidence-source grants. Bank receives the shared read-only journey through Bank review with permitted categories, not direct SME routes. System Admin and unmapped legacy roles have no financial access. Links and supporting evidence remain independently permission-checked. See [canonical security rules](../SECURITY_PERMISSIONS.md).
 
-Each nested evidence tool is checked against current action permissions, role/tier policy, merchant scope, and applicable consent. For example, financing access alone does not expose assessment or incentive data; Financing Agents do not gain Dashboard/incentive access through this page. The backend checks access; hiding a menu is not the security boundary. Requests for another merchant remain unauthorized without the required scope. Application visibility is restricted: an Owner sees authorized merchant applications, while other permitted accounts see applications addressed to them. The journey adds no new role grant, approval rule, or exception to prohibited actions.
+Packet routing, category authorization and confirmation remain separate; saved application evidence never marks a journey step complete.
+
 
 ## Technical reference
 

@@ -4,16 +4,14 @@
 
 The standard-library HTTP server, unified `web/index.html`, Principal/PolicyGuard, T0–T4 boundaries, owner approval tokens, consent concepts, audit mechanism and financial modules are retained. Existing transaction routes and JSONL ledger remain in place. Calculations in dashboard, cash flow, matching, assessment, RBF and payment simulation were not replaced.
 
-Three conflicts were resolved explicitly: client-selected demo identity cannot provide real authorization; environment-selected MCP roles cannot authorize authenticated callers; in-memory application records cannot provide persistent lender assignments. Default HTTP/MCP identity now comes from SQLite sessions. Explicit localhost demo mode preserves legacy tests and workflows. SQLite application packets supplement the existing approval workflow and calculations.
-
-Internal role identifiers remain `owner`, `staff`, `lender_analyst` and `coach`. UI labels are Business Owner, Staff and Financing Agent. Added `user_admin` and `security_admin` have no merchant memberships or financial privileges. Coach is retained, with new assignments disabled unless `COPILOT_ALLOW_COACH_ASSIGNMENT=yes`. `demo_guest` cannot be assigned or authenticated.
+HTTP/MCP identity comes from live SQLite sessions. Client demo headers, environment-selected identities and API keys never grant access. Four stored roles resolve to one policy; unmapped legacy roles are denied. Migration 007 is additive and preserves historical data while revoking sessions.
 
 ## Install, migrate and bootstrap
 
-Requires Python 3.10+ with SQLite and OpenSSL scrypt support. No new third-party runtime dependency. Password hashes use scrypt (N=32768, r=8, p=1) with random 128-bit salts and constant-time verification. Passwords are never stored plaintext. Set environment variables through your shell/service; `.env` is not automatically loaded.
+Requires Python 3.10+ with SQLite and OpenSSL scrypt support. No new third-party runtime dependency. Password hashes use scrypt (N=32768, r=8, p=1) with random 128-bit salts and constant-time verification. Passwords are never stored plaintext. Set environment variables through your shell/service; Only the four LLM keys auto-load from `.env`; other server/security/database settings require process environment configuration.
 
 ```powershell
-cd "C:\Users\User\source\repos\sme-finance-copilot-v1.2-transactions\sme-finance-copilot"
+cd "C:\Users\User\source\repos\SMEFinance\sme-finance-copilot"
 python -m copilot.auth migrate
 python -m copilot.auth bootstrap --username admin --email admin@example.com
 python -m copilot.server --port 8000
@@ -25,16 +23,9 @@ Migrations in `copilot/migrations/` are applied in order, in a transaction, and 
 
 Defaults: `COPILOT_IDENTITY_DB=logs/identity.sqlite3`, `COPILOT_TRANSACTION_FILE=logs/manual_transactions.jsonl`. These paths are relative to your working directory. Keep them persistent and restrict filesystem access to the service account. Session and reset secrets are stored as SHA-256 digests. CSRF values are stored server-side and returned to the authenticated browser; browser session secrets stay in HttpOnly cookies and never in localStorage.
 
-## Account and consent workflow
+## Roles, delegation and Bank authorization
 
-1. Sign in as the first Security Administrator. Use User Management to create a User Administrator and separate business accounts. Business-facing accounts require merchant memberships; a Financing Agent also requires an organization or explicit sandbox organization name.
-2. Administrator-created users must change their temporary password before financial, administrative or AI access. Password changes revoke all their sessions. Suspensions, status/role/scope/optional-permission edits and reset/session-revocation actions also revoke affected sessions.
-3. Staff can encode transactions and view operational information only for assigned merchants. Bulk upload needs both enabled role policy and an individual `bulk_import` grant. Staff cannot access confidential assessments, financing recommendations, reports, applications, consent or administration.
-4. Owners grant named-recipient consent at `/consents`, including purpose, permitted categories and expiration. Current owner role/status/membership is checked when the consent is used. Revocation/expiry blocks access immediately.
-5. Owners submit a sandbox application through the existing Copilot approval-token workflow. The packet is assigned to the recipient selected by an active owner consent that includes `applications` (the first qualifying consent if several exist). Financing Agents need matching membership, an assigned application, enabled financing-data permission, action permission and consent for the requested category.
-6. Assigned agents can record `request_information`, `sandbox_recommended` or `sandbox_declined` review outcomes. They are explicitly simulated and never constitute bank credit approval. Applications and reviews persist in SQLite. Staff access requests are recorded for administrators; they do not change permissions automatically.
-
-User Administrators may maintain business accounts, but cannot create or modify administrative accounts, grant Security Administrator authority, or inspect merchant finances. Security Administrators can assign administrative roles and change bounded policy. Administrators cannot change their own role/scope/authority/status through User Management, and the last active Security Administrator cannot be removed through administration. Keep a second authorized Security Administrator for operational recovery.
+Use [Security and permissions](SECURITY_PERMISSIONS.md) for the authoritative model and [workflow](SECURITY_SME_BANK_WORKFLOW.md) to validate each role. System Admin provisions accounts; Owner delegates existing Staff and authorizes scoped Banks. Staff need explicit grants for reads, AI and drafts as well as writes. Bank general reads need current category authorization, not case assignment. Packets require explicit Bank selection and recipient routing. New Bank review mutations are denied.
 
 ## Security controls and audit
 
@@ -42,9 +33,9 @@ Security Controls exposes the allowed action matrix, authentication settings, re
 
 Session idle timeout defaults to 30 minutes and absolute lifetime to 8 hours. Login failure threshold is 5, temporary lockout 15 minutes, minimum password length 12 with lowercase/uppercase/number, reset-token lifetime 30 minutes, administrator reauthentication window 5 minutes. Unsafe values and disabling password complexity are rejected. Sessions check account status, expiry and live permission/consent on every protected request/tool call. Reauthentication failures also lock out the account. Unlocking through account status `active` clears account/login-attempt locks and revokes old sessions.
 
-Cookies are HttpOnly and SameSite=Strict. Set `COPILOT_HTTPS=yes` under HTTPS to add Secure. Do not trust proxy/client role, consent or forwarding headers as identity. Cookie-authenticated writes require `X-CSRF-Token`; cross-origin browser writes are rejected. Session Bearer clients use the same identity and checks without cookie CSRF. Request bodies are capped at 4.1 MB. Login/password-reset are the public JSON POST routes; static login styling and minimal health status are public.
+Cookies are HttpOnly and SameSite=Strict. Set `COPILOT_HTTPS=yes` under HTTPS to add Secure. Do not trust proxy/client role, consent or forwarding headers as identity. Cookie-authenticated writes require `X-CSRF-Token`; cross-origin browser writes are rejected. Session Bearer clients use the same identity and checks without cookie CSRF. Most request bodies are capped at 4.1 MB; `/api/pos-import/stage` permits 14.1 MB for encoded uploads. Login/password-reset are the public JSON POST routes; static login styling and minimal health status are public.
 
-The existing AuditLog format and SHA-256 hash chaining are reused for persistent SQLite audit events. Identity/security events contain only structured metadata (actor, role, merchant, action, target, result, reason and correlation ID). No passwords, sessions, reset tokens, transaction descriptions or raw uploaded rows are included. Financial tool calls retain the original audit/execution logs and add a safe event to the central audit. User Administrators see only account-related audit records. Audit filtering supports actor/action/result/target/time; latest 500 matching events are returned. Monitoring reports the latest 500 events in the last day. Hash chains are tamper-evident, not protection against a fully compromised database/service.
+The existing AuditLog format and SHA-256 hash chaining are reused for persistent SQLite audit events. Identity/security events contain only structured metadata (actor, role, merchant, action, target, result, reason and correlation ID). No passwords, sessions, reset tokens, transaction descriptions or raw uploaded rows are included. Financial tool calls retain the original audit/execution logs and add a safe event to the central audit. System Admin sees administrative metadata; Owner and Bank audit views are separately merchant/resource scoped. Audit filtering supports actor/action/result/target/time; latest 500 matching events are returned. Monitoring reports the latest 500 events in the last day. Hash chains are tamper-evident, not protection against a fully compromised database/service.
 
 ## API additions
 
@@ -70,19 +61,14 @@ All protected routes require a session and permission; successful account creati
 | GET/POST `/api/consents` | Owner consent listing/grant |
 | POST `/api/consents/{id}/revoke` | Immediate consent revocation |
 | POST `/api/staff-access-requests` | Owner request for administrative review |
-| GET `/api/applications?merchant=...` | Owner or consent-authorized assigned-agent packets |
-| POST `/api/applications/{id}/review` | Simulated assigned-agent review |
+| GET `/api/applications?merchant=...` | Owner or authorized routed Bank packets; Staff use drafts |
+| POST `/api/applications/{id}/review` | Denied legacy mutation; Bank review is read-only |
 
 See [MCP_SETUP.md](MCP_SETUP.md) for authenticated HTTP and stdio clients. API keys alone grant nothing in authenticated mode.
 
 ## Verification and limitations
 
-Run `python -m unittest discover -s tests -v`. The suite includes authenticated HTTP/MCP authorization and original financial regressions. Optional Playwright/Edge walkthrough: `node scripts/verify_auth_ui.cjs`; set `COPILOT_TEST_PYTHON` for your Python path. It starts a disposable fixture on port 8124. The older `verify_ui.cjs` uses explicit synthetic demo mode for legacy transaction browser checks.
-
-This is an MVP, not a production certification. External IdP/OAuth integration, MFA, email delivery, refresh tokens and multi-process transaction writes are not implemented. Reset tokens are handed to an authorized administrator for secure out-of-band delivery. SQLite provides persistent local identity/security records, while transaction writes still use a single-process JSONL ledger and payment simulation state resets at restart. Database/ledger backups and restricted OS access are deployment responsibilities. The identity audit and transaction ledger are separate stores; they are not one distributed transaction. Staff have operational dashboard/forecast access, not configurable redaction within each existing operational response. Grant only memberships appropriate for those summaries.
-
-Consent is implemented per individual recipient (organization name records affiliation); organization-wide blanket grants are not implemented. Owner application preparation and submission remain one approval-gated existing tool rather than a new draft workflow. Standalone MCP ledger data is a startup snapshot. Uploaded XLSX retains the documented single-sheet/values/ISO-date restrictions; no transaction export feature is added, so CSV export formula injection has no new export path. Externally generated AI prose is provider-dependent and is tested with a mock model; financial/tool permissions are enforced independently of model output. Synthetic financial data remains fixed at 2026-09-30, and no real money or bank approval is involved.
-
+Use [isolated testing](TESTING.md), [current workflow](SECURITY_SME_BANK_WORKFLOW.md) and [known limits](KNOWN_LIMITATIONS.md). Older demo-browser scripts/reports are historical and do not provide current authenticated setup.
 
 ## Scripted first-administrator password
 
@@ -102,4 +88,6 @@ For automation, inject that variable from your secret store rather than writing 
 
 ## Portable Security Administration
 
-The existing Security Controls entry URL now provides seven sidebar sections and validated JSON policy sharing. See [SECURITY_CONFIGURATION.md](SECURITY_CONFIGURATION.md) for schema version 1, the additive migration, preview/reauthentication/atomic apply, local-data preservation, and team review/recovery guidance. Existing authentication and consent semantics remain unchanged.
+The existing Security Controls entry URL now provides seven sidebar sections and validated JSON policy sharing. See [SECURITY_CONFIGURATION.md](SECURITY_CONFIGURATION.md) for schema version 1, the additive migration, preview/reauthentication/atomic apply, local-data preservation, and team review/recovery guidance. Session/recovery infrastructure is retained; current Bank authorization, delegation and routing follow the four-role policy rather than the previous overlapping case rules.
+
+Current delegation/draft/Bank API routes: [Bank review](BANK_FINANCIAL_REVIEW.md) and [Financing guide](task04/9%20README_Financing.md). Use [isolated verification](TESTING.md), not historical test counts in earlier reports.

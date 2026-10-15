@@ -1,5 +1,7 @@
 # Suggested Copilot Studio agent setup
 
+Current access rules: [four-role permissions](../../docs/SECURITY_PERMISSIONS.md).
+
 **Name:** SME Finance Copilot
 
 **Description (used by the orchestrator to decide when to call the MCP server):**

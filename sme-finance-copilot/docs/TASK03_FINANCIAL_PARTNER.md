@@ -1,5 +1,7 @@
 # Task 03: AI Financial Partner
 
+Current access rules: [four-role permissions](SECURITY_PERMISSIONS.md).
+
 Implemented in the existing application on `feature/ai-financial-partner`, baseline
 `32deb7034acd9e90b04011e9a7164c4a79adb6ba` (merged Task 02). Work is uncommitted;
 no push, merge, production migration or live financial action was performed.
@@ -21,9 +23,9 @@ python -m copilot.server --host 127.0.0.1 --port 8000
 Open http://127.0.0.1:8000/login. Existing accounts/passwords remain unchanged.
 Bootstrap is deliberately unavailable after the first user exists; use the existing
 administrator account and User Administration to create business accounts.
-Create a Business Owner with merchant membership, or a Staff account with explicit
-transaction grants. A User/Security Administrator does not gain financial access.
-Financing Agents require membership, assignment and current category consent.
+Create a SME Owner with merchant membership, or a Staff account with explicit
+transaction grants. A User/System Admin does not gain financial access.
+Banks require membership, assignment and current category consent.
 Owner financing consent remains at `/consents`; admin pages remain `/admin/users`
 and `/admin/security`.
 
@@ -126,34 +128,10 @@ configured product catalog; they are indicative, never lender approvals.
 
 ## Permissions, context and actions
 
-T0 reads, T1 advice, T2 sandbox writes and T3 human approval retain their existing
-PolicyGuard roles/tier ceilings; T4 credit approval/disbursement/limit changes remain
-permanently prohibited. `owner`, `staff`, `lender_analyst` and compatible `coach`
-identifiers are retained. Administrator permissions remain independent of finance.
-Authenticated HTTP/MCP uses server-derived principals and live authorization;
-client demo headers and API keys do not create merchant access.
+Current authority is defined in [Security and permissions](SECURITY_PERMISSIONS.md). Staff financial reads/AI/drafts require explicit merchant delegation; Staff never submit. Bank reads authorized categories without a general case requirement, while submitted packets remain routed. System Admin has no financial AI access; unmapped roles are denied. Existing conversation freshness, typed evidence and exact action confirmation remain.
 
-Conversation preferences persist in SQLite, keyed to authenticated user and session,
-with merchant and role checks. Only intent, dates, reviewed advance and active module
-are retained when financial evidence becomes stale. Each answer retrieves fresh
-facts. Browser conversation display survives module navigation and keeps separate
-merchant threads; old action buttons require a fresh proposal. It is not a persistent
-full transcript after logout/browser reload.
+Owner submission must identify a Bank explicitly; use [Applications](task04/9%20README_Financing.md) to create/edit a draft and review/confirm the exact proposal. No automatic first-consent routing or new Bank decision mutation is supported.
 
-Payment/application proposals bind exact parameters to user, session, merchant,
-data version and a five-minute expiry. Confirmation is explicit and boolean, with
-fresh authorization and the existing T3 token where required. SQLite atomically
-claims execution; repeated confirmed actions return the saved outcome, not another
-payment/application. Uncertain action outcomes require review instead of automatic
-retry. Application submission remains simulated; no lender approval is inferred.
-The legacy explicit authenticated sandbox payment endpoints remain for compatibility.
-
-Paid simulation events append deterministic canonical markers. Full/partial refunds
-are linked, negative, capped and idempotent. Payment/refund/wallet state survives
-restart; canonical markers repair the tested interruption window between journal
-append and SQLite finalization. Ambiguous inconsistent effects fail closed. This is
-not a general distributed exactly-once guarantee. No real money or payment network
-is used; the QR is a sandbox visual, not a usable bank QR.
 
 ## Three-panel workspace
 
@@ -183,33 +161,9 @@ RBF eligibility metadata now uses the same canonical projection as its quote.
 
 ## Testing and demo
 
-```powershell
-python -m unittest tests.test_reliability -q
-python -m unittest tests.test_financial_partner tests.test_partner_integration -q
-python -m unittest discover -s tests -q
-# Opt-in real provider assessment; only synthetic/disposable merchant data:
-python scripts/assess_partner.py
-# Optional Playwright with installed Microsoft Edge (serial; same fixture port):
-node scripts/verify_partner_ui.cjs
-node scripts/verify_auth_ui.cjs
-node scripts/verify_pos_ui.cjs
-node scripts/verify_security_ui.cjs
-```
+Use [current isolated verification](TESTING.md) and [the four-role SME-to-Bank journey](SECURITY_SME_BANK_WORKFLOW.md). Earlier Task 03-specific defect and acceptance narratives are historical records, not fresh verification. Old auth/demo browser scripts may rely on superseded controls; the maintained browser entry point is `scripts/verify_four_role_browser.cjs`.
 
-Normal tests deliberately disable local LLM credentials and isolate identities and
-transaction journals. Browser scripts use temporary users/data, never the running
-owner database. See `TASK03_REPORT.md` and JSON evidence for actual results. T01–T35
-and T37–T40 are backend acceptance cases; T36 is the persistent conversation browser
-journey. Eight critical verifier methods include multiple adversarial subcases.
-
-Demo: sign in as Owner → inspect source/period on Dashboard → upload a CSV/XLSX
-through mapping, reconciliation and preview → explicitly commit → verify history
-and dashboard net sales → ask the partner for recorded sales using the same dates →
-inspect provenance → create/confirm/pay a simulated QR → inspect canonical history
-and ask its status → open Financing/RBF → verify indicative terms → grant consent
-before simulated application submission → confirm exact action → review as assigned
-Financing Agent → revoke consent and verify denial. Repeat Staff financing/foreign
-merchant and cake-recipe requests to demonstrate backend refusals.
+Optional `scripts/assess_partner.py` performs actual provider requests with synthetic data and locally configured secrets. It is not part of ordinary offline regression verification and was not executed for this documentation maintenance.
 
 ## Security self-assessment and risk register
 

@@ -9,6 +9,10 @@ class F:
  def __init__(self):self.cleanups=[]
  def addCleanup(self,fn):self.cleanups.append(fn)
 f=F();setup_identity(f);attach_server(f)
+# Optional additional merchant membership only in this isolated browser fixture.
+if os.environ.get('COPILOT_BANK_PORTAL_FIXTURE')=='yes':
+ with f.auth.db() as db:
+  for role in ('owner','lender_analyst'):db.execute('INSERT OR IGNORE INTO memberships VALUES (?,?)',(f.ids[role],'M003'))
 from copilot.server import Handler
 from http.server import ThreadingHTTPServer
 print('Isolated four-role browser fixture ready',flush=True)

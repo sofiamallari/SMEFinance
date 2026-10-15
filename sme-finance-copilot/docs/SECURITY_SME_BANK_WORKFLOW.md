@@ -2,33 +2,9 @@
 
 Branch: `feature/security-sme-bank-workflow`. Permission/module matrix is the team's provisional POC baseline. All lending outputs are simulations or existing advisory calculations, never a credit decision.
 
-## Roles and migration
+## Policy prerequisites
 
-| Authoritative stored role | Compatibility identifier | Scope |
-|---|---|---|
-| SYSTEM_ADMIN | security_admin | Platform users, security policies and administrative audit only. |
-| SME_OWNER | owner | Assigned business operations, Staff delegation, Bank authorization and confirmed submission. |
-| SME_STAFF | staff | Explicit merchant-level delegation; financing drafts only, never submission. |
-| BANK | lender_analyst | Owner-authorized financial categories and routed submitted packets; read-only review/export. |
-
-One policy defines these four roles; compatibility identifiers resolve to it and do not add permissions. Migration 007 maps existing Owner/Staff/Financing Agent/Security Administrator records, preserves history and invalidates existing sessions. Coach, demo_guest and restricted legacy user_admin records remain unmapped and denied; a System Admin must explicitly review and select a supported role. No automatic restricted-administrator privilege upgrade is performed.
-
-Legacy migration history, merchant data, applications, consent/authorization records and audits remain intact. `financing_drafts` is a new additive table. Existing category and expiry checks remain in use. The former consent storage supports Bank authorization; general Bank data reads no longer require an application assignment. Submitted packets still require exact recipient routing.
-
-## Module baseline
-
-| Module group | System Admin | SME Owner | SME Staff | Bank |
-|---|---|---|---|---|
-| Dashboard, transactions/history/quality, payments | None | Assigned merchant | Explicitly delegated | None |
-| Cash Flow, financing overview, RBF, Progression Engine | None | Assigned merchant | Explicitly delegated | Authorized categories through Bank review |
-| Financing applications | None | Draft/edit/confirmed submit | Delegated own drafts only | Authorized submitted packets routed to this Bank |
-| AI | None | Authorized merchant capabilities | Delegated capabilities | Read-only authorized categories |
-| User management | Platform | Assigned-merchant Staff permissions | None | None |
-| Bank authorization | None | Grant/revoke for own merchant | None | None |
-| Security administration | Platform | None | None | None |
-| Audit | Administrative | Own merchant | None | Own authorized review events |
-
-Account provisioning remains System Admin's responsibility. Owners manage only existing Staff memberships' permissions; Owner account creation/membership approval is deferred pending team rules. Staff can edit their own drafts; Owners can edit merchant drafts. All action grants remain bounded by platform role policy and tier ceiling.
+Use the canonical [security/permissions guide](SECURITY_PERMISSIONS.md) for roles, migration, the module matrix and authorization. Bank review/API details are in [Bank Financial Review](BANK_FINANCIAL_REVIEW.md). This guide focuses on the end-to-end journey.
 
 ## Run locally
 
@@ -51,9 +27,9 @@ Provider settings stay private in the existing `.env`. No Gemini connectivity is
 4. **Owner financial operations:** record/import synthetic transactions through existing confirmation/validation controls; compare matching-period Dashboard, Cash Flow and AI evidence. Existing financial formulas and Progression Engine completion limitations remain unchanged.
 5. **Owner Bank authorization:** open `/consents` (now titled Bank Authorization). Select an active merchant-scoped Bank, purpose, categories and future expiry; authorize. This does not submit an application or create automatic routing. Banks can read granted financial categories without needing an application case first.
 6. **Owner submission:** Financing → Applications → review/edit the draft → explicitly select the Bank → Review submission proposal → review exact merchant/amount/product/recipient/expiry → confirm. A simulated `SUBMITTED_FOR_LENDER_REVIEW` packet is saved and the draft becomes submitted. Expired, changed, foreign or unauthorized proposals cannot execute.
-7. **Bank:** sign in separately; `/` redirects to `/bank`. Review authorized merchant summaries, historical revenue trends, estimated cash-flow chart, existing assessments, risk indicators, matches, RBF and journey evidence where categories permit. Select the routed application; unrelated applications are unavailable. Original SME operational screens are denied. No Approve/Reject control exists.
-8. **Bank export/AI:** select Download CSV. Export checks permissions/categories again and audits the event; the report is labeled simulated, not an official lending decision. Ask an authorized read-only financial question. No category or merchant bypass is allowed. CSV data is protected against spreadsheet formula injection.
-9. **Revocation:** Owner revokes authorization in Bank Authorization. New Bank reviews, exports and consent-dependent AI requests are denied. Prior downloads/screenshots cannot be recalled. Historical applications and audits remain preserved.
+7. **Bank:** sign in separately; `/` redirects to `/bank`. Review authorized merchant summaries, historical revenue trends, estimated cash-flow chart, existing assessments, risk indicators, matches, RBF and journey evidence where categories permit. Open Financing Applications and select a routed packet to inspect its collapsed evidence; unrelated applications are unavailable. Original SME operational screens are denied. No Approve/Reject control exists.
+8. **Bank export/AI:** open Reports & Exports and select Download CSV; the right-side AI Financial Partner remains available in every module. Export checks permissions/categories again and audits the event; the report is labeled simulated, not an official lending decision. Ask an authorized read-only financial question. No category or merchant bypass is allowed. CSV data is protected against spreadsheet formula injection.
+9. **Revocation:** Owner revokes authorization in Bank Authorization. New Bank reviews, exports and consent-dependent AI requests are denied. The portal clears protected sections and conversations when its live check detects the change (polling, focus, refresh, chat/export or expiry); it does not push remote revocations instantly. Prior downloads/screenshots cannot be recalled. Historical applications and audits remain preserved.
 10. **Audit:** Owner reviews own-business access history; Bank sees only its own authorized review event metadata; System Admin reviews administrative logs. Passwords, provider keys and tokens must not be shared in evidence.
 
 ## Verification
@@ -75,13 +51,9 @@ node scripts/verify_four_role_browser.cjs
 
 The Python executable defaults to `python`; set `COPILOT_TEST_PYTHON` locally if needed. Playwright is an optional testing dependency, not an application runtime requirement. `COPILOT_PLAYWRIGHT_MODULE` can point to an existing Playwright installation. The browser check provisions a synthetic Bank, delegates Staff drafts, edits a draft, confirms Owner submission, checks Bank charts/CSV/AI, denies direct unauthorized routes and verifies revocation. It stops its disposable server on exit.
 
-## Preserved protections and remaining gaps
+## Related security and limitations references
 
-Retained: scrypt password hashes, generic login failures/lockout, idle/absolute session expiry, revocation, forced password changes, administrator-issued single-use reset tokens, reauthentication, CSRF, HttpOnly/SameSite cookies, merchant/resource authorization, hash-chained audit and existing action confirmation. MFA, production TLS hosting, automated external monitoring, backup/restore operations and incident response procedures are not implemented by this POC. Email/self-service password recovery is not implemented; administrator-issued recovery already exists.
-
-Bank authorization remains individual-account based, not organization-wide membership approval. Existing expiry remains enforced. No Bank-initiated request workflow, real email, PDF/Excel export, new underwriting, real approval/disbursement, confidential Bank-side assessment authoring, survival simulation, or persisted five-step completion rules are introduced. Historical bank cash and a post-financing outcome baseline are unavailable and labeled missing. Existing Task 04 guides may describe the superseded legacy role baseline; this guide governs the new four-role workflow.
-
-AI submission requests without an explicit Bank selection are safely directed to the application workflow; ordinary authorized analysis, journey guidance and exact confirmed backend submission remain available. No real financing decision is supported. Prior legacy safeguards for unmapped roles are retained until explicitly reviewed; those roles have no active policy privileges.
+[Session/recovery](AUTHENTICATION.md) · [Permissions](SECURITY_PERMISSIONS.md) · [Known limits/pending rules](KNOWN_LIMITATIONS.md) · [Recorded testing](TESTING.md). Historical guides below do not override the current four-role policy.
 
 ## Delivery file manifest
 

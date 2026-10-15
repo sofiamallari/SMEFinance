@@ -1,11 +1,12 @@
 # Cash Flow User Guide
 
+Current access rules: [four-role permissions](../SECURITY_PERMISSIONS.md). These user instructions use the current baseline; earlier dated results remain historical.
+
 ## Purpose and access
 
 Open **Cash Flow**, route `/cash-flow`, to review estimated future balances and
 rule-based alerts for the selected merchant. Authorized users need `view_forecasts`.
-Financing Agents additionally need the relevant assignment and current forecast
-consent. Administrators do not inherit this financial access.
+Staff need explicit forecast delegation. Bank sees forecasts through its review view under current forecast authorization; general forecasts do not require an application case. System Admin has no financial access.
 
 ## 1. Read the screen
 

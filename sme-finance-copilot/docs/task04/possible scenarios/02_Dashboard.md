@@ -1,71 +1,35 @@
-# Dashboard — User Journey Scenarios
+# Dashboard — scenario pathways
 
-**Entry point:** /dashboard. Routes are relative to your application server.
+Entry: /dashboard. Use synthetic data and separately signed-in authorized role accounts. Detailed UI steps: [module guide](../5%20README_Dashboard.md); rules: [permissions](../../SECURITY_PERMISSIONS.md). These pathways are instructions, not new test-execution evidence or an exhaustive input enumeration.
 
-## How to use these scenarios
+## 02-01: Same-period review
 
-Use synthetic data in the intended local demo/test environment. Check the selected merchant, role, enabled permissions and currency before each journey. Run only actions you are authorized to perform. Administrator accounts do not inherit financial access. Do not include credentials or customer personal data in evidence.
+**Path:** Owner or explicitly delegated Staff selects merchant/dates → Apply → inspect source/currency.
 
-These are source-aligned scenario instructions, **not a claim that every scenario was newly executed**. The set covers meaningful implemented branches, not every possible input or combination. Unsupported pathways are explicitly marked in expected outcomes.
+**Expected result / boundary:** Recorded totals are not bank cash.
 
-## 02-01: Review recorded performance
+## 02-02: Import integration
 
-**Prerequisites:** Authorized view_dashboard permission and merchant membership.
+**Path:** Confirm valid synthetic POS import → refresh matching-period Dashboard.
 
-**Pathway:** Select merchant → choose reporting dates and granularity → Apply → review cards, trends and provenance.
+**Expected result / boundary:** Completed eligible records affect calculations, not merely previewed rows.
 
-**Expected result / boundary:** Totals describe recorded data for that period; they are not verified bank balances.
+## 02-03: AI comparison
 
-## 02-02: Import-to-dashboard journey
+**Path:** Grant appropriate AI/read actions → ask same merchant/dates → compare definitions.
 
-**Prerequisites:** Authorized POS import and Dashboard access.
+**Expected result / boundary:** Counts/revenue/cash can differ by definition; inspect evidence.
 
-**Pathway:** Import an approved synthetic batch → inspect committed outcome → Dashboard → include its dates → Apply.
+## 02-04: Refund/empty period
 
-**Expected result / boundary:** Completed records affect reporting; pending/failed records do not increase revenue.
+**Path:** Review records including refunds or no completed activity.
 
-## 02-03: Compare Dashboard with AI
+**Expected result / boundary:** Do not infer real-world revenue from missing records.
 
-**Prerequisites:** Dashboard and use_copilot access.
+## 02-05: Bank or admin direct route
 
-**Pathway:** Apply dates → ask AI for recorded sales using the same two ISO dates → compare merchant, currency and evidence.
+**Path:** Attempt original SME Dashboard as Bank/System Admin.
 
-**Expected result / boundary:** Use equivalent metrics. Dashboard activity counts and AI completed-record counts can have different definitions.
+**Expected result / boundary:** Denied; Bank uses category-authorized review summaries.
 
-## 02-04: Refund and expense example
-
-**Prerequisites:** Authorized synthetic transactions.
-
-**Pathway:** Record completed sale 100, refund 25 and expense 20 → review matching reporting period.
-
-**Expected result / boundary:** Net sales 75; expenses 20; net income 55. Net income is not wallet settlement.
-
-## 02-05: No activity or negative net channels
-
-**Prerequisites:** Reporting period with no completed records or refunds exceeding sales.
-
-**Pathway:** Apply period → read totals and chart notes.
-
-**Expected result / boundary:** Zero means no recorded activity, not proof of zero real revenue. Nonpositive channel totals may not support a pie chart.
-
-## 02-06: Wrong dates or merchant
-
-**Prerequisites:** Authorized account with relevant scope.
-
-**Pathway:** Correct selected merchant and dates → Apply; start date must not exceed end date.
-
-**Expected result / boundary:** Do not compare different currencies or periods as if they were identical.
-
-## 02-07: Unauthorized direct route
-
-**Prerequisites:** A role/account without dashboard access.
-
-**Pathway:** Open Dashboard directly in a controlled test.
-
-**Expected result / boundary:** Backend denies access; administrative role alone is insufficient.
-
-## Evidence to capture
-
-Record the scenario ID, account role (no password), authorized merchant, relevant dates, expected versus actual result, and any nonsecret record/reference or validation message. For financial comparisons, record metric definition, currency, source and reporting period. Do not label an estimate as a verified outcome.
-
-**Related guide:** See the existing Dashboard guide in the parent `docs/task04` folder. Review actual UI labels and errors on your installed version.
+Capture role, authorized merchant, dates/currency, nonsecret reference, and expected versus actual outcome. Never capture passwords/tokens/provider keys. See [testing](../../TESTING.md) for recorded evidence.

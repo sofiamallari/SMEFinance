@@ -1,5 +1,7 @@
 # Gemini baseline assessment — before Task 03
 
+> Historical snapshot: retained for chronology and original evidence. Role, consent, menu, API and test instructions below may be superseded. Use [current documentation](README.md) for the four-role baseline.
+
 Date: 2026-10-14. Branch: `feature/ai-financial-partner`. HEAD and recorded `origin/main`: `32deb7034acd9e90b04011e9a7164c4a79adb6ba` (merged Task 02). The branch was not switched, merged, committed or pushed. The pre-existing `.gitignore` edit was preserved.
 
 ## Outcome

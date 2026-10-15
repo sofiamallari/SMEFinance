@@ -1,12 +1,12 @@
 # Dashboard User Guide
 
+Current access rules: [four-role permissions](../SECURITY_PERMISSIONS.md). These user instructions use the current baseline; earlier dated results remain historical.
+
 ## Purpose and access
 
 Dashboard summarizes recorded financial activity for the selected merchant.
 Open **Dashboard** or `http://127.0.0.1:8000/dashboard` after signing in.
-Business Owners and permitted Staff/legacy Coaches need current merchant
-membership and `view_dashboard`. Administrators do not inherit financial access;
-Financing Agents do not receive Dashboard access by default.
+SME Owners need assigned scope; Staff require explicit `view_dashboard` delegation. Bank has no SME Dashboard access and uses authorized Bank review summaries. System Admin and unmapped legacy roles have no financial access.
 
 ## How to use it
 
