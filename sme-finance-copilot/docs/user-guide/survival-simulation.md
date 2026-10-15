@@ -12,7 +12,7 @@ Owner only, required financial reads and FINANCIAL_SURVIVAL_SIMULATION_ENABLED e
 
 ## Navigation
 
-AI Financial Partner → Survival Simulation; heading Business Stress Test.
+Dashboard -> Survival Simulation; heading Business Stress Test. Existing AI scenario-review buttons open this tab.
 
 ## Step-by-step instructions
 

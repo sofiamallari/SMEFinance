@@ -1,6 +1,8 @@
 # Business Growth and Progression
 
-Current implemented guide · 15 October 2026.
+Current capability note - 15 October 2026.
+
+The detailed Business Growth dashboard tab is no longer visible after dashboard consolidation. Financing -> Overview retains the compact authorized maturity summary. The backend assessment and formulas remain unchanged; the detailed-screen instructions below describe the prior UI and are retained for context.
 
 ## Purpose
 
