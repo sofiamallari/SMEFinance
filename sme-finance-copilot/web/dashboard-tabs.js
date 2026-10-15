@@ -4,16 +4,16 @@ let dashboardPane='overview',businessAlertsLoaded=false;
 const maturityStages=['Survival Borrower','Striving Amateur','Steady Upgrader','Opportunity Seizer','Expanding Proprietor','Heir Seeker'];
 const dimensionLabel=name=>name.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 function resetDashboardContext(){
- dashboardRequest++;growthRequest++;alertRequest++;dashboardAssessment=null;dashboardAssessmentPromise=null;businessAlertsLoaded=false;businessAlertRows=[];businessAlertsRetrieved=null;businessAlertState={page:1,size:3,severity:'all'};revenueTableState={page:1,size:10,context:''};
+ dashboardSnapshot=null;$('#export-overview').disabled=true;$('#export-status').textContent='';$('#dashboard-partial-period').hidden=true;$('#dashboard-partial-period').textContent='';closeBusinessNotifications();$('#cfkpis').replaceChildren();$('#cfchart').replaceChildren();$('#cfalerts').replaceChildren();cashflowLoadedFor=null;dashboardRequest++;growthRequest++;alertRequest++;dashboardAssessment=null;dashboardAssessmentPromise=null;businessAlertsLoaded=false;businessAlertRows=[];dismissedBusinessAlerts.clear();businessAlertsRetrieved=null;businessAlertState={page:1,size:3,severity:'all'};revenueTableState={page:1,size:10,context:''};
  for(const id of ['dkpis','dvol','drev','overview-volume','overview-revenue','dvoltrend','drevtrend','business-growth','business-alerts','financing-readiness','dashboard-insights','dashboard-incentive','dashboard-provenance','dashboard-limitations','matches','rbfelig','rbfsummary','rbfdays','rbfcmp'])$('#'+id)?.replaceChildren();
  $('#business-growth').textContent='Open Business Growth to load the current assessment.';$('#business-alerts').textContent='Open Alerts to load the available business alerts.';
 }
 function selectDashboardPane(name){
- if(!['overview','sales','growth','alerts'].includes(name))name='overview';dashboardPane=name;
+ if(!['overview','cashflow','survival'].includes(name))name='overview';dashboardPane=name;
  $$('[data-dashboard-tab]').forEach(b=>{const selected=b.dataset.dashboardTab===name;b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;b.classList.toggle('active',selected)});
  $$('[data-dashboard-pane]').forEach(panel=>panel.hidden=panel.dataset.dashboardPane!==name);
- $('#dashboard-reporting').hidden=!['overview','sales'].includes(name);
- if(name==='growth')loadBusinessGrowth();if(name==='alerts')loadBusinessAlerts();
+ $('#dashboard-reporting').hidden=name!=='overview';$('#overview-export-row').hidden=name!=='overview';
+ dashboardIntegratedPane(name);
 }
 async function assessmentForMerchant(){
  const mid=M.id;
@@ -36,31 +36,33 @@ async function loadBusinessGrowth(){
 }
 async function loadBusinessAlerts(){
  if(businessAlertsLoaded)return;
- const mid=M.id,request=++alertRequest,box=$('#business-alerts');box.textContent='Loading business alerts…';
+ const mid=M.id,request=++alertRequest,box=$('#business-alerts');box.textContent='Loading notifications…';
  if(!can('view_forecasts')){box.textContent='Business alerts are not delegated to this account.';return}
  try{const response=await api('/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:'owner-alerts',method:'tools/call',params:{name:'cashflow_alerts',arguments:{merchant_id:mid}}})});
   if(M.id!==mid||request!==alertRequest)return;if(response.error||response.result?.isError)throw Error('Alerts unavailable');
-  businessAlertRows=response.result.structuredContent.items;businessAlertsRetrieved=new Date();
+  businessAlertRows=response.result.structuredContent.items;dismissedBusinessAlerts.clear();businessAlertsRetrieved=new Date();
   if(!businessAlertRows.some(a=>a.severity===businessAlertState.severity))businessAlertState.severity='all';
   businessAlertState.page=1;businessAlertsLoaded=true;renderCompactBusinessAlerts();
- }catch(error){if(M.id===mid&&request===alertRequest)box.textContent='Business alerts could not be loaded. Use Refresh alerts to retry.'}
+ }catch(error){if(M.id===mid&&request===alertRequest)box.textContent='Notifications could not be loaded. Try Refresh alerts.'}
 }
 async function loadDashboard(){
- const mid=M.id,request=++dashboardRequest,s=$('#dstart').value,e=$('#dend').value;$('#derr').textContent='';
+ $('#export-overview').disabled=true;const mid=M.id,request=++dashboardRequest,s=$('#dstart').value,e=$('#dend').value;$('#derr').textContent='';
+ if(dashboardSnapshot&&dashboardSnapshot.merchant.id===mid&&dashboardSnapshot.period.start===s&&dashboardSnapshot.period.end===e&&dashboardSnapshot.period.granularity===$('#dgran').value){$('#export-overview').disabled=false;return}
  if(s&&e&&s>e){$('#derr').textContent='Start date must be on or before end date.';return}
  const d=await api('/api/dashboard'+q('&granularity='+$('#dgran').value+(s?'&start='+s:'')+(e?'&end='+e:'')));
  if(M.id!==mid||request!==dashboardRequest)return;
  if(!s){$('#dstart').value=d.period.start;$('#dend').value=d.period.end}
- const f=d.financial_metrics,inc=d.incentive;
+ dashboardSnapshot=d;const f=d.financial_metrics,inc=d.incentive;
  $('#dashboard-empty').hidden=f?.record_count!==0;$('#dashboard-empty').textContent='No completed transaction records for this period. Actual business revenue is unknown.';
  $('#dkpis').innerHTML=[['Recorded Net Sales',fmt(f?.net_sales),'Canonical sales net of recorded refunds'],['Expenses',fmt(f?.expenses),'Recorded expenses in this reporting period'],['Net Income',fmt(f?.net_income),'Authoritative canonical net income'],['Digital Capture',pct(d.capture.digital_share),'Own rails '+pct(d.capture.ecosystem_share)+' · cash '+pct(d.capture.cash_share)]].map(([name,value,note])=>'<div class="card"><div class="muted">'+name+'</div><div class="kpi">'+value+'</div><p class="muted">'+esc(note)+'</p></div>').join('');
  const channels=Object.values(d.mix.by_channel),volume=donut(channels.map(c=>c.volume_share),channels.map(c=>c.label),d.mix.total_transactions.toLocaleString()+'<br><small>txns</small>'),revenue=donut(channels.map(c=>c.revenue_share),channels.map(c=>c.label),short(d.mix.gross_revenue)+'<br><small>net</small>');
- for(const id of ['dvol','overview-volume'])$('#'+id).innerHTML=volume;for(const id of ['drev','overview-revenue'])$('#'+id).innerHTML=revenue;
+ for(const id of ['overview-volume'])$('#'+id).innerHTML=volume;for(const id of ['overview-revenue'])$('#'+id).innerHTML=revenue;
  const trendOpen=$('#dashboard-trend-values')?.open;$('#dvoltrend').innerHTML=bars(d.trend.map(t=>t.period),d.trend.map(t=>t.transactions),'vol');$('#drevtrend').innerHTML=financialTrend(d.trend,d.merchant.currency);renderRevenueValues(d,trendOpen);
  $('#dashboard-trend-period').textContent=d.period.start+' to '+d.period.end+' · '+d.period.granularity+' · '+d.merchant.currency;
+ const periodNote=overviewPartialPeriod(d.period);$('#dashboard-partial-period').textContent=periodNote;$('#dashboard-partial-period').hidden=!periodNote;
  $('#dashboard-insights').innerHTML='<p><b>Receivables:</b> '+esc(d.receivables.explanation)+'</p>';
- $('#dashboard-incentive').innerHTML='<p><b>Incentive milestone:</b> '+esc(inc.tier_name||'No milestone yet')+(inc.mom_growth==null?'':' · '+pct(inc.mom_growth)+' month-on-month own-rail growth')+'</p><small class="muted">Provisional sandbox milestone, not a guaranteed reward. Review Alerts for current business warnings.</small>';
-
+ $('#dashboard-incentive').innerHTML='<p><b>Incentive milestone:</b> '+esc(inc.tier_name||'No milestone yet')+(inc.mom_growth==null?'':' · '+pct(inc.mom_growth)+' month-on-month own-rail growth')+'</p><small class="muted">Provisional sandbox milestone, not a guaranteed reward. Use the notification bell for current business warnings.</small>';
+ $('#export-overview').disabled=false;
 }
 const existingLoadFinancing=loadFinancing;
 loadFinancing=async function(){const mid=M.id;const promise=existingLoadFinancing();if(can('view_assessment'))assessmentForMerchant().then(a=>{if(M.id===mid)$('#financing-readiness').textContent='Business maturity: '+a.stage_name+' · Composite '+a.composite_score+'/100 · Credit readiness '+a.scores.credit_readiness+'/100 · as of '+a.as_of+'. Indicative business assessment, not credit eligibility or approval.'}).catch(()=>{if(M.id===mid)$('#financing-readiness').textContent='Maturity summary unavailable for this account or data.'});else $('#financing-readiness').textContent='Maturity summary is not delegated to this account.';return promise};
@@ -71,6 +73,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 },{once:true});
 
 let revenueTableState={page:1,size:10,context:''};
+const dismissedBusinessAlerts=new Set();
 let businessAlertRows=[],businessAlertState={page:1,size:3,severity:'all'},businessAlertsRetrieved=null;
 function nextMaturityCard(a){
  const gap=a.next_stage;if(!gap)return '<section class="growth-next-card"><h3>Next Maturity Stage</h3><p>'+esc(a.stage>=6?'Highest maturity stage reached.':'No numeric next-stage target supplied by this assessment.')+'</p><small>'+esc(a.graduation_trigger||'Assessment data is unavailable.')+'</small></section>';
@@ -86,9 +89,22 @@ function renderRevenueValues(d,open){
 }
 const businessAlertTitles={BUFFER_THIN:'Low Cash Buffer',RECEIVABLES_OVERDUE:'Overdue Customer Invoices',RUNWAY_CRITICAL:'Critical Cash Runway',RUNWAY_LOW:'Low Cash Runway',RUNWAY_WATCH:'Cash Runway Watch',SALES_DROP:'Recorded Sales Decrease',OBLIGATIONS_DUE:'Upcoming Supplier Bills',FUNDS_MIXING:'Business and Household Funds',CASH_DEPENDENCE:'Cash Dependence'};
 const businessSeverityLabels={critical:'Critical',warning:'Warning',info:'Info'};
+function notificationDestination(alert){
+ const value=alert.destination||alert.route||alert.action?.path;
+ if(typeof value!=='string'||!value.startsWith('/')||value.startsWith('//'))return null;
+ const tab=Object.keys(routes).find(key=>routes[key]===value);
+ if(!tab||!can(routePermissions[tab]))return null;
+ const labels={cashflow:'Review Cash Flow',dashboard:'View Overview',financing:'View Financing',applications:'View Applications',rbf:'View RBF Calculator'};
+ return labels[tab]?{tab,path:value,label:labels[tab]}:null;
+}
 function renderCompactBusinessAlerts(){
- const box=$('#business-alerts'),state=businessAlertState,all=businessAlertRows,filtered=state.severity==='all'?all:all.filter(a=>a.severity===state.severity),pages=Math.max(1,Math.ceil(filtered.length/state.size));state.page=Math.max(1,Math.min(state.page,pages));const start=(state.page-1)*state.size,visible=filtered.slice(start,start+state.size),critical=all.filter(a=>a.severity==='critical').length;
- box.innerHTML='<div class="business-alert-filters" role="group" aria-label="Business alert severity">'+['all',...Object.keys(businessSeverityLabels).filter(severity=>all.some(a=>a.severity===severity))].map(severity=>'<button type="button" class="btn ghost sm" data-business-severity="'+severity+'" aria-pressed="'+String(state.severity===severity)+'">'+(severity==='all'?'All':businessSeverityLabels[severity])+' ('+(severity==='all'?all.length:all.filter(a=>a.severity===severity).length)+')</button>').join('')+'</div>'+(critical?'<p class="critical-alert-count">Critical alerts in this snapshot: '+critical+'</p>':'')+'<div class="compact-business-alerts">'+(visible.length?visible.map(a=>'<article class="business-alert-card"><div class="business-alert-heading"><h4>'+esc(businessAlertTitles[a.code]||dimensionLabel(a.code))+'</h4><span class="pill sev-'+esc(a.severity)+'">'+esc(businessSeverityLabels[a.severity]||a.severity)+'</span></div><p>'+esc(a.message)+'</p>'+(a.recommended_action?'<p class="business-alert-action"><b>Suggested action:</b> '+esc(a.recommended_action)+'</p>':'')+'<div class="business-alert-tools">'+(can('view_forecasts')?'<button class="btn ghost sm" data-alert-source="cashflow">Review Cash Flow</button>':'')+'<details><summary>View Details</summary><p>Source: existing Cash Flow business rules.</p>'+(a.framework_intervention?'<p>'+esc(a.framework_intervention)+'</p>':'')+(a.as_of?'<p>As of '+esc(a.as_of)+'</p>':'')+'</details></div></article>').join(''):all.length?'<p>No business alerts match this severity filter.</p>':'<p>No business alerts for the available assessment.</p>')+'</div><div class="owner-pagination" aria-label="Business alerts pagination"><span>Showing '+(filtered.length?start+1:0)+'–'+Math.min(start+state.size,filtered.length)+' of '+filtered.length+' alerts</span><label>Per page <select data-business-alert-size>'+[3,5,10].map(size=>'<option '+(state.size===size?'selected':'')+'>'+size+'</option>').join('')+'</select></label><button class="btn ghost sm" data-business-alert-prev '+(state.page===1?'disabled':'')+'>Previous</button><span>Page '+state.page+' of '+pages+'</span><button class="btn ghost sm" data-business-alert-next '+(state.page===pages?'disabled':'')+'>Next</button></div><small class="muted">Retrieved on demand '+esc(businessAlertsRetrieved?.toLocaleString()||'')+'; independent of reporting-period filters.</small>';
- box.querySelectorAll('[data-business-severity]').forEach(button=>button.onclick=()=>{state.severity=button.dataset.businessSeverity;state.page=1;renderCompactBusinessAlerts()});
- box.querySelector('[data-business-alert-size]').onchange=event=>{state.size=Number(event.target.value);state.page=1;renderCompactBusinessAlerts()};box.querySelector('[data-business-alert-prev]').onclick=()=>{state.page--;renderCompactBusinessAlerts()};box.querySelector('[data-business-alert-next]').onclick=()=>{state.page++;renderCompactBusinessAlerts()};box.querySelectorAll('[data-alert-source]').forEach(button=>button.onclick=()=>navigate(button.dataset.alertSource));
+ const box=$('#business-alerts'),visible=businessAlertRows.map((alert,index)=>({alert,index})).filter(row=>!dismissedBusinessAlerts.has(row.index));box.innerHTML=visible.length?visible.map(({alert:a,index})=>{
+  const severity=Object.hasOwn(businessSeverityLabels,a.severity)?a.severity:'unknown',label=businessSeverityLabels[severity]||'Notification',destination=notificationDestination(a),message=String(a.message||'');
+  const symbol=severity==='info'?'<circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 4v1"/>':'<path d="M8 2 15 14H1Z M8 6v4M8 11v1"/>';
+  return '<article class="notification-bubble severity-'+severity+'"><button type="button" class="notification-dismiss" data-dismiss-notification="'+index+'" aria-label="Dismiss '+esc(label)+' notification" title="Hide until refresh or reload; this does not resolve the alert">&#215;</button><div class="notification-severity severity-'+severity+'"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">'+symbol+'</svg><span>'+esc(label)+'</span></div><p class="notification-message" id="notification-message-'+index+'">'+esc(message)+'</p><button type="button" class="notification-more" aria-controls="notification-message-'+index+'" aria-expanded="false" hidden>Show full message</button>'+(a.recommended_action?'<details class="notification-guidance"><summary>Suggested action</summary><p>'+esc(a.recommended_action)+'</p></details>':'')+(destination?'<a class="notification-action" data-notification-tab="'+destination.tab+'" href="'+esc(destination.path)+'">'+esc(destination.label)+' <span aria-hidden="true">↗</span></a>':'')+'</article>';
+ }).join(''):'<p class="notification-empty">No notifications right now.</p>';
+ for(const bubble of box.querySelectorAll('.notification-bubble')){const message=bubble.querySelector('.notification-message'),more=bubble.querySelector('.notification-more');requestAnimationFrame(()=>{more.hidden=message.scrollHeight<=message.clientHeight+1});more.onclick=()=>{const expanded=more.getAttribute('aria-expanded')!=='true';more.setAttribute('aria-expanded',String(expanded));message.classList.toggle('expanded',expanded);more.textContent=expanded?'Show less':'Show full message'}}
+ box.querySelectorAll('[data-dismiss-notification]').forEach(button=>button.onclick=event=>{event.stopPropagation();dismissedBusinessAlerts.add(Number(button.dataset.dismissNotification));renderCompactBusinessAlerts();(box.querySelector('[data-dismiss-notification]')||$('#refresh-business-alerts')).focus()});
+ box.querySelectorAll('[data-notification-tab]').forEach(link=>link.onclick=event=>{event.preventDefault();closeBusinessNotifications();navigate(link.dataset.notificationTab)});
+ positionBusinessNotifications();
 }

@@ -12,7 +12,7 @@ Owner or Staff with delegated forecast access.
 
 ## Navigation
 
-Cash Flow (`/cash-flow`).
+Dashboard -> Cash Flow. `/cash-flow` redirects authorized Dashboard users to that tab; it remains a standalone authorized view for accounts without Dashboard access.
 
 ## Step-by-step instructions
 

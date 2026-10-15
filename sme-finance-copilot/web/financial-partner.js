@@ -9,7 +9,7 @@ function partnerOpen(open){
  document.body.classList.toggle('ai-collapsed',!open);$('#ai-toggle').setAttribute('aria-expanded',String(open));
  const narrow=matchMedia('(max-width:1100px)').matches;
  $('#partner-panel').setAttribute('role',narrow&&open?'dialog':'complementary');
- if(narrow&&open){$('#partner-panel').setAttribute('aria-modal','true');if(!$('#survival-pane')?.hidden)$('#survival-pane').focus();else $('#chatinput').focus()}else $('#partner-panel').removeAttribute('aria-modal');
+ if(narrow&&open){$('#partner-panel').setAttribute('aria-modal','true');$('#chatinput').focus()}else $('#partner-panel').removeAttribute('aria-modal');
  $('#ai-backdrop').hidden=!(narrow&&open);
 }
 function partnerScope(){

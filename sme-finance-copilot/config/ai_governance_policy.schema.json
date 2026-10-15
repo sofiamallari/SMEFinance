@@ -1,0 +1,818 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/ai_governance_policy.schema.json",
+  "title": "SME Finance Copilot AI Governance Policy",
+  "description": "Strict structural validation. Backend must additionally validate cross-references and enforce authorization at runtime.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "metadata",
+    "roles",
+    "data_classifications",
+    "capabilities",
+    "tools",
+    "authorization_policy",
+    "conversation_policy",
+    "web_research_policy",
+    "simulation_policy",
+    "financial_response_policy",
+    "execution_policy",
+    "security_controls",
+    "implementation_notes"
+  ],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "policy_id": {
+          "const": "sme-finance-ai-governance"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "approved"
+          ]
+        },
+        "default_effect": {
+          "const": "deny"
+        },
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "review_required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "policy_id",
+        "version",
+        "status",
+        "default_effect",
+        "schema_version",
+        "review_required"
+      ],
+      "additionalProperties": false
+    },
+    "roles": {
+      "type": "object",
+      "properties": {
+        "SME_OWNER": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scope": {
+              "enum": [
+                "assigned_merchants",
+                "assigned_financing_applications",
+                "platform_administration"
+              ]
+            }
+          },
+          "required": [
+            "description",
+            "scope"
+          ],
+          "additionalProperties": false
+        },
+        "SME_STAFF": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scope": {
+              "enum": [
+                "assigned_merchants",
+                "assigned_financing_applications",
+                "platform_administration"
+              ]
+            }
+          },
+          "required": [
+            "description",
+            "scope"
+          ],
+          "additionalProperties": false
+        },
+        "BANK": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scope": {
+              "enum": [
+                "assigned_merchants",
+                "assigned_financing_applications",
+                "platform_administration"
+              ]
+            }
+          },
+          "required": [
+            "description",
+            "scope"
+          ],
+          "additionalProperties": false
+        },
+        "SYSTEM_ADMIN": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scope": {
+              "enum": [
+                "assigned_merchants",
+                "assigned_financing_applications",
+                "platform_administration"
+              ]
+            }
+          },
+          "required": [
+            "description",
+            "scope"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "SME_OWNER",
+        "SME_STAFF",
+        "BANK",
+        "SYSTEM_ADMIN"
+      ],
+      "additionalProperties": false
+    },
+    "data_classifications": {
+      "type": "object",
+      "properties": {
+        "D0": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "const": "PUBLIC"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model_disclosure": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "name",
+            "description",
+            "model_disclosure"
+          ],
+          "additionalProperties": false
+        },
+        "D1": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "const": "OPERATIONAL"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model_disclosure": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "name",
+            "description",
+            "model_disclosure"
+          ],
+          "additionalProperties": false
+        },
+        "D2": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "const": "CONFIDENTIAL"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model_disclosure": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "name",
+            "description",
+            "model_disclosure"
+          ],
+          "additionalProperties": false
+        },
+        "D3": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "const": "RESTRICTED"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model_disclosure": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "name",
+            "description",
+            "model_disclosure"
+          ],
+          "additionalProperties": false
+        },
+        "D4": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "const": "SECURITY_SENSITIVE"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model_disclosure": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "name",
+            "description",
+            "model_disclosure"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "D0",
+        "D1",
+        "D2",
+        "D3",
+        "D4"
+      ],
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "data_classification_ceiling": {
+            "enum": [
+              "D0",
+              "D1",
+              "D2",
+              "D3",
+              "D4"
+            ]
+          },
+          "role_effects": {
+            "type": "object",
+            "properties": {
+              "SME_OWNER": {
+                "enum": [
+                  "allow",
+                  "deny",
+                  "conditional"
+                ]
+              },
+              "SME_STAFF": {
+                "enum": [
+                  "allow",
+                  "deny",
+                  "conditional"
+                ]
+              },
+              "BANK": {
+                "enum": [
+                  "allow",
+                  "deny",
+                  "conditional"
+                ]
+              },
+              "SYSTEM_ADMIN": {
+                "enum": [
+                  "allow",
+                  "deny",
+                  "conditional"
+                ]
+              }
+            },
+            "required": [
+              "SME_OWNER",
+              "SME_STAFF",
+              "BANK",
+              "SYSTEM_ADMIN"
+            ],
+            "additionalProperties": false
+          },
+          "required_application_permission": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "description",
+          "data_classification_ceiling",
+          "role_effects"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "tools": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "minLength": 1
+          },
+          "resource_scope": {
+            "enum": [
+              "authorized_merchant",
+              "authorized_financing_application",
+              "public_only"
+            ]
+          },
+          "allowed_data_classes": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "D0",
+                "D1",
+                "D2",
+                "D3"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "output_field_allowlist": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "approval": {
+            "enum": [
+              "none",
+              "exact_query_single_use"
+            ]
+          },
+          "read_only": {
+            "const": true
+          },
+          "server_authorization_required": {
+            "const": true
+          },
+          "result_max_records": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+          }
+        },
+        "required": [
+          "capability",
+          "resource_scope",
+          "allowed_data_classes",
+          "output_field_allowlist",
+          "approval",
+          "read_only",
+          "server_authorization_required",
+          "result_max_records",
+          "timeout_seconds"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "authorization_policy": {
+      "type": "object",
+      "properties": {
+        "default_effect": {
+          "const": "deny"
+        },
+        "effective_access_rule": {
+          "const": "policy_allow_AND_existing_application_permission_AND_resource_scope_AND_field_permission"
+        },
+        "server_derived_identity": {
+          "type": "boolean"
+        },
+        "server_derived_merchant_scope": {
+          "type": "boolean"
+        },
+        "authorize_each_tool_call": {
+          "type": "boolean"
+        },
+        "filter_before_model": {
+          "type": "boolean"
+        },
+        "deny_if_policy_missing_or_invalid": {
+          "type": "boolean"
+        },
+        "deny_on_unknown_role_or_tool": {
+          "type": "boolean"
+        },
+        "deny_indirect_disclosure": {
+          "type": "boolean"
+        },
+        "invalidate_context_on_role_or_merchant_change": {
+          "type": "boolean"
+        },
+        "conditional_requires_explicit_permission": {
+          "type": "boolean"
+        },
+        "do_not_treat_data_classification_as_permission": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "default_effect",
+        "effective_access_rule",
+        "server_derived_identity",
+        "server_derived_merchant_scope",
+        "authorize_each_tool_call",
+        "filter_before_model",
+        "deny_if_policy_missing_or_invalid",
+        "deny_on_unknown_role_or_tool",
+        "deny_indirect_disclosure",
+        "invalidate_context_on_role_or_merchant_change",
+        "conditional_requires_explicit_permission",
+        "do_not_treat_data_classification_as_permission"
+      ],
+      "additionalProperties": false
+    },
+    "conversation_policy": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "const": "session_only"
+        },
+        "storage": {
+          "const": "ephemeral_memory"
+        },
+        "clear_on_refresh": {
+          "type": "boolean"
+        },
+        "clear_on_logout": {
+          "type": "boolean"
+        },
+        "clear_on_session_expiry": {
+          "type": "boolean"
+        },
+        "clear_on_merchant_switch": {
+          "type": "boolean"
+        },
+        "clear_on_new_conversation": {
+          "type": "boolean"
+        },
+        "persist_transcripts": {
+          "type": "boolean"
+        },
+        "persist_in_browser_storage": {
+          "type": "boolean"
+        },
+        "log_full_transcripts": {
+          "type": "boolean"
+        },
+        "revalidate_permissions_per_tool_call": {
+          "type": "boolean"
+        },
+        "max_messages": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "session_idle_timeout_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      },
+      "required": [
+        "mode",
+        "storage",
+        "clear_on_refresh",
+        "clear_on_logout",
+        "clear_on_session_expiry",
+        "clear_on_merchant_switch",
+        "clear_on_new_conversation",
+        "persist_transcripts",
+        "persist_in_browser_storage",
+        "log_full_transcripts",
+        "revalidate_permissions_per_tool_call",
+        "max_messages",
+        "session_idle_timeout_minutes"
+      ],
+      "additionalProperties": false
+    },
+    "web_research_policy": {
+      "type": "object",
+      "properties": {
+        "enabled_by_default": {
+          "type": "boolean"
+        },
+        "ask_before_every_search": {
+          "type": "boolean"
+        },
+        "show_exact_query_terms": {
+          "type": "boolean"
+        },
+        "show_purpose": {
+          "type": "boolean"
+        },
+        "approval_required": {
+          "const": "exact_query_single_use"
+        },
+        "approval_ttl_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "bind_approval_to": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "user",
+              "merchant",
+              "session",
+              "query_digest",
+              "tool"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 5
+        },
+        "reject_query_changes": {
+          "type": "boolean"
+        },
+        "reject_approval_replay": {
+          "type": "boolean"
+        },
+        "private_merchant_data_in_queries": {
+          "type": "boolean"
+        },
+        "require_source_citations": {
+          "type": "boolean"
+        },
+        "treat_results_as_untrusted": {
+          "type": "boolean"
+        },
+        "allow_unapproved_retry": {
+          "type": "boolean"
+        },
+        "max_queries_per_approval": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "max_results_per_search": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      },
+      "required": [
+        "enabled_by_default",
+        "ask_before_every_search",
+        "show_exact_query_terms",
+        "show_purpose",
+        "approval_required",
+        "approval_ttl_seconds",
+        "bind_approval_to",
+        "reject_query_changes",
+        "reject_approval_replay",
+        "private_merchant_data_in_queries",
+        "require_source_citations",
+        "treat_results_as_untrusted",
+        "allow_unapproved_retry",
+        "max_queries_per_approval",
+        "max_results_per_search",
+        "timeout_seconds"
+      ],
+      "additionalProperties": false
+    },
+    "simulation_policy": {
+      "type": "object",
+      "properties": {
+        "require_explicit_user_request": {
+          "type": "boolean"
+        },
+        "clarify_material_assumptions": {
+          "type": "boolean"
+        },
+        "use_existing_deterministic_calculations": {
+          "type": "boolean"
+        },
+        "non_persistent": {
+          "type": "boolean"
+        },
+        "modify_financial_records": {
+          "type": "boolean"
+        },
+        "use_only_authorized_inputs": {
+          "type": "boolean"
+        },
+        "label_assumptions_and_uncertainty": {
+          "type": "boolean"
+        },
+        "disclose_unsupported_scenarios": {
+          "type": "boolean"
+        },
+        "compare_base_and_downside_for_material_decisions": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "require_explicit_user_request",
+        "clarify_material_assumptions",
+        "use_existing_deterministic_calculations",
+        "non_persistent",
+        "modify_financial_records",
+        "use_only_authorized_inputs",
+        "label_assumptions_and_uncertainty",
+        "disclose_unsupported_scenarios",
+        "compare_base_and_downside_for_material_decisions"
+      ],
+      "additionalProperties": false
+    },
+    "financial_response_policy": {
+      "type": "object",
+      "properties": {
+        "conversational_by_default": {
+          "type": "boolean"
+        },
+        "structured_assessment_for_material_decisions": {
+          "type": "boolean"
+        },
+        "distinguish_verified_data_from_assumptions": {
+          "type": "boolean"
+        },
+        "do_not_confuse_revenue_with_profit": {
+          "type": "boolean"
+        },
+        "do_not_treat_transaction_volume_as_cash": {
+          "type": "boolean"
+        },
+        "do_not_guarantee_loan_approval": {
+          "type": "boolean"
+        },
+        "do_not_fabricate_financial_figures": {
+          "type": "boolean"
+        },
+        "do_not_invent_citations": {
+          "type": "boolean"
+        },
+        "disclose_data_gaps": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "conversational_by_default",
+        "structured_assessment_for_material_decisions",
+        "distinguish_verified_data_from_assumptions",
+        "do_not_confuse_revenue_with_profit",
+        "do_not_treat_transaction_volume_as_cash",
+        "do_not_guarantee_loan_approval",
+        "do_not_fabricate_financial_figures",
+        "do_not_invent_citations",
+        "disclose_data_gaps"
+      ],
+      "additionalProperties": false
+    },
+    "execution_policy": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "const": "read_only_and_non_persistent_simulation"
+        },
+        "prohibited_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "financial_write_tools_registered": {
+          "const": false
+        },
+        "conversational_consent_is_transaction_approval": {
+          "const": false
+        }
+      },
+      "required": [
+        "mode",
+        "prohibited_actions",
+        "financial_write_tools_registered",
+        "conversational_consent_is_transaction_approval"
+      ],
+      "additionalProperties": false
+    },
+    "security_controls": {
+      "type": "object",
+      "properties": {
+        "tool_allowlist_enforced": {
+          "type": "boolean"
+        },
+        "least_privilege": {
+          "type": "boolean"
+        },
+        "field_level_filtering": {
+          "type": "boolean"
+        },
+        "prompt_injection_content_untrusted": {
+          "type": "boolean"
+        },
+        "no_secrets_in_llm_context": {
+          "type": "boolean"
+        },
+        "no_private_data_in_public_search": {
+          "type": "boolean"
+        },
+        "provider_retention_requires_review": {
+          "type": "boolean"
+        },
+        "audit_event_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "audit_full_prompt_or_response": {
+          "type": "boolean"
+        },
+        "audit_secrets": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "tool_allowlist_enforced",
+        "least_privilege",
+        "field_level_filtering",
+        "prompt_injection_content_untrusted",
+        "no_secrets_in_llm_context",
+        "no_private_data_in_public_search",
+        "provider_retention_requires_review",
+        "audit_event_fields",
+        "audit_full_prompt_or_response",
+        "audit_secrets"
+      ],
+      "additionalProperties": false
+    },
+    "implementation_notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    }
+  }
+}

@@ -353,7 +353,7 @@ class Handler(BaseHTTPRequestHandler):
                 with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8' if path.endswith('.css') else 'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/financial-partner.js':
                 with open(os.path.join(ROOT,'..','web','financial-partner.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
-            if method=='GET' and path in ('/assets/merchant-transactions.js','/assets/transaction-settings.js','/assets/financing-applications.js','/assets/dashboard-tabs.js','/assets/owner-management.js','/assets/survival-simulation.js'):
+            if method=='GET' and path in ('/assets/merchant-transactions.js','/assets/transaction-settings.js','/assets/financing-applications.js','/assets/dashboard-tabs.js','/assets/dashboard-overview.js','/assets/owner-management.js','/assets/survival-simulation.js'):
                 with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/security-admin.js':
                 AUTH.authorize(token,'manage_security')
