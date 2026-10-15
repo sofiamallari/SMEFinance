@@ -4,6 +4,8 @@ Current access rules: [four-role permissions](SECURITY_PERMISSIONS.md).
 
 Implemented in `sme-finance-copilot/` on `feature/pos-transaction-import`, based on `origin/main` commit `f1792ca416ed139505d96861871becf60992af9f`. Security Administration was already merged in that baseline.
 
+Current selected-worksheet import, approved 10,000-row cap and import-only CNY support: [current implementation guide](MULTI_WORKSHEET_IMPORT.md). Original Task 02 baseline notes below retain their historical scope.
+
 ## Architecture compatibility
 
 The baseline business UI used horizontal tabs, despite the requested left-sidebar description. Task 02 moves that same navigation and content implementation into one left sidebar in the existing `web/index.html`; no duplicate application or authentication system is introduced. Dashboard, AI Copilot, Financing, Cash Flow and Payment Sandbox remain functional. Existing Financing Applications remains a secondary Financing link. Administration pages/navigation are unchanged.
@@ -68,9 +70,9 @@ User flow is **Select Files → Map Columns → Validate → Preview → Import*
 
 ## Formats, bounds and data minimization
 
-CSV must be UTF-8 (BOM accepted) and structurally valid. XLSX must be real OOXML with one transaction worksheet. Inline/shared strings and native Excel date styles/1900 or 1904 date systems are supported. Macros, encrypted/OLE workbooks, formulas/error cells, XML entities/DOCTYPEs, external relationships, unsafe ZIP paths and unsupported types are rejected, never executed or fetched externally.
+CSV must be UTF-8 (BOM accepted) and structurally valid. XLSX must be real OOXML with explicitly selected transaction worksheets and per-source header/data ranges. Inline/shared strings and native Excel date styles/1900 or 1904 date systems are supported. Macros, encrypted/OLE workbooks, formulas/error cells, XML entities/DOCTYPEs, external relationships, unsafe ZIP paths and unsupported types are rejected, never executed or fetched externally.
 
-Limits: 10 files, 3 MB each, 10 MB total, 5,000 parsed rows across a batch, 30 columns, 4,096-character source cells, 20 MB expanded workbook content, 200 ZIP members and 200:1 maximum expansion ratio. A cooperative ten-second processing deadline is checked during extraction. This is bounded parsing, not an OS-level execution watchdog. Staging is limited to 64 active runs globally, 5 per user and 32 MB of source/normalized temporary JSON; the larger upload body limit applies only to the staging endpoint. Authentication/CSRF is checked before reading those request bodies.
+Limits: 10 files, 3 MB each, 10 MB total, 10,000 parsed rows across a batch, 30 columns, 4,096-character source cells, 20 MB expanded workbook content, 200 ZIP members and 200:1 maximum expansion ratio. A cooperative ten-second processing deadline is checked during extraction. This is bounded parsing, not an OS-level execution watchdog. Staging is limited to 64 active runs globally, 5 per user and 32 MB of source/normalized temporary JSON; the larger upload body limit applies to staging and authenticated worksheet inspection endpoints. Authentication/CSRF is checked before reading those request bodies.
 
 Known sensitive columns (customer contact/identity, PAN/CVV, credentials/secrets) are excluded from staging; remaining possible card/contact/credential values and formula-like text are rejected. Broad numeric-card detection may reject long numeric receipt identifiers; use a safe non-card POS identifier or a reviewed preprocessing adapter rather than uploading payment credentials. Unknown unnecessary source columns are temporary only and discarded after validation/commit cleanup; do not intentionally upload private customer data. Filenames/relative paths are sanitized, cannot be absolute or traverse parents, and are never used to access host directories.
 

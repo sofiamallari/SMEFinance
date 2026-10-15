@@ -15,6 +15,20 @@ Current four-role documentation reviewed **15 October 2026 (Asia/Manila)** again
 
 ## Business modules and journeys
 
+- [Transaction History and Data Quality UI, pagination and verification](HISTORY_MONITORING_UI.md)
+
+- [Merchant Transactions: worksheet selection, mapping and reconciliation](MULTI_WORKSHEET_IMPORT.md)
+
+- [Business Overview Dashboard and verification](DASHBOARD_OVERVIEW.md)
+
+- [Shared Owner/Bank navigation and labeled profiles](PORTAL_NAVIGATION_PROFILE.md)
+
+- [Owner header, profile and navigation](OWNER_HEADER_NAVIGATION.md)
+- [Bank header, reviewing merchant and profile](BANK_HEADER_NAVIGATION.md)
+- [Shared System Admin layout across Security and User Management](SHARED_ADMIN_LAYOUT.md)
+- [Account modal layout, permission grids and verification](ACCOUNT_MODAL_LAYOUT.md)
+- [Initial Security Administration header verification](SECURITY_HEADER_NAVIGATION.md)
+
 - [User module guides](task04/README.md)
 - [SME-to-Bank end-to-end workflow](SECURITY_SME_BANK_WORKFLOW.md)
 - [Bank Financial Review/APIs/export](BANK_FINANCIAL_REVIEW.md)

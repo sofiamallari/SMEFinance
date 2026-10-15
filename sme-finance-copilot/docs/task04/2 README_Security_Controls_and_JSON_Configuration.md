@@ -1,6 +1,6 @@
 # Security Controls and JSON configuration
 
-Sign in as System Admin and open `/admin/security`. SME users and Bank cannot administer platform policy.
+Sign in as System Admin and open `/admin/security`. SME users and Bank cannot administer platform policy. Use the profile icon for authenticated username/role and Sign out; User Management is in the sidebar (Navigation on mobile), subject to permission. See [header guide](../SECURITY_HEADER_NAVIGATION.md).
 
 Sections: Overview, Authentication, Roles & Permissions, AI & MCP Controls, Bank Authorization Policies, Audit & Monitoring, Configuration. Bank Authorization Policies is explanatory/read-only; actual grants belong to SME Owners at `/consents`.
 

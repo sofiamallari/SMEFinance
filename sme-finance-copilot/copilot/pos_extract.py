@@ -15,7 +15,7 @@ from copilot.auth import InputError
 from copilot.security import AccessDenied
 from copilot.canonical_transactions import suggest
 
-MAX_FILE_BYTES=3_000_000;MAX_TOTAL_BYTES=10_000_000;MAX_FILES=10;MAX_ROWS=5000;MAX_COLUMNS=30
+MAX_FILE_BYTES=3_000_000;MAX_TOTAL_BYTES=10_000_000;MAX_FILES=10;MAX_ROWS=10000;MAX_COLUMNS=30
 MAX_EXPANDED_BYTES=20_000_000;MAX_CELL=4096;MAX_PROCESSING_SECONDS=10
 NS={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
 SENSITIVE=re.compile(r'card.?number|credit.?card|\bpan\b|cvv|cvc|password|secret|api.?key|access.?token|customer|client.?name|email|phone|ssn|passport',re.I)
@@ -47,11 +47,11 @@ def csv_table(content,deadline):
             if not any(c.strip() for c in row):continue
             if len(row)>MAX_COLUMNS or any(len(c)>MAX_CELL for c in row):raise InputError('CSV column or cell limit exceeded')
             result.append((number,row))
-            if len(result)>MAX_ROWS+1:raise InputError('Maximum 5,000 rows per batch')
+            if len(result)>MAX_ROWS+1:raise InputError('Maximum 10,000 rows per batch')
         return result
     except (UnicodeError,csv.Error):raise InputError('Malformed CSV or invalid UTF-8 encoding') from None
 
-def xlsx_table(content,deadline):
+def xlsx_table(content,deadline,worksheet=None,header_row=1,last_row=None,discover=False,sample=False):
     if not content.startswith(b'PK'):raise InputError('Encrypted or malformed XLSX is not supported')
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as archive:
@@ -73,8 +73,18 @@ def xlsx_table(content,deadline):
                     if any(e.get('TargetMode')=='External' for e in root):raise InputError('External workbook relationships are not accepted')
             workbook=xml(archive.read('xl/workbook.xml'))
             sheets=workbook.findall('s:sheets/s:sheet',NS)
-            if len(sheets)!=1:raise InputError('Use one transaction worksheet per XLSX file')
-            rel_id=sheets[0].get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+            if not sheets or len(sheets)>100:raise InputError('Workbook must contain 1–100 worksheets')
+            names_list=[sheet.get('name') for sheet in sheets]
+            if any(not isinstance(n,str) or not n or len(n)>100 for n in names_list) or len(set(names_list))!=len(names_list):raise InputError('Invalid worksheet names')
+            if discover:
+                return [{'name':name,'candidate_rows':[{'row':number,'values':[('[Redacted]' if SENSITIVE.search(v) or re.search(r'[\w.+-]+@[\w-]+\.[\w.]+|\b(?:\d[ -]?){13,19}\b|(?i:bearer\s+|sk-[a-z0-9]|gh[pousr]_)',v) else v) for v in values]} for number,values in xlsx_table(content,deadline,name,sample=True)]} for name in names_list]
+            if worksheet is None:
+                if len(sheets)!=1:raise InputError('Select at least one transaction worksheet before staging')
+                worksheet=names_list[0]
+            if worksheet not in names_list:raise InputError('Selected worksheet does not exist')
+            if type(header_row) is not int or not 1<=header_row<=10000 or (last_row is not None and (type(last_row) is not int or last_row<=header_row or last_row>20000)):raise InputError('Invalid transaction header/data row range')
+            selected=sheets[names_list.index(worksheet)]
+            rel_id=selected.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
             relationships=xml(archive.read('xl/_rels/workbook.xml.rels'))
             target=next((e.get('Target') for e in relationships if e.get('Id')==rel_id),None)
             if not target:raise InputError('Worksheet relationship missing')
@@ -93,9 +103,11 @@ def xlsx_table(content,deadline):
             props=workbook.find('s:workbookPr',NS);epoch=datetime(1904,1,1) if props is not None and props.get('date1904') in ('1','true') else datetime(1899,12,30)
             result=[]
             for row in xml(archive.read(sheet_path)).findall('s:sheetData/s:row',NS):
-                check_time(deadline);values=[];positions=set()
+                check_time(deadline);number=int(row.get('r','0'))
+                if not sample and (number<header_row or (last_row is not None and number>last_row)):continue
+                values=[];positions=set()
                 for cell in row.findall('s:c',NS):
-                    if cell.find('s:f',NS) is not None:raise InputError('Formula cells are rejected; paste values before uploading')
+                    if cell.find('s:f',NS) is not None and not sample:raise InputError('Formula cells in the selected transaction range are rejected; choose a last data row before totals or paste values')
                     match=re.fullmatch(r'([A-Z]+)(\d+)',cell.get('r',''))
                     if not match:raise InputError('Invalid spreadsheet cell reference')
                     index=0
@@ -110,20 +122,22 @@ def xlsx_table(content,deadline):
                     elif kind=='e':raise InputError('Worksheet contains error cells')
                     elif int(cell.get('s','0')) in date_styles and value:
                         value=(epoch+timedelta(days=float(Decimal(value)))).isoformat()
+                    if sample and cell.find('s:f',NS) is not None:value='[Formula — not evaluated]'
                     if len(value)>MAX_CELL:raise InputError('Worksheet cell limit exceeded')
                     values[index-1]=value
                 if any(v.strip() for v in values):result.append((int(row.get('r',len(result)+1)),values))
-                if len(result)>MAX_ROWS+1:raise InputError('Maximum 5,000 rows per batch')
+                if sample and len(result)>=20:break
+                if len(result)>MAX_ROWS+1:raise InputError('Maximum 10,000 rows per batch')
             return result
     except (zipfile.BadZipFile,KeyError,IndexError,ValueError,OverflowError,RuntimeError) as error:
         if isinstance(error,InputError):raise
         raise InputError('Malformed or unsupported XLSX workbook') from None
 
-def extract_files(files,merchant_id):
+def extract_files(files,merchant_id,discover=False):
     if not isinstance(files,list) or not 1<=len(files)<=MAX_FILES:raise InputError('Choose between 1 and 10 files')
     result=[];total=0;row_count=0;deadline=time.monotonic()+MAX_PROCESSING_SECONDS
-    for item in files:
-        if not isinstance(item,dict) or set(item)-{'filename','content','relative_path'}:raise InputError('Invalid file descriptor')
+    for upload_index,item in enumerate(files):
+        if not isinstance(item,dict) or set(item)-{'filename','content','relative_path','worksheets'}:raise InputError('Invalid file descriptor')
         relative,name=safe_path(item.get('relative_path') or item.get('filename'))
         extension=PurePosixPath(name).suffix.lower()
         if extension not in ('.csv','.xlsx'):raise InputError('Only CSV and XLSX reports are supported')
@@ -134,29 +148,63 @@ def extract_files(files,merchant_id):
         if not content or len(content)>MAX_FILE_BYTES:raise InputError('Individual file must be nonempty and at most 3 MB')
         total+=len(content)
         if total>MAX_TOTAL_BYTES:raise InputError('Maximum total upload size is 10 MB')
-        table=csv_table(content,deadline) if extension=='.csv' else xlsx_table(content,deadline)
-        if len(table)<2:raise InputError('Transaction report must contain a header and data rows')
-        headers=[str(h).strip() for h in table[0][1]]
-        if not all(headers) or len({h.casefold() for h in headers})!=len(headers):raise InputError('Source headers must be nonempty and unique')
-        keep=[i for i,h in enumerate(headers) if not SENSITIVE.search(h) and not re.search(r'[\w.+-]+@[\w-]+\.[\w.]+|\b(?:\d[ -]?){13,19}\b',h)]
-        rows=[]
-        for number,values in table[1:]:
-            if len(values)>len(headers):raise InputError('CSV/XLSX row has more values than its header')
-            values+=['']*(len(headers)-len(values))
-            data={headers[i]:values[i] for i in keep}
-            for header,value in data.items():
-                if header.casefold() in ('merchant_id','merchant id') and value and value!=merchant_id:raise AccessDenied('Source merchant does not match the authorized merchant')
-                if re.search(r'[\w.+-]+@[\w-]+\.[\w.]+',value) or re.search(r'\b(?:\d[ -]?){13,19}\b',value):
-                    raise InputError('Unsupported personal/card information in transaction report')
-                if re.search(r'(?i)\bbearer\s+|\bgh[pousr]_|\bsk-[a-z0-9]',value):raise InputError('Authentication credentials are not accepted in POS reports')
-                if value.strip().startswith(('=','@','+','-')) and not re.fullmatch(r'[+-]?\d[\d,.]*',value.strip()):
-                    raise InputError('Formula-like source values are rejected')
-            rows.append({'row':number,'values':data})
-        row_count+=len(rows)
-        if row_count>MAX_ROWS:raise InputError('Maximum 5,000 parsed rows per batch')
-        kept=[headers[i] for i in keep]
-        summary=any(re.search(r'daily total|monthly total|total sales|sales count|transaction count',h,re.I) for h in kept)
-        result.append({'file_id':secrets.token_hex(12),'filename':name,'relative_path':relative,'format':extension[1:],'size':len(content),
-            'sha256':hashlib.sha256(content).hexdigest(),'headers':kept,'excluded_sensitive_columns':len(headers)-len(keep),
-            'summary_detected':summary,'suggestions':suggest(kept),'rows':rows})
+        if discover:
+            result.append({'filename':name,'worksheets':xlsx_table(content,deadline,discover=True) if extension=='.xlsx' else []})
+            continue
+        choices=item.get('worksheets')
+        if choices is not None:
+            if extension!='.xlsx':raise InputError('CSV files do not have worksheets')
+            if not isinstance(choices,list) or not 1<=len(choices)<=100:raise InputError('Select 1–100 worksheets')
+            if any(not isinstance(c,dict) or set(c)-{'name','header_row','last_data_row'} or not isinstance(c.get('name'),str) for c in choices):raise InputError('Invalid worksheet selection')
+            if len({c['name'] for c in choices})!=len(choices):raise InputError('Worksheet selections must be unique')
+        currency_hints=[]
+        if extension=='.xlsx':
+            for sheet in (item.get('worksheets') or []):
+                sample=xlsx_table(content,deadline,sheet.get('name'),sample=True)
+                text=' '.join(v for _,row in sample for v in row)
+                currency_hints.extend(c for c in ('CNY','IDR','PHP','MYR','THB','VND','SGD') if re.search(r'\b'+c+r'\b',text,re.I))
+                if re.search(r'\bRMB\b|Chinese Yuan',text,re.I):currency_hints.append('CNY')
+        currency_hints=sorted(set(currency_hints))
+        choices=item.get('worksheets')
+        if extension=='.csv':
+            if choices is not None:raise InputError('CSV files do not have worksheets')
+            tables=[(None,1,None,csv_table(content,deadline))]
+        else:
+            if choices is None:
+                tables=[(None,1,None,xlsx_table(content,deadline))]
+            else:
+                if not isinstance(choices,list) or not 1<=len(choices)<=100:raise InputError('Select 1–100 worksheets')
+                if any(not isinstance(c,dict) or set(c)-{'name','header_row','last_data_row'} for c in choices):raise InputError('Invalid worksheet selection')
+                if any(not isinstance(c.get('name'),str) for c in choices):raise InputError('Worksheet name must be text')
+                if len({c.get('name') for c in choices})!=len(choices):raise InputError('Worksheet selections must be unique')
+                tables=[(c.get('name'),c.get('header_row',1),c.get('last_data_row'),xlsx_table(content,deadline,c.get('name'),c.get('header_row',1),c.get('last_data_row'))) for c in choices]
+        sheet_count=0
+        if extension=='.xlsx':
+            with zipfile.ZipFile(io.BytesIO(content)) as archive:sheet_count=len(xml(archive.read('xl/workbook.xml')).findall('s:sheets/s:sheet',NS))
+        for sheet_name,header,last,table in tables:
+            if not table or table[0][0]!=header:raise InputError('Selected header row is empty or missing')
+            if len(table)<2:raise InputError('Transaction report must contain a header and data rows')
+            headers=[str(h).strip() for h in table[0][1]]
+            if not all(headers) or len({h.casefold() for h in headers})!=len(headers):raise InputError('Source headers must be nonempty and unique')
+            keep=[i for i,h in enumerate(headers) if not SENSITIVE.search(h) and not re.search(r'[\w.+-]+@[\w-]+\.[\w.]+|\b(?:\d[ -]?){13,19}\b',h)]
+            rows=[]
+            for number,values in table[1:]:
+                if len(values)>len(headers):raise InputError('CSV/XLSX row has more values than its header')
+                values+=['']*(len(headers)-len(values))
+                data={headers[i]:values[i] for i in keep}
+                for header,value in data.items():
+                    if header.casefold() in ('merchant_id','merchant id') and value and value!=merchant_id:raise AccessDenied('Source merchant does not match the authorized merchant')
+                    if re.search(r'[\w.+-]+@[\w-]+\.[\w.]+',value) or re.search(r'\b(?:\d[ -]?){13,19}\b',value):
+                        raise InputError('Unsupported personal/card information in transaction report')
+                    if re.search(r'(?i)\bbearer\s+|\bgh[pousr]_|\bsk-[a-z0-9]',value):raise InputError('Authentication credentials are not accepted in POS reports')
+                    if value.strip().startswith(('=','@','+','-')) and not re.fullmatch(r'[+-]?\d[\d,.]*',value.strip()):
+                        raise InputError('Formula-like source values are rejected')
+                rows.append({'row':number,'values':data})
+            row_count+=len(rows)
+            if row_count>MAX_ROWS:raise InputError('Maximum 10,000 parsed rows per batch')
+            kept=[headers[i] for i in keep]
+            summary=any(re.search(r'daily total|monthly total|total sales|sales count|transaction count',h,re.I) for h in kept)
+            result.append({'file_id':secrets.token_hex(12),'upload_index':upload_index,'filename':name,'relative_path':relative,'format':extension[1:],'size':len(content),
+                'currency_hints':currency_hints,'worksheet':sheet_name,'header_row':header,'last_data_row':last,'workbook_hash':hashlib.sha256(content).hexdigest(),'source_label':name+(' · '+sheet_name if sheet_name else ''),'sha256':hashlib.sha256(content+(('\0'+sheet_name).encode() if sheet_name and sheet_count>1 else b'')).hexdigest(),'headers':kept,'excluded_sensitive_columns':len(headers)-len(keep),
+                'value_samples':{h:sorted({r['values'][h] for r in rows if r['values'][h]})[:30] for h in kept},'summary_detected':summary,'suggestions':suggest(kept),'rows':rows})
     return result

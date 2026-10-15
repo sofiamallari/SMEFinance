@@ -1,0 +1,151 @@
+{
+  "generated_at": "2026-10-15T01:35:16.079Z",
+  "data": "isolated synthetic",
+  "browser": "headless Edge",
+  "results": [
+    {
+      "name": "Create password requirement preserved",
+      "status": "PASS"
+    },
+    {
+      "name": "No default permission grants",
+      "status": "PASS"
+    },
+    {
+      "name": "Create User persists existing payload",
+      "status": "PASS"
+    },
+    {
+      "name": "Existing account values populated",
+      "status": "PASS"
+    },
+    {
+      "name": "Edit omits temporary password",
+      "status": "PASS"
+    },
+    {
+      "name": "Saved per-merchant grants reflected",
+      "status": "PASS"
+    },
+    {
+      "name": "Only assigned merchant sections visible",
+      "status": "PASS"
+    },
+    {
+      "name": "First assigned merchant expanded by default",
+      "status": "PASS"
+    },
+    {
+      "name": "Collapse/expand preserves unsaved selections",
+      "status": "PASS"
+    },
+    {
+      "name": "Merchant permission state stays independent",
+      "status": "PASS"
+    },
+    {
+      "name": "Cancel does not save grants",
+      "status": "PASS"
+    },
+    {
+      "name": "Modal fits desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Permission grid columns desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Account fields responsive desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Single scroll body; header/footer visible desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Modal fits tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Permission grid columns tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Account fields responsive tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Single scroll body; header/footer visible tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Modal fits mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Permission grid columns mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Account fields responsive mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Single scroll body; header/footer visible mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Modal fits small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Permission grid columns small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Account fields responsive small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Single scroll body; header/footer visible small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Native validation retained",
+      "status": "PASS"
+    },
+    {
+      "name": "Existing backend rejects Admin merchant memberships",
+      "status": "PASS"
+    },
+    {
+      "name": "Backend validation visible inside modal footer",
+      "status": "PASS"
+    },
+    {
+      "name": "Validation preserves form/grants",
+      "status": "PASS"
+    },
+    {
+      "name": "Save valid independent grants",
+      "status": "PASS"
+    },
+    {
+      "name": "Saved grants persist per merchant",
+      "status": "PASS"
+    },
+    {
+      "name": "Escape closes existing native dialog",
+      "status": "PASS"
+    },
+    {
+      "name": "Escape does not save edits",
+      "status": "PASS"
+    },
+    {
+      "name": "No JavaScript errors",
+      "status": "PASS"
+    }
+  ]
+}

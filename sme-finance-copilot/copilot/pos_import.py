@@ -9,7 +9,7 @@ from statistics import median
 from copilot.auth import AuthError,InputError,digest
 from copilot.security import Principal,AccessDenied
 from copilot.canonical_transactions import FIELDS,REQUIRED,normalize,fingerprint,money,zone,safe_text,ALIASES
-from copilot.pos_extract import extract_files
+from copilot.pos_extract import extract_files,MAX_ROWS
 from copilot.transaction_journal import TransactionJournal,LedgerError,checksum
 
 TTL=1800;MAX_PENDING=64;MAX_STAGING_BYTES=32_000_000
@@ -88,6 +88,13 @@ class POSImportService:
                 'result':result,'audit_reference':row['audit_reference'],
                 'files':[{k:v for k,v in f.items() if k!='rows'} for f in source] if source else metrics.get('files',[])}
 
+    def inspect_files(self,token,mid,files):
+        actor=self.authorize(token,'bulk_import',mid)
+        result=extract_files(files,mid,discover=True)
+        self.authorize(token,'bulk_import',mid)
+        self.auth.audit('pos_sources_inspected',actor,mid)
+        return {'files':result}
+
     def stage(self,token,mid,files):
         bid=secrets.token_hex(16)
         with self.auth.db() as db:
@@ -117,7 +124,7 @@ class POSImportService:
             if active>=MAX_PENDING or owned>=5:raise InputError('Temporary import capacity reached',429)
             if used+len(encoded.encode())>MAX_STAGING_BYTES:raise InputError('Temporary storage limit reached',429)
             now=self.auth.clock()
-            metrics={'file_count':len(source),'parsed_rows':sum(len(f['rows']) for f in source),'eligible_rows':0,'duplicate_rows':0,'invalid_rows':0,
+            metrics={'file_count':len({f.get('upload_index',f['relative_path']) for f in source}),'worksheet_count':sum(bool(f.get('worksheet')) for f in source),'parsed_rows':sum(len(f['rows']) for f in source),'eligible_rows':0,'duplicate_rows':0,'invalid_rows':0,
                      'files':[{k:v for k,v in f.items() if k not in ('rows','suggestions','headers')} for f in source],'quality_status':'not_validated','actor_role':actor.role}
             db.execute('INSERT INTO pos_import_runs(batch_id,merchant_id,actor_id,session_hash,kind,state,created_at,expires_at,source_json,source_signature,metrics_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
                 (bid,mid,actor.user_id,digest(token),'pos','staged',now,now+TTL,encoded,self.sign(bid,mid,actor.user_id,source,digest(token)),dump(metrics)))
@@ -135,8 +142,10 @@ class POSImportService:
             return result
 
     def _mapping(self,file,mapping):
-        if not isinstance(mapping,dict) or set(mapping)-{'columns','defaults','timezone','date_format','control_totals','report_kind'}:raise InputError('Unsupported mapping fields')
+        if not isinstance(mapping,dict) or set(mapping)-{'columns','defaults','timezone','date_format','control_totals','report_kind','payment_method_values'}:raise InputError('Unsupported mapping fields')
         columns=mapping.get('columns',{});defaults=mapping.get('defaults',{})
+        translations=mapping.get('payment_method_values',{})
+        if not isinstance(translations,dict) or len(translations)>30 or any(not isinstance(k,str) or len(k)>100 or v not in ('cash','qr_pay','tap_pay','pay_link','external_card','external_wallet') for k,v in translations.items()):raise InputError('Invalid explicit payment-method translations')
         if not isinstance(columns,dict) or set(columns)-FIELDS or any(not isinstance(v,str) or v not in file['headers'] for v in columns.values()) or len(set(columns.values()))!=len(columns):raise InputError('Column mapping contains unknown, protected or conflicting fields')
         if not isinstance(defaults,dict) or set(defaults)-{'currency','transaction_type','status','payment_method','category'}:raise InputError('Unsupported mapping defaults')
         if not REQUIRED<=set(columns)|set(defaults) or 'transaction_date' not in columns or not {'net_amount','gross_amount'}&set(columns):raise InputError('Map date and net/gross amount; explicitly map or default all required fields')
@@ -146,7 +155,7 @@ class POSImportService:
         if file['summary_detected'] or mapping.get('report_kind','transactions')!='transactions':raise InputError('Aggregate summaries are unsupported; supply one row per transaction, not daily/monthly totals')
         control=mapping.get('control_totals',{})
         if not isinstance(control,dict) or set(control)-{'count','net_total','gross_total','basis'} or control.get('basis','completed_net') not in ('completed_net','nominal_net'):raise InputError('Unsupported control totals or monetary basis')
-        if control.get('count') is not None and (type(control['count']) is not int or not 0<=control['count']<=5000):raise InputError('Control count must be an integer from 0 to 5,000')
+        if control.get('count') is not None and (type(control['count']) is not int or not 0<=control['count']<=MAX_ROWS):raise InputError('Control count must be an integer from 0 to 10,000')
         for field in ('net_total','gross_total'):
             if control.get(field) not in (None,''):money(control[field],field)
         return columns,defaults,control
@@ -180,16 +189,19 @@ class POSImportService:
                 if not isinstance(mappings,dict) or set(mappings)!={f['file_id'] for f in source}:raise InputError('Provide one mapping for every source file')
                 for file in source:
                     mapping=mappings[file['file_id']];file_valid=[];file_errors=0
-                    try:columns,defaults,controls=self._mapping(file,mapping)
+                    try:
+                        if file.get('currency_hints') and file['currency_hints']!=[self.store.copilot.merchants[mid].currency]:raise InputError('Workbook currency declaration does not match this merchant; no FX conversion is supported')
+                        columns,defaults,controls=self._mapping(file,mapping)
                     except InputError as error:
-                        invalid+=len(file['rows']);findings.append({'filename':file['filename'],'row':1,'field':'mapping','error':str(error),'correction':'Correct the mapping or supply a transaction-level report.'});continue
+                        invalid+=len(file['rows']);findings.append({'filename':file.get('source_label',file['filename']),'file_id':file['file_id'],'worksheet':file.get('worksheet'),'row':file.get('header_row',1),'field':'mapping','error':str(error),'correction':'Correct the mapping or supply a transaction-level report.'});continue
                     for raw in file['rows']:
                         ordinal+=1
                         try:
                             values={field:raw['values'][header] for field,header in columns.items()};values={**defaults,**values}
+                            if values.get('payment_method') in mapping.get('payment_method_values',{}):values['payment_method']=mapping['payment_method_values'][values['payment_method']]
                             row=normalize(values,self.store.copilot.merchants[mid],mapping,now)
                             row.update(transaction_id='TX-'+bid+'-'+str(ordinal),merchant_id=mid,source='pos_'+file['format'],
-                                import_batch_id=bid,source_filename=file['filename'],source_file_hash=file['sha256'],source_row_number=raw['row'],
+                                import_batch_id=bid,source_filename=file['filename'],source_file_hash=file['sha256'],source_row_number=raw['row'],source_file_id=file['file_id'],source_worksheet=file.get('worksheet'),source_workbook_hash=file.get('workbook_hash'),source_values=raw['values'],
                                 mapping_version=version,created_by=actor.user_id,created_at=utc(now))
                             result=self._duplicates(existing,seen,row)
                             if result=='ambiguous':
@@ -197,11 +209,11 @@ class POSImportService:
                             file_valid.append(row);all_valid.append(row)
                             if result=='exact':
                                 duplicates+=1
-                                findings.append({'filename':file['filename'],'row':raw['row'],'field':'uniqueness','error':'Exact duplicate excluded','correction':'Verify the visible exclusion; no additional financial entry is created.','validation_result':'excluded'})
+                                findings.append({'filename':file.get('source_label',file['filename']),'file_id':file['file_id'],'worksheet':file.get('worksheet'),'row':raw['row'],'field':'uniqueness','error':'Exact duplicate excluded','correction':'Verify the visible exclusion; no additional financial entry is created.','validation_result':'excluded'})
                             else:eligible.append(row);seen.append(row)
                         except InputError as error:
                             invalid+=1;file_errors+=1
-                            findings.append({'filename':file['filename'],'row':raw['row'],'field':getattr(error,'field','uniqueness'),
+                            findings.append({'filename':file.get('source_label',file['filename']),'file_id':file['file_id'],'worksheet':file.get('worksheet'),'row':raw['row'],'field':getattr(error,'field','uniqueness'),
                                 'error':str(error),'correction':getattr(error,'correction','Correct conflicting records or add unique external references.')})
                     completed=sum((Decimal(r['effective_amount']) for r in file_valid),Decimal(0));nominal=sum((Decimal(r['amount']) for r in file_valid),Decimal(0))
                     gross=sum((Decimal(r['gross_amount']) for r in file_valid if r['gross_amount'] is not None),Decimal(0))
@@ -211,17 +223,21 @@ class POSImportService:
                     if controls.get('net_total') not in (None,'') and (file_errors or money(controls['net_total'],'net_total')!=observed):mismatches.append('Reported net control does not reconcile on the selected basis')
                     if controls.get('gross_total') not in (None,'') and (file_errors or any(r['gross_amount'] is None for r in file_valid) or money(controls['gross_total'],'gross_total')!=gross):mismatches.append('Reported gross control requires mapped gross values and matching gross totals')
                     provided=any(controls.get(k) not in (None,'') for k in ('count','net_total','gross_total'))
-                    reconciliation.append({'filename':file['filename'],'parsed_rows':len(file['rows']),'controls':controls,
+                    reconciliation.append({'filename':file.get('source_label',file['filename']),'file_id':file['file_id'],'worksheet':file.get('worksheet'),'parsed_rows':len(file['rows']),'controls':controls,
                         'nominal_net_total':format(nominal,'.2f'),'completed_net_total':format(completed,'.2f'),'mapped_gross_total':format(gross,'.2f') if any(r['gross_amount'] is not None for r in file_valid) else None,
                         'status':'fail' if mismatches else 'pass' if provided else 'not_available','issues':mismatches,
                         'explanation':'Totals include all valid source rows before visible duplicate exclusions. Failed/pending/voided rows contribute zero completed revenue. Settlement is separate; no FX conversion.'})
                 parsed=sum(len(f['rows']) for f in source);blocked=bool(invalid or ambiguous or any(r['status']=='fail' for r in reconciliation))
                 if parsed!=len(eligible)+duplicates+invalid:raise InputError('Count reconciliation integrity failure',500)
-                metrics={'file_count':len(source),'parsed_rows':parsed,'valid_rows':len(eligible)+duplicates,'eligible_rows':len(eligible),
+                source_counts=[{'file_id':f['file_id'],'filename':f.get('source_label',f['filename']),'parsed_rows':len(f['rows']),
+                    'eligible_rows':sum(r.get('source_file_id')==f['file_id'] for r in eligible),
+                    'duplicate_rows':sum(x.get('file_id')==f['file_id'] and x.get('validation_result')=='excluded' for x in findings),
+                    'invalid_rows':len(f['rows'])-sum(r.get('source_file_id')==f['file_id'] for r in eligible)-sum(x.get('file_id')==f['file_id'] and x.get('validation_result')=='excluded' for x in findings)} for f in source]
+                metrics={'file_count':len({f.get('upload_index',f['relative_path']) for f in source}),'worksheet_count':sum(bool(f.get('worksheet')) for f in source),'parsed_rows':parsed,'valid_rows':len(eligible)+duplicates,'eligible_rows':len(eligible),
                     'duplicate_rows':duplicates,'invalid_rows':invalid,'ambiguous_duplicates':ambiguous,
                     'eligible_total':format(sum((Decimal(r['effective_amount']) for r in eligible),Decimal(0)),'.2f'),
                     'eligible_nominal_total':format(sum((Decimal(r['amount']) for r in eligible),Decimal(0)),'.2f'),
-                    'currency':self.store.copilot.merchants[mid].currency,'reconciliation':reconciliation,
+                    'currency':self.store.copilot.merchants[mid].currency,'source_counts':source_counts,'reconciliation':reconciliation,
                     'reconciliation_failures':sum(r['status']=='fail' for r in reconciliation),'count_reconciled':True,
                     'files':[{k:v for k,v in f.items() if k not in ('rows','suggestions','headers')} for f in source],
                     'quality_status':'fail' if blocked else 'warning' if duplicates or any(r['status']=='not_available' for r in reconciliation) else 'pass','actor_role':actor.role}
@@ -300,7 +316,7 @@ class POSImportService:
                         return {'ok':False,'error':'Transactions changed since preview; validate again','batch_id':bid}
                     seen.append(row)
                 metrics=json.loads(run['metrics_json']);now=self.auth.clock()
-                result={'ok':True,'batch_id':bid,'files_processed':metrics.get('file_count',0),'imported_rows':len(rows),
+                result={'ok':True,'batch_id':bid,'files_processed':metrics.get('file_count',0),'worksheets_processed':metrics.get('worksheet_count',0),'imported_rows':len(rows),
                         'duplicates_excluded':metrics.get('duplicate_rows',0),'rejected_rows':metrics.get('invalid_rows',0),
                         'imported_total':metrics.get('eligible_total','0.00'),'currency':self.store.copilot.merchants[mid].currency,
                         'completed_at':utc(now),'status':'committed'}

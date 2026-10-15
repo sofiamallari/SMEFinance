@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from copilot.auth import InputError
 from copilot.config import CURRENCIES
+IMPORT_CURRENCIES = frozenset(CURRENCIES) | {"CNY"} # Import only; no simulator tax/FX assumptions.
 
 FIELDS={'transaction_date','net_amount','gross_amount','discount','tax','refund_amount','settlement_amount',
         'currency','transaction_type','payment_method','status','external_reference','description','category'}
@@ -17,7 +18,7 @@ STATUSES={'completed':'completed','paid':'completed','success':'completed','appr
 METHODS={'cash':'cash','card':'external_card','credit card':'external_card','debit card':'external_card',
          'external_card':'external_card','wallet':'external_wallet','e-wallet':'external_wallet','external_wallet':'external_wallet',
          'qr':'qr_pay','qr pay':'qr_pay','qr_pay':'qr_pay','tap':'tap_pay','tap_pay':'tap_pay','pay link':'pay_link','pay_link':'pay_link'}
-OFFSETS={'PH':'+08:00','MY':'+08:00','SG':'+08:00','ID':'+07:00','TH':'+07:00','VN':'+07:00'}
+OFFSETS={'CN':'+08:00','PH':'+08:00','MY':'+08:00','SG':'+08:00','ID':'+07:00','TH':'+07:00','VN':'+07:00'}
 ALIASES={
  'transaction_date':['date','datetime','timestamp','sale date','transaction date','sale_date','transaction_date'],
  'net_amount':['net amount','net_amount','total paid','total_paid','net sales'],
@@ -88,7 +89,7 @@ def normalize(values,merchant,settings,now,strict=True):
     for field in REQUIRED:
         if values.get(field) in (None,''):raise RowError(field,f'{field} is required')
     currency=str(values['currency']).strip().upper()
-    if currency not in CURRENCIES or currency!=merchant.currency:raise RowError('currency','Currency must match this merchant; currency conversion is not supported')
+    if currency not in IMPORT_CURRENCIES or currency!=merchant.currency:raise RowError('currency','Currency must match this merchant; currency conversion is not supported')
     kind=TYPES.get(str(values['transaction_type']).strip().lower())
     status=STATUSES.get(str(values['status']).strip().lower())
     method=METHODS.get(str(values['payment_method']).strip().lower())

@@ -1,20 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Security Administration · SME Finance Copilot</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/assets/common.css"></head>
-<body><header><div><h1>SME Finance Copilot · Security Administration</h1><p id="who">Loading administrator identity…</p></div><nav><a href="/admin/users">User Management</a><button id="logout">Sign out</button></nav></header>
-<main class="security-workspace">
-<aside class="security-sidebar" aria-label="Security Administration sections">
- <p class="sidebar-title">Security Administration</p><p class="muted">Local installation · SQLite</p>
- <nav class="section-nav" aria-label="Security menu">
-  <button data-section="overview" aria-controls="section-overview" aria-current="page">Overview</button>
-  <button data-section="authentication" aria-controls="section-authentication">Authentication</button>
-  <button data-section="permissions" aria-controls="section-permissions">Roles &amp; Permissions</button>
-  <button data-section="ai" aria-controls="section-ai">AI &amp; MCP Controls</button>
-  <button data-section="consent" aria-controls="section-consent">Bank Authorization Policies</button>
-  <button data-section="audit" aria-controls="section-audit">Audit &amp; Monitoring</button>
-  <button data-section="configuration" aria-controls="section-configuration">Configuration</button>
- </nav>
- <p class="muted">Policy administration grants no merchant financial access.</p>
-</aside>
+<body><!-- ADMIN_HEADER -->
+<main class="security-workspace"><!-- ADMIN_NAVIGATION -->
 <div class="security-content">
  <label class="mobile-navigation" for="section-picker">Security section<select id="section-picker"><option value="overview">Overview</option><option value="authentication">Authentication</option><option value="permissions">Roles &amp; Permissions</option><option value="ai">AI &amp; MCP Controls</option><option value="consent">Bank Authorization Policies</option><option value="audit">Audit &amp; Monitoring</option><option value="configuration">Configuration</option></select></label>
  <div id="message" role="status" aria-live="polite">Loading security policies…</div>

@@ -4,7 +4,7 @@ Sign in as **Bank**; `/` redirects to `/bank`. The portal is a read-only simulat
 
 ## Navigation and user guide
 
-Select an Owner-authorized merchant in the header. The left sidebar has six modules; the same AI Financial Partner stays on the right while navigating. Collapse navigation with **Navigation**; collapse the AI panel with its close button and reopen it from the header. Compact desktop navigation retains labeled icon tooltips. On smaller screens the AI is an overlay; Escape/backdrop closes it and keyboard focus is contained while open.
+Use **Reviewing Merchant** in the header to select an Owner-authorized business; its name appears in the selector and ID beneath it. The compact AI Review Assistant icon opens/focuses the existing AI panel; the profile icon contains authenticated name, Bank role and Sign out. See [header interactions and verification](BANK_HEADER_NAVIGATION.md). The left sidebar has six modules; the same AI Financial Partner stays on the right while navigating. Collapse navigation with **Navigation**; collapse the AI panel with its close button and reopen it from the header. Compact desktop navigation retains labeled icon tooltips. On smaller screens the AI is an overlay; Escape/backdrop closes it and keyboard focus is contained while open.
 
 | Module / URL hash | Implemented behavior |
 |---|---|

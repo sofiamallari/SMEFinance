@@ -1,0 +1,9 @@
+{
+  "scope": "authentication, security configuration, four-role workflow",
+  "data": "isolated synthetic",
+  "tests_run": 66,
+  "passed": 66,
+  "failures": [],
+  "errors": [],
+  "skipped": []
+}

@@ -2,6 +2,8 @@
 
 Security Administration remains at `/admin/security`, restricted to authenticated System Admins. Each team member keeps a local SQLite installation, its own accounts, and the existing JSONL transaction ledger. No central hosting or new identity system is introduced.
 
+The compact profile icon shows the authenticated username, System Admin role and Sign out. User Management is in the sidebar rather than the header. There is no merchant selector or financial assistant. See [shared Admin layout and verification](SHARED_ADMIN_LAYOUT.md).
+
 ## Sections
 
 | Section | Supported behavior |
@@ -14,7 +16,7 @@ Security Administration remains at `/admin/security`, restricted to authenticate
 | Audit & Monitoring | Existing actor, event, result and date filters; configuration operation metadata |
 | Configuration | Export, server validation, complete difference preview, cancel and confirmed atomic import |
 
-The desktop sidebar stays visible while scrolling. At smaller widths, a labeled section selector replaces it. Buttons support normal keyboard navigation plus Up/Down/Home/End; the current section is announced. URL fragments restore a section without new application routes. Authentication, permissions and tier settings each have one editor; changes require password reauthentication. Existing User Management, `/consents`, AI/MCP and financial workflows remain independent.
+The desktop sidebar stays visible while scrolling. At smaller widths, a labeled section selector remains available and Navigation expands the same sidebar, including permission-gated User Management. Buttons support normal keyboard navigation plus Up/Down/Home/End; the current section is announced. URL fragments restore a section without new application routes. Authentication, permissions and tier settings each have one editor; changes require password reauthentication. Existing User Management, `/consents`, AI/MCP and financial workflows remain independent.
 
 ## Team workflow
 

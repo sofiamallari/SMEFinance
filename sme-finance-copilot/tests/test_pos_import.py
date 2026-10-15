@@ -61,7 +61,7 @@ class CanonicalAndExtraction(POSFixture):
             with self.subTest(name=item['filename']),self.assertRaises(InputError):extract_files([item],self.mid)
         with self.assertRaises(InputError):extract_files([csv_file()]*11,self.mid)
         with self.assertRaises(InputError):extract_files([csv_file(rows=[['x']*31],headers=[str(i) for i in range(31)])],self.mid)
-        with self.assertRaises(InputError):extract_files([csv_file(rows=[['2026-10-01','1','IDR','sale','cash','paid',str(i)] for i in range(5001)])],self.mid)
+        with self.assertRaises(InputError):extract_files([csv_file(rows=[['2026-10-01','1','IDR','sale','cash','paid',str(i)] for i in range(10001)])],self.mid)
     def test_sensitive_columns_excluded_and_resource_attack_rejected(self):
         file=csv_file(rows=[['2026-10-01','100','IDR','sale','cash','paid','X','private@example.test']],headers=['date','net_amount','currency','type','channel','status','reference','customer email'])
         source=extract_files([file],self.mid);self.assertEqual(source[0]['excluded_sensitive_columns'],1);self.assertNotIn('private@example',json.dumps(source))

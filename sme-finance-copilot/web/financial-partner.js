@@ -69,8 +69,8 @@ document.addEventListener('DOMContentLoaded',()=>{
    if(M&&active()==='dashboard')loadDashboard();
    if(!$('#chatlog [data-stale-notice]')){const notice=addMsg('Business data changed. Ask again to refresh earlier financial findings.','bot');notice.dataset.staleNotice='true'}
   }return result};
- $('#ai-toggle').onclick=()=>partnerOpen(document.body.classList.contains('ai-collapsed'));$('#ai-close').onclick=()=>{partnerOpen(false);$('#ai-toggle').focus()};$('#ai-backdrop').onclick=()=>partnerOpen(false);
- $('#financing-parent').onclick=()=>{const open=$('#financing-submenu').hidden;$('#financing-submenu').hidden=!open;$('#financing-parent').setAttribute('aria-expanded',String(open))};
+ $('#ai-toggle').onclick=()=>{partnerOpen(true);$('#chatinput').focus()};$('#ai-close').onclick=()=>{partnerOpen(false);$('#ai-toggle').focus()};$('#ai-backdrop').onclick=()=>partnerOpen(false);
+ $('#financing-parent').onclick=()=>{ownerNavigation.expandDesktop();const open=$('#financing-submenu').hidden;$('#financing-submenu').hidden=!open;$('#financing-parent').setAttribute('aria-expanded',String(open))};
  document.addEventListener('keydown',event=>{if(event.key==='Tab'&&matchMedia('(max-width:1100px)').matches&&!document.body.classList.contains('ai-collapsed')){const nodes=[...$('#partner-panel').querySelectorAll('button:not(:disabled),input,summary')].filter(node=>node.offsetParent!==null);if(event.shiftKey&&document.activeElement===nodes[0]){event.preventDefault();nodes.at(-1).focus()}else if(!event.shiftKey&&document.activeElement===nodes.at(-1)){event.preventDefault();nodes[0].focus()}}if(event.key==='Escape'&&!document.body.classList.contains('ai-collapsed')){partnerOpen(false);$('#ai-toggle').focus()}});
  partnerOpen(!matchMedia('(max-width:1100px)').matches);
  const drawerMedia=matchMedia('(max-width:1100px)');drawerMedia.addEventListener('change',event=>partnerOpen(!event.matches));

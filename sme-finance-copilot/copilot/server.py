@@ -119,7 +119,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _read_raw(self) -> bytes:
         n = int(self.headers.get("Content-Length", 0) or 0)
-        maximum=14_100_000 if urlparse(self.path).path=='/api/pos-import/stage' else MAX_BODY
+        maximum=14_100_000 if urlparse(self.path).path in ('/api/pos-import/stage','/api/pos-import/inspect') else MAX_BODY
         if n < 0 or n > maximum:
             raise ValueError("request too large")
         return self.rfile.read(n) if n else b""
@@ -129,8 +129,13 @@ class Handler(BaseHTTPRequestHandler):
         return f'sme_session={token}; Path=/; HttpOnly; SameSite=Strict'+secure+('; Max-Age=0' if clear else '')
 
     def _page(self, name):
-        with open(os.path.join(ROOT,'..','web',name),'rb') as f:
-            return self._send(200,f.read(),'text/html; charset=utf-8')
+        with open(os.path.join(ROOT,'..','web',name),'rb') as f:page=f.read()
+        if name in ('security.html','users.html'):
+            # One presentation fragment; route authorization runs before _page.
+            with open(os.path.join(ROOT,'..','web','admin-shell.html'),'rb') as f:
+                header,sidebar=f.read().split(b'<!-- ADMIN_SIDEBAR -->',1)
+            page=page.replace(b'<!-- ADMIN_HEADER -->',header).replace(b'<!-- ADMIN_NAVIGATION -->',sidebar)
+        return self._send(200,page,'text/html; charset=utf-8')
 
     def _mcp(self, method):
         if method != 'POST':return self._send(405,{'error':'Use POST'},headers={'Allow':'POST'})
@@ -199,6 +204,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200,pos_service().single(token,body.get('merchant'),body.get('entry'),body.get('idempotency_key')))
         if path=='/api/merchant-transactions/history' and method=='GET':
             return self._send(200,pos_service().history(token,q.get('merchant'),q))
+        if path=='/api/pos-import/inspect' and method=='POST':
+            if set(body)-{'merchant','files'}:raise InputError('Unsupported source inspection fields')
+            return self._send(200,pos_service().inspect_files(token,body.get('merchant'),body.get('files')))
         if path=='/api/pos-import/stage' and method=='POST':
             if set(body)-{'merchant','files'}:raise InputError('Unsupported upload request fields')
             return self._send(201,pos_service().stage(token,body.get('merchant'),body.get('files')))
@@ -297,6 +305,8 @@ class Handler(BaseHTTPRequestHandler):
                 if method=='GET' and not path.startswith('/api/'):
                     return self._send(303,b'',headers={'Location':'/login'})
                 raise AccessDenied('Change your temporary password first')
+            if method=='GET' and path in ('/assets/portal-navigation.js','/assets/portal-navigation.css'):
+                with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8' if path.endswith('.css') else 'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/icons.svg':
                 with open(os.path.join(ROOT,'..','web','icons.svg'),'rb') as f:return self._send(200,f.read(),'image/svg+xml')
             if method=='GET' and path in ('/assets/bank.css','/assets/bank-components.js','/assets/bank-views.js','/assets/bank-portal.js'):

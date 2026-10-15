@@ -1,0 +1,200 @@
+{
+  "generated_at": "2026-10-15T01:46:03.035Z",
+  "browser": "headless Edge",
+  "data": "isolated synthetic",
+  "results": [
+    {
+      "name": "No UI role selector",
+      "status": "PASS"
+    },
+    {
+      "name": "Public Owner role label",
+      "status": "PASS"
+    },
+    {
+      "name": "Unique sidebar administration links",
+      "status": "PASS"
+    },
+    {
+      "name": "No duplicate header navigation",
+      "status": "PASS"
+    },
+    {
+      "name": "Keyboard opens account dropdown",
+      "status": "PASS"
+    },
+    {
+      "name": "Authenticated display name",
+      "status": "PASS"
+    },
+    {
+      "name": "Escape closes profile and restores focus",
+      "status": "PASS"
+    },
+    {
+      "name": "AI icon opens and focuses existing panel",
+      "status": "PASS"
+    },
+    {
+      "name": "Focus existing AI without resetting conversation",
+      "status": "PASS"
+    },
+    {
+      "name": "Close/reopen retains conversation",
+      "status": "PASS"
+    },
+    {
+      "name": "No overflow at desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Account actions remain on one row at desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Merchant selector visible at desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Profile fits viewport at desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "AI opens/focuses at desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "AI Escape preserves thread at desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Outside click closes profile at desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "No overflow at tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Account actions remain on one row at tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Merchant selector visible at tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Profile fits viewport at tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "AI opens/focuses at tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "AI Escape preserves thread at tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Outside click closes profile at tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "No overflow at mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Account actions remain on one row at mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Merchant selector visible at mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Profile fits viewport at mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "AI opens/focuses at mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "AI Escape preserves thread at mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Outside click closes profile at mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Mobile sidebar exposes authorized administration at mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "No overflow at small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Account actions remain on one row at small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Merchant selector visible at small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Profile fits viewport at small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "AI opens/focuses at small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "AI Escape preserves thread at small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Outside click closes profile at small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Mobile sidebar exposes authorized administration at small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Merchant context stays authorized",
+      "status": "PASS"
+    },
+    {
+      "name": "Foreign merchant is not exposed",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank Authorization route works",
+      "status": "PASS"
+    },
+    {
+      "name": "Own-business User Management route works",
+      "status": "PASS"
+    },
+    {
+      "name": "Staff cannot see Owner navigation",
+      "status": "PASS"
+    },
+    {
+      "name": "Backend denies Staff administrative routes",
+      "status": "PASS"
+    },
+    {
+      "name": "Profile Sign out revokes session",
+      "status": "PASS"
+    },
+    {
+      "name": "No JavaScript errors",
+      "status": "PASS"
+    }
+  ],
+  "live_gemini": "NOT TESTED"
+}

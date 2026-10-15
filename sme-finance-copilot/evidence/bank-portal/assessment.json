@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-14T18:16:24.678Z",
+  "generated_at": "2026-10-15T02:43:38.562Z",
   "data": "isolated synthetic",
   "browser": "headless Edge",
   "results": [
@@ -148,6 +148,118 @@
       "status": "PASS"
     },
     {
+      "name": "Bank merchant selector label",
+      "status": "PASS"
+    },
+    {
+      "name": "Selected merchant ID shown separately",
+      "status": "PASS"
+    },
+    {
+      "name": "No standalone account text or sign-out button",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank header no overflow desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank account actions single row desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Keyboard profile/public Bank label desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank profile fits desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank profile Escape/focus desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank AI icon focuses existing panel desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank header no overflow tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank account actions single row tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Keyboard profile/public Bank label tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank profile fits tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank profile Escape/focus tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank AI icon focuses existing panel tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank header no overflow mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank account actions single row mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Keyboard profile/public Bank label mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank profile fits mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank profile Escape/focus mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank AI icon focuses existing panel mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank header no overflow small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank account actions single row small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Keyboard profile/public Bank label small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank profile fits small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank profile Escape/focus small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank AI icon focuses existing panel small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Bank profile Sign out revokes its session",
+      "status": "PASS"
+    },
+    {
       "name": "Audit failure has an explicit unavailable state",
       "status": "PASS"
     },
@@ -181,6 +293,10 @@
     },
     {
       "name": "Revocation blocks CSV",
+      "status": "PASS"
+    },
+    {
+      "name": "No-authorized-merchant header empty state",
       "status": "PASS"
     },
     {

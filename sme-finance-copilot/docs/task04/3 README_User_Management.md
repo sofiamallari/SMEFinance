@@ -17,3 +17,7 @@ Use the Bank Authorization link for active scoped Bank recipients, grants/revoca
 Staff and Bank cannot manage accounts or grant themselves authority. Unmapped historical roles need explicit System Admin review; no automatic privileged mapping occurs.
 
 [Canonical permissions/API enforcement](../SECURITY_PERMISSIONS.md) · [Complete journey](../SECURITY_SME_BANK_WORKFLOW.md) · [Recovery](1%20README_Login_Admin_User_and_Password_Reset.md).
+
+System Admin User Management now uses the same header/profile/sidebar as Security Administration. Page-specific controls remain in the main content. See [shared layout and actual action verification](../SHARED_ADMIN_LAYOUT.md).
+
+Edit account/Create User use a compact sectioned dialog with persistent Save/Cancel actions. Select Staff memberships, expand the relevant merchant and choose explicit grants; collapsed sections preserve unsaved checkbox values. See [modal guide and verification](../ACCOUNT_MODAL_LAYOUT.md).

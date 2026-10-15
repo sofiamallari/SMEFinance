@@ -2,6 +2,8 @@
 
 Current access rules: [four-role permissions](../SECURITY_PERMISSIONS.md). These user instructions use the current baseline; earlier dated results remain historical.
 
+Current layout, operational workflow locations, chart limitations and actual verification: [Business Overview](../DASHBOARD_OVERVIEW.md).
+
 ## Purpose and access
 
 Dashboard summarizes recorded financial activity for the selected merchant.
@@ -12,10 +14,10 @@ SME Owners need assigned scope; Staff require explicit `view_dashboard` delegati
 
 1. Confirm the merchant and currency in the header.
 2. Select the reporting start/end dates and a granularity: daily, weekly, monthly,
-   quarterly or yearly.
+   or quarterly.
 3. Click **Apply**.
-4. Review the financial cards, payment-channel charts, trends and receivables insight.
-5. Read the reporting-period, retrieved-time and source/provenance information.
+4. Review Recorded Net Sales, Expenses, Net Income and Digital Capture, the historical sales chart and Insights & risk awareness.
+5. Expand Data Sources & Freshness for retrieval time, source counts and sandbox limitations. Payment activity and incentive details are in separate expandable sections.
 6. To compare with chat, request recorded sales for the **same merchant and dates**.
 
 ## What the cards and charts mean

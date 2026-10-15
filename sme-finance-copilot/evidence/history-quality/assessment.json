@@ -1,0 +1,175 @@
+{
+  "results": [
+    {
+      "name": "History defaults to ten rows",
+      "status": "PASS"
+    },
+    {
+      "name": "History total uses backend count",
+      "status": "PASS"
+    },
+    {
+      "name": "History pages have distinct stable records",
+      "status": "PASS"
+    },
+    {
+      "name": "Page size resets history page",
+      "status": "PASS"
+    },
+    {
+      "name": "Readable manual source and exact signed expense",
+      "status": "PASS"
+    },
+    {
+      "name": "Full truncated reference accessible",
+      "status": "PASS"
+    },
+    {
+      "name": "Filter and cell enum labels match",
+      "status": "PASS"
+    },
+    {
+      "name": "Filtered count matches backend",
+      "status": "PASS"
+    },
+    {
+      "name": "History preserves merchant business-local timestamp",
+      "status": "PASS"
+    },
+    {
+      "name": "Original timestamp retained",
+      "status": "PASS"
+    },
+    {
+      "name": "Actual simulated source is filterable",
+      "status": "PASS"
+    },
+    {
+      "name": "Empty filtered history pagination",
+      "status": "PASS"
+    },
+    {
+      "name": "History no page overflow desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "History no page overflow tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "History no page overflow mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "History no page overflow small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Run history defaults to ten rows",
+      "status": "PASS"
+    },
+    {
+      "name": "Run count uses returned matching snapshot",
+      "status": "PASS"
+    },
+    {
+      "name": "Compact labeled refresh icon",
+      "status": "PASS"
+    },
+    {
+      "name": "Unchanged backend valid_row_rate",
+      "status": "PASS"
+    },
+    {
+      "name": "Unchanged backend invalid_row_rate",
+      "status": "PASS"
+    },
+    {
+      "name": "Unchanged backend duplicate_rate",
+      "status": "PASS"
+    },
+    {
+      "name": "Unresolved alert count matches backend",
+      "status": "PASS"
+    },
+    {
+      "name": "Metric guide keyboard accessible",
+      "status": "PASS"
+    },
+    {
+      "name": "Metric guide matches numerator",
+      "status": "PASS"
+    },
+    {
+      "name": "Original formula preserved in disclosure",
+      "status": "PASS"
+    },
+    {
+      "name": "Local run pagination triggers no additional checks",
+      "status": "PASS"
+    },
+    {
+      "name": "Independent run page size",
+      "status": "PASS"
+    },
+    {
+      "name": "Commit filter resets run page",
+      "status": "PASS"
+    },
+    {
+      "name": "Commit and quality statuses distinguished",
+      "status": "PASS"
+    },
+    {
+      "name": "Existing batch drilldown preserved",
+      "status": "PASS"
+    },
+    {
+      "name": "Refresh loading state disables repeated clicks",
+      "status": "PASS"
+    },
+    {
+      "name": "Refresh error displayed and retry enabled",
+      "status": "PASS"
+    },
+    {
+      "name": "Refresh recovery succeeds",
+      "status": "PASS"
+    },
+    {
+      "name": "Quality no page overflow desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Quality no page overflow tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Quality no page overflow mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Quality no page overflow small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Zero denominator N/A explanation",
+      "status": "PASS"
+    },
+    {
+      "name": "Merchant switch isolates run history",
+      "status": "PASS"
+    },
+    {
+      "name": "Foreign merchant quality access denied",
+      "status": "PASS"
+    },
+    {
+      "name": "No browser JavaScript errors",
+      "status": "PASS"
+    }
+  ],
+  "browser": "headless Edge",
+  "data": "disposable merchant records",
+  "backend_changed": false
+}
