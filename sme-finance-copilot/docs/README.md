@@ -10,6 +10,7 @@ Maintained against the current uncommitted working implementation on feature/sec
 | Permissions / consent | [Single canonical security model](technical/security-permissions.md) |
 | Operator / deployment preparation | [Operations index](operations/README.md) |
 | Hackathon submission | [Hackathon index](hackathon/README.md) |
+| Older document names / shortcuts | [Legacy links](legacy-links/README.md) |
 | Provenance / older snapshots | [Archive index](archive/README.md) |
 | Documentation audit / maintenance | [Inventory and actions](documentation-inventory.md) |
 

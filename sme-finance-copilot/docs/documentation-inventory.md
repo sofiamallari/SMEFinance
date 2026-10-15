@@ -142,3 +142,8 @@ See [known limitations](technical/known-limitations.md) for stage-6 rule/comment
 ## Final static verification
 
 109 original/supporting artifacts inventoried; 16 maintained user guides have all eight required sections. 822 local Markdown links resolve across 195 Markdown files; 0 section-anchor references checked. 0 stale anchors now point to the existing document without an obsolete section fragment. Application/configuration/ledger and Word binary hash checks passed unchanged. No application regression, seed, migration, provider call or deployment was performed.
+
+
+## Compatibility-link organization
+
+Root-level compatibility Markdown files have been moved into [legacy-links](legacy-links/README.md). Maintained guides and archived snapshots remain in their existing folders. Repository Markdown links were updated; external bookmarks to the former root-level paths require updating.
