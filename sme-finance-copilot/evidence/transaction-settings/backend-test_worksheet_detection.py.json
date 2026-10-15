@@ -1,0 +1,9 @@
+{
+  "tests_run": 15,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "seconds": 0.172,
+  "pattern": "test_worksheet_detection.py",
+  "isolated": true
+}

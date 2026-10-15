@@ -25,7 +25,7 @@ class TestPolicyGuard(unittest.TestCase):
 
     def test_role_tiers(self):
         coach = Principal("c", "coach", {"M002"}, {"coach_access"})
-        self.assertEqual(self.g.check(coach, "x", Tier.T1_ADVISE, "M002"), "allowed")
+        with self.assertRaises(AccessDenied):self.g.check(coach, "x", Tier.T1_ADVISE, "M002")
         with self.assertRaises(AccessDenied):
             self.g.check(coach, "x", Tier.T2_SANDBOX_WRITE, "M002")
         lender = Principal("l", "lender_analyst", {"M002"}, {"share_with_lender"})
@@ -167,8 +167,7 @@ class TestAgent(unittest.TestCase):
 
     def test_coach_cannot_create_payment(self):
         coach = Principal("c", "coach", ALL, {"coach_access"})
-        r = self.c.handle(coach, "M002", "generate a qr for 500")
-        self.assertIn("denied", r["intent"])
+        with self.assertRaises(AccessDenied):self.c.handle(coach, "M002", "generate a qr for 500")
 
     def test_unauthorised_merchant(self):
         r = self.c.handle(owner({"M001"}), "M002", "how am i doing")

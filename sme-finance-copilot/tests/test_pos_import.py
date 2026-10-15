@@ -61,7 +61,7 @@ class CanonicalAndExtraction(POSFixture):
             with self.subTest(name=item['filename']),self.assertRaises(InputError):extract_files([item],self.mid)
         with self.assertRaises(InputError):extract_files([csv_file()]*11,self.mid)
         with self.assertRaises(InputError):extract_files([csv_file(rows=[['x']*31],headers=[str(i) for i in range(31)])],self.mid)
-        with self.assertRaises(InputError):extract_files([csv_file(rows=[['2026-10-01','1','IDR','sale','cash','paid',str(i)] for i in range(5001)])],self.mid)
+        with self.assertRaises(InputError):extract_files([csv_file(rows=[['2026-10-01','1','IDR','sale','cash','paid',str(i)] for i in range(10001)])],self.mid)
     def test_sensitive_columns_excluded_and_resource_attack_rejected(self):
         file=csv_file(rows=[['2026-10-01','100','IDR','sale','cash','paid','X','private@example.test']],headers=['date','net_amount','currency','type','channel','status','reference','customer email'])
         source=extract_files([file],self.mid);self.assertEqual(source[0]['excluded_sensitive_columns'],1);self.assertNotIn('private@example',json.dumps(source))
@@ -98,6 +98,8 @@ class POSPipeline(POSFixture):
         files=[csv_file(),csv_file(name='different.csv',headers=['Sale Date','Amount','Currency','Transaction Type','Tender Type','Status','Receipt No.'],rows=[['2026-10-02','75','IDR','sale','wallet','paid','DIFFERENT']])]
         stage=self.stage(files);maps=mapping(stage);second=stage['files'][1];self.assertNotIn('net_amount',second['suggestions'])
         maps[second['file_id']]['columns']['net_amount']='Amount'
+        blocked=self.pos.validate(self.owner,self.mid,stage['batch_id'],maps);self.assertFalse(blocked['valid'])
+        maps[second['file_id']]['review']['amount_confirmed']=True
         result=self.pos.validate(self.owner,self.mid,stage['batch_id'],maps);self.assertTrue(result['valid']);self.assertEqual(result['metrics']['eligible_total'],'225.00')
     def test_exact_duplicates_within_across_and_against_committed(self):
         file=csv_file();stage,result=self.validated([file,{**file,'filename':'same-again.csv'}]);self.assertEqual(result['metrics']['duplicate_rows'],2)
@@ -169,7 +171,7 @@ class POSPipeline(POSFixture):
         self.auth.update_user(self.tokens['security_admin'],self.ids['staff'],{'transaction_grants':{self.mid:[]},'optional_permissions':[]})
         with self.assertRaises(AccessDenied):self.pos.validate(staff,self.mid,run['batch_id'],mapping(run))
     def test_new_staff_read_only_and_authorized_history_monitoring(self):
-        body={'username':'readonly','email':'readonly@example.test','display_name':'Read only','role':'staff','merchants':[self.mid]}
+        body={'username':'readonly','email':'readonly@example.test','display_name':'Read only','role':'staff','merchants':[self.mid],'transaction_grants':{self.mid:['view_quality_monitoring','view_transactions']}}
         with self.auth.db() as db:self.auth._create(db,self.auth.principal(self.tokens['security_admin']),body,PASSWORD,False)
         token=self.auth.login('readonly',PASSWORD)[0];self.pos.monitoring(token,self.mid);self.pos.history(token,self.mid)
         with self.assertRaises(AccessDenied):self.pos.single(token,self.mid,self.entry(),'readonly-key')

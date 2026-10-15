@@ -1,0 +1,24 @@
+{
+  "branch": "feature/security-sme-bank-workflow",
+  "baseline_head": "db78556f88487b66f6f5786e3b087bd97c6f41e3",
+  "backend_tests": {
+    "count": 54,
+    "result": "PASS",
+    "seconds": 131.881,
+    "skipped": 0
+  },
+  "review_browser_checks": 18,
+  "import_browser_checks": 33,
+  "bao": {
+    "automatic": true,
+    "manual_row_entry": false,
+    "revenue_rows": 5408,
+    "expense_rows": 212,
+    "combined": 5620,
+    "production_data_modified": false
+  },
+  "financial_formulas_changed": false,
+  "role_permissions_changed": false,
+  "formula_evaluation": false,
+  "full_application_suite": "NOT RERUN for this focused importer change"
+}

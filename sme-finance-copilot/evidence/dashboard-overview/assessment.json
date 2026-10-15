@@ -1,0 +1,154 @@
+{
+  "results": [
+    {
+      "name": "Business Overview heading",
+      "status": "PASS"
+    },
+    {
+      "name": "Operational actions removed from Dashboard",
+      "status": "PASS"
+    },
+    {
+      "name": "Four ordered financial KPIs",
+      "status": "PASS"
+    },
+    {
+      "name": "KPI columns desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "Consistent KPI heights desktop",
+      "status": "PASS"
+    },
+    {
+      "name": "KPI columns tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "Consistent KPI heights tablet",
+      "status": "PASS"
+    },
+    {
+      "name": "KPI columns mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Consistent KPI heights mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "KPI columns small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "No page overflow small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Consistent KPI heights small-mobile",
+      "status": "PASS"
+    },
+    {
+      "name": "Backend KPI parity daily",
+      "status": "PASS"
+    },
+    {
+      "name": "Historical chart point parity daily",
+      "status": "PASS"
+    },
+    {
+      "name": "Accessible historical values daily",
+      "status": "PASS"
+    },
+    {
+      "name": "Backend KPI parity weekly",
+      "status": "PASS"
+    },
+    {
+      "name": "Historical chart point parity weekly",
+      "status": "PASS"
+    },
+    {
+      "name": "Accessible historical values weekly",
+      "status": "PASS"
+    },
+    {
+      "name": "Backend KPI parity monthly",
+      "status": "PASS"
+    },
+    {
+      "name": "Historical chart point parity monthly",
+      "status": "PASS"
+    },
+    {
+      "name": "Accessible historical values monthly",
+      "status": "PASS"
+    },
+    {
+      "name": "Backend KPI parity quarterly",
+      "status": "PASS"
+    },
+    {
+      "name": "Historical chart point parity quarterly",
+      "status": "PASS"
+    },
+    {
+      "name": "Accessible historical values quarterly",
+      "status": "PASS"
+    },
+    {
+      "name": "Invalid reporting period remains validated",
+      "status": "PASS"
+    },
+    {
+      "name": "Provenance and freshness disclosure",
+      "status": "PASS"
+    },
+    {
+      "name": "Synthetic payment limitations retained",
+      "status": "PASS"
+    },
+    {
+      "name": "Risk summary navigates to existing Cash Flow",
+      "status": "PASS"
+    },
+    {
+      "name": "Relocated existing manual entry saves",
+      "status": "PASS"
+    },
+    {
+      "name": "Existing import preview",
+      "status": "PASS"
+    },
+    {
+      "name": "Existing import confirmation commits",
+      "status": "PASS"
+    },
+    {
+      "name": "Existing Digital Payments simulator access",
+      "status": "PASS"
+    },
+    {
+      "name": "Saved transaction and imported data feed unchanged Dashboard",
+      "status": "PASS"
+    },
+    {
+      "name": "No browser JavaScript errors",
+      "status": "PASS"
+    }
+  ],
+  "browser": "headless Edge",
+  "data": "isolated synthetic"
+}

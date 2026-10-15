@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+.venv*
+__pycache__
+*.pyc
+logs
+evidence
+outputs
+*.sqlite3
+*.sqlite3-*
+*.jsonl
+*.zip
+.task03-work
+.pytest_cache

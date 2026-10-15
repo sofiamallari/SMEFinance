@@ -1,0 +1,19 @@
+{
+  "synthetic_only": true,
+  "key_present": true,
+  "model": "gemini-3.1-flash-lite",
+  "results": [
+    {
+      "name": "Live authentication and basic generation",
+      "status": "BLOCKED",
+      "error_type": "TimeoutError",
+      "http_status": null
+    }
+  ],
+  "earlier_attempt": {
+    "status": "BLOCKED",
+    "error_type": "HTTPError",
+    "http_status": 503,
+    "note": "Earlier actual connection attempt during this implementation; no successful authentication response."
+  }
+}

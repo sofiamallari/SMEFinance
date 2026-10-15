@@ -1,0 +1,21 @@
+{
+  "focused_existing_backend_tests": {
+    "count": 3,
+    "result": "PASS"
+  },
+  "owner_browser": {
+    "checks": 48,
+    "result": "PASS"
+  },
+  "bank_browser": {
+    "checks": 84,
+    "result": "PASS on unchanged rerun",
+    "initial_attempt": "Activity-sort control timeout"
+  },
+  "import_browser": {
+    "checks": 31,
+    "result": "PASS"
+  },
+  "backend_application_changed_by_this_task": false,
+  "full_backend_suite": "NOT RERUN for this UI-only task"
+}

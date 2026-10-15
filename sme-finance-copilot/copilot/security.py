@@ -32,10 +32,7 @@ class Tier(IntEnum):
 ROLE_MAX_TIER = {
     "owner": Tier.T3_APPROVAL_REQUIRED,
     "staff": Tier.T2_SANDBOX_WRITE,  # authorized transaction entry, no financing application
-    "coach": Tier.T1_ADVISE,          # field officer / progression coach
     "lender_analyst": Tier.T1_ADVISE,   # read only, consent-scoped
-    "demo_guest": Tier.T2_SANDBOX_WRITE,
-    "user_admin": Tier.T0_READ,
     "security_admin": Tier.T0_READ,
 }
 
@@ -58,6 +55,10 @@ class Principal:
     authorizer: object = field(default=None, repr=False, compare=False)
     tier_limit: int | None = None
     session_id: str | None = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self):
+        from copilot.authorization import resolve_role
+        self.role=resolve_role(self.role)
 
     def max_tier(self) -> Tier:
         maximum = ROLE_MAX_TIER.get(self.role, Tier.T0_READ)

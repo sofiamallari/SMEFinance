@@ -1,3 +1,3 @@
 date,net_amount,currency,type,channel,status,reference
-2026-10-02T10:00:00+07:00,20,IDR,refund,cash,paid,REFUND-001
-2026-10-02T11:00:00+07:00,10,IDR,reversal,card,paid,REVERSAL-001
+2026-10-02T10:00:00+08:00,6.25,CNY,refund,cash,paid,CNY-REFUND-001
+2026-10-02T11:00:00+08:00,3.10,CNY,reversal,card,paid,CNY-REVERSAL-001

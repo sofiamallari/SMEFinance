@@ -1,11 +1,19 @@
-# Synthetic POS demo reports
+# Synthetic CNY POS reports
 
-Use merchant **M002** (IDR). Reports contain synthetic October 2026 transactions, never customer data. Each receipt is one transaction. Use the suggested mappings and UTC+07:00; generic amount columns require an explicit monetary mapping.
+Current access rules: [four-role permissions](../../docs/technical/security-permissions.md).
 
-Start with `sample-pos-sales-october.csv`: 2 completed sales, total 150.00 IDR. If source controls are desired, enter count 2 and completed net 150.00. Importing the same file again excludes exact duplicates.
+Use any authorized CNY merchant, such as M002. All amounts are new RMB scenario values, not converted or relabeled legacy examples. CSV timestamps include UTC+08:00; native Excel dates require source timezone confirmation. Supported currency code is CNY; display is ¥.
 
-Add the different-column report (75.00) and refund/reversal report (-30.00) to demonstrate per-schema mapping. Select `folder/` to upload the two nested CSVs (net 100.00). XLSX uses a native Excel date cell and a distinct receipt ID.
+- Sales CSV: 2 completed sales, CNY 102.75.
+- Different-column CSV: CNY 63.80.
+- Refund/reversal CSV: CNY -9.35 after existing sign normalization.
+- Nested folder: CNY 76.80 net.
+- Native-date XLSX: CNY 78.90, distinct source receipt.
+- Duplicate example repeats a receipt: validation must detect it.
+- Invalid example contains an invalid date/amount and excessive precision: do not import it.
+- Reconciliation example totals CNY 76.30, deliberately mismatching sidecar control 999.00; validation must reject that control.
 
-The invalid file blocks its entire batch. The duplicate file demonstrates explicit exclusions. For the reconciliation-mismatch file, enter the intentionally incorrect synthetic report controls in the `.controls.json` sidecar (count 2, net 999.00) on the mapping page; validation must block import. The sidecar itself is not an upload file. No source controls are invented automatically.
+Files are not automatically imported. Use Merchant Transactions → Bulk POS Import, inspect/match columns, validate, review preview, and explicitly confirm. Never upload README or the JSON control sidecar as transaction files. CSV/XLSX use the existing validation and duplicate rules. Regenerate with `python scripts/generate_pos_demo.py`; `--output PATH` selects a separate fixture directory. No database or persistent ledger is opened by this command.
 
-Regenerate these fixtures with `python scripts/generate_pos_demo.py`. File selection may include unsupported README/JSON entries; the UI visibly excludes those and the backend rejects unsupported uploaded types.
+
+The reconciliation control sidecar is a backend-verification fixture, not an upload file or a promise of a visible Preview reconciliation panel. Follow the [current Validate/Preview workflow](../../docs/user-guide/merchant-transactions.md).

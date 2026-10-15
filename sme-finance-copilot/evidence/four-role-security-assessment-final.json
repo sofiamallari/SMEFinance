@@ -1,0 +1,11 @@
+{
+  "generated_at": "2026-10-14T17:10:35.416371+00:00",
+  "scope": "full regression",
+  "data": "isolated synthetic fixtures",
+  "tests_run": 285,
+  "failures": [],
+  "errors": [],
+  "skipped": [],
+  "passed": 285,
+  "live_gemini": "NOT TESTED"
+}

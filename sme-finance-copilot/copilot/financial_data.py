@@ -84,7 +84,7 @@ class FinancialData:
                 'gross_sales':format(gross_total,'.2f') if gross_known else None,'net_income':format((totals['net_sales']-totals['expenses']).quantize(Decimal('.01')),'.2f'),
                 'payment_methods':{k:format(v.quantize(Decimal('.01')),'.2f') for k,v in methods.items()},'provenance':provenance,
                 'record_count':count,'data_version':self.version(mid),'as_of':datetime.now(timezone.utc).isoformat(),
-                'limitations':(['Gross sales are unavailable where sources provide net amounts without gross components.'] if not gross_known else [])+['Recorded revenue is not available cash.','Synthetic seed and simulated payment activity are sandbox data, not bank settlement evidence.']}
+                'limitations':(['Gross sales are unavailable where sources provide net amounts without gross components.'] if not gross_known else [])+([__import__('copilot.currency_policy',fromlist=['legacy_note']).legacy_note(currency)] if currency!='CNY' else [])+['Recorded revenue is not available cash.','Synthetic seed and simulated payment activity are sandbox data, not bank settlement evidence.']}
     def dashboard(self,mid,start=None,end=None,granularity='monthly'):
         from copilot.modules.dashboard import build_dashboard
         result=build_dashboard(self.project(mid),self.as_of(mid),date.fromisoformat(start) if start else None,date.fromisoformat(end) if end else None,granularity)

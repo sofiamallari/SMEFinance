@@ -1,0 +1,9 @@
+{
+  "tests_run": 368,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "seconds": 242.74,
+  "pattern": "test*.py",
+  "isolated": true
+}

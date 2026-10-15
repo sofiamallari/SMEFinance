@@ -1,3 +1,3 @@
 date,net_amount,currency,type,channel,status,reference
-2026-10-04,100,IDR,sale,cash,paid,RECON-1
-2026-10-04,50,IDR,sale,cash,paid,RECON-2
+2026-10-04,48.50,CNY,sale,cash,paid,CNY-RECON-1
+2026-10-04,27.80,CNY,sale,cash,paid,CNY-RECON-2

@@ -82,7 +82,7 @@ class TestPartnerAcceptance(unittest.TestCase):
     def test_T17_invented_approval_date_rejected(self):
         r=self.ai('Assess my business',lambda s:json.dumps({**json.loads(s),'approval_date':'2026-10-14'}));self.assertEqual(r['mode'],'rule_engine');self.assertNotIn('approval_date',r['reply'])
     def test_T18_staff_financing_denied_and_tools_hidden(self):
-        p=Principal('staff','staff',{'M002'})
+        p=Principal('staff','staff',{'M002'},permissions={'use_copilot'})
         names={t['function']['name'] for t in allowed_tools(self.c,p,'M002')}
         self.assertNotIn('rbf_quote',names);r=self.ai('Can I get financing?',principal=p);self.assertEqual(r['classification'],'UNAUTHORIZED');self.assertNotIn('match_financing',r['reply'])
     def test_T19_cross_merchant_denied(self):
@@ -139,7 +139,7 @@ class TestPartnerAcceptance(unittest.TestCase):
     def test_T35_reporting_period_followup(self):
         first=self.ai('Show sales last month');second=self.ai('What about this month?');self.assertNotEqual(first['period'],second['period'])
     def test_T37_staff_suggestions_permission_aware(self):
-        r=self.ai('Quote RBF',principal=Principal('s','staff',{'M002'}));self.assertNotIn('assessment',r['reply']);self.assertNotIn('financing options',r['reply'])
+        r=self.ai('Quote RBF',principal=Principal('s','staff',{'M002'},permissions={'use_copilot'}));self.assertNotIn('assessment',r['reply']);self.assertNotIn('financing options',r['reply'])
     def test_T38_no_write_tools_in_analysis(self):
         self.assertNotIn('create_sandbox_payment',{t['function']['name'] for t in allowed_tools(self.c,self.p,'M002')});self.ai('Show sales');self.assertFalse(self.c.payments.payments)
     def test_T39_no_tool_generated_claim_rejected(self):

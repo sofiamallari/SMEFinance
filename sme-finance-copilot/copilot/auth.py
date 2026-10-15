@@ -15,7 +15,7 @@ REQUEST_ID = ContextVar("request_id", default=None)
 from contextlib import contextmanager
 from pathlib import Path
 from copilot.security import AccessDenied, AuditLog, Principal, ROLE_MAX_TIER
-from copilot.authorization import BOUNDARIES, DEFAULTS, ROLE_LABELS, CATEGORIES
+from copilot.authorization import BOUNDARIES, DEFAULTS, ROLE_LABELS, CATEGORIES, resolve_role, AUTHORITATIVE_ROLES, STAFF_ACTIONS
 
 class AuthError(AccessDenied):
     def __init__(self, message='Authentication required', status=401):
@@ -28,7 +28,8 @@ class InputError(ValueError):
         self.status = status
 
 def demo_mode():
-    return os.environ.get('COPILOT_AUTH_MODE', 'authenticated') == 'demo'
+    # Client-selected identities are never an application authentication mechanism.
+    return False
 
 def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
@@ -64,6 +65,7 @@ class AuthStore:
         Path(self.path).parent.mkdir(parents=True,exist_ok=True)
         self.dummy_hash = password_hash(secrets.token_urlsafe(24))
         self.migrate()
+        with self.db() as db:self.merchants.update(row[0] for row in db.execute("SELECT merchant_id FROM merchant_profiles"))
         from copilot.security_configuration import SecurityConfiguration
         self.security_config = SecurityConfiguration(self)
 
@@ -89,9 +91,15 @@ class AuthStore:
                 for sql in path.read_text(encoding='utf-8').split(';'):
                     if sql.strip(): db.execute(sql)
                 db.execute('INSERT INTO schema_migrations VALUES (?,?)',(path.name,self.clock()))
+            empty_roles=not db.execute('SELECT 1 FROM role_permissions LIMIT 1').fetchone()
+            if not db.execute("SELECT 1 FROM schema_migrations WHERE version='four_role_permissions_v1'").fetchone():
+                additions={'owner':{'manage_merchant_staff','view_merchant_audit','create_financing_draft','edit_financing_draft'},'staff':STAFF_ACTIONS-{'create_transactions','bulk_import','acknowledge_quality_alerts','resolve_quality_alerts'},'lender_analyst':{'view_bank_review','export_bank_review','view_bank_audit'}}
+                for role,actions in additions.items():db.executemany('INSERT OR IGNORE INTO role_permissions VALUES (?,?)',[(role,a) for a in actions])
+                db.execute("DELETE FROM role_permissions WHERE role='lender_analyst' AND permission='review_application'")
+                db.execute('INSERT INTO schema_migrations VALUES (?,?)',('four_role_permissions_v1',self.clock()))
             for key,value in POLICIES.items():
                 db.execute('INSERT OR IGNORE INTO security_policies VALUES (?,?)',(key,json.dumps(value)))
-            if not db.execute('SELECT 1 FROM role_permissions LIMIT 1').fetchone() or not db.execute('SELECT 1 FROM users LIMIT 1').fetchone():
+            if empty_roles or not db.execute('SELECT 1 FROM users LIMIT 1').fetchone():
                 db.execute('DELETE FROM role_permissions')
                 for role,actions in DEFAULTS.items():
                     db.executemany('INSERT INTO role_permissions VALUES (?,?)',[(role,a) for a in actions])
@@ -133,9 +141,10 @@ class AuthStore:
             raise InputError('Password must include lowercase, uppercase and a number')
 
     def _public_user(self,db,row):
+        row=dict(row);row['role']=resolve_role(row['role'])
         keys = ['user_id','username','email','display_name','role','account_status','must_change_password',
                 'created_at','updated_at','last_login_at','created_by','organization','locked_until']
-        return {**{k:row[k] for k in keys},
+        return {'effective_role':AUTHORITATIVE_ROLES.get(row['role'],'UNMAPPED'),**{k:row[k] for k in keys},
                 'merchants':[r[0] for r in db.execute('SELECT merchant_id FROM memberships WHERE user_id=?',(row['user_id'],))],
                 'optional_permissions':[r[0] for r in db.execute('SELECT permission FROM optional_permissions WHERE user_id=?',(row['user_id'],))],
                 'transaction_grants':{m:[r[0] for r in db.execute('SELECT permission FROM merchant_transaction_grants WHERE user_id=? AND merchant_id=?',(row['user_id'],m))] for m in [r[0] for r in db.execute('SELECT merchant_id FROM memberships WHERE user_id=?',(row['user_id'],))]} if row['role']=='staff' else {}}
@@ -157,7 +166,7 @@ class AuthStore:
         if not isinstance(optional,list) or any(x!='bulk_import' for x in optional) or (optional and role!='staff'):
             raise InputError('Only the staff bulk_import optional permission is supported')
         grants=body.get('transaction_grants',{})
-        if not isinstance(grants,dict) or (grants and role!='staff') or not set(grants)<=set(ids) or any(not isinstance(v,list) or any(a not in ('create_transactions','bulk_import','acknowledge_quality_alerts','resolve_quality_alerts') for a in v) for v in grants.values()):raise InputError('Invalid merchant-level staff transaction grants')
+        if not isinstance(grants,dict) or (grants and role!='staff') or not set(grants)<=set(ids) or any(not isinstance(v,list) or any(a not in STAFF_ACTIONS for a in v) for v in grants.values()):raise InputError('Invalid merchant-level staff transaction grants')
         for key in ('username','email','display_name'):
             if not isinstance(body.get(key),str) or not 1<=len(body[key].strip())<=150:
                 raise InputError(f'Invalid {key}')
@@ -172,12 +181,13 @@ class AuthStore:
             return self._create(db,None,body,password,False)
 
     def _create(self,db,actor,body,password,must_change=True):
+        body={**body,'role':resolve_role(body.get('role'))}
         self._validate_user(body,actor)
         self.check_password(password,self.policies(db))
         uid=secrets.token_hex(12); now=self.clock()
         try:
             db.execute('INSERT INTO users (user_id,username,email,display_name,role,account_status,password_hash,must_change_password,created_at,updated_at,created_by,organization) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-                (uid,body['username'].strip(),body['email'].strip(),body['display_name'].strip(),body['role'],body.get('account_status','active'),password_hash(password),int(must_change),now,now,actor.user_id if actor else 'bootstrap',str(body.get('organization','')).strip()[:150]))
+                (uid,body['username'].strip(),body['email'].strip(),body['display_name'].strip(),AUTHORITATIVE_ROLES[body['role']],body.get('account_status','active'),password_hash(password),int(must_change),now,now,actor.user_id if actor else 'bootstrap',str(body.get('organization','')).strip()[:150]))
         except sqlite3.IntegrityError: raise InputError('Username or email is already registered',409)
         db.executemany('INSERT INTO memberships VALUES (?,?)',[(uid,m) for m in set(body.get('merchants',[]))])
         db.executemany('INSERT INTO optional_permissions VALUES (?,?)',[(uid,a) for a in set(body.get('optional_permissions',[]))])
@@ -238,6 +248,8 @@ class AuthStore:
         if not row or row['revoked'] or row['account_status']!='active' or row['locked_until']>now or now-row['last_seen']>p['idle_timeout'] or now-row['session_created_at']>p['max_session_lifetime']:
             raise AuthError('Session expired or unavailable')
         if touch: db.execute('UPDATE sessions SET last_seen=? WHERE token_hash=?',(now,digest(token)))
+        row=dict(row);row['role']=resolve_role(row['role'])
+        if row['role'] not in BOUNDARIES:raise AuthError('Legacy account needs an administrator role mapping',403)
         return row
 
     def principal(self,token):
@@ -264,32 +276,33 @@ class AuthStore:
         if row['must_change_password']: raise AccessDenied('Change your temporary password first')
         enabled={r[0] for r in db.execute('SELECT permission FROM role_permissions WHERE role=?',(role,))}
         if role=='staff' and action=='bulk_import' and not db.execute('SELECT 1 FROM optional_permissions WHERE user_id=? AND permission=?',(row['user_id'],'bulk_import')).fetchone(): raise AccessDenied('Staff upload permission has not been granted')
-        if role=='staff' and merchant is not None and action in ('create_transactions','bulk_import','acknowledge_quality_alerts','resolve_quality_alerts') and not db.execute('SELECT 1 FROM merchant_transaction_grants WHERE user_id=? AND merchant_id=? AND permission=?',(row['user_id'],merchant,action)).fetchone():raise AccessDenied('An explicit merchant-level staff grant is required')
+        if role=='staff' and merchant is not None and action in STAFF_ACTIONS and not db.execute('SELECT 1 FROM merchant_transaction_grants WHERE user_id=? AND merchant_id=? AND permission=?',(row['user_id'],merchant,action)).fetchone():raise AccessDenied('An explicit merchant-level staff grant is required')
         if action not in enabled or action not in BOUNDARIES.get(role,set()): raise AccessDenied('Action is not permitted for this account')
         if merchant is not None and role=='lender_analyst' and 'view_financing_data' not in enabled:
             raise AccessDenied('Consent-authorized financing data permission is disabled')
         if reauth and self.clock()-row['reauthenticated_at']>self.policies(db)['admin_reauth_window']:
             raise AccessDenied('Administrator reauthentication required')
         if merchant is not None:
+            inactive=db.execute("SELECT 1 FROM merchant_profiles WHERE merchant_id=? AND status='inactive'",(merchant,)).fetchone()
+            if inactive:raise AccessDenied('Merchant is inactive')
             if merchant not in self.merchants or not db.execute('SELECT 1 FROM memberships WHERE user_id=? AND merchant_id=?',(row['user_id'],merchant)).fetchone():
                 raise AccessDenied('Merchant access denied')
             if role in ('lender_analyst','coach'):
                 category=CATEGORIES.get(action)
                 consent=self._consent(db,merchant,row['user_id'],category)
                 if not consent: raise AccessDenied('Active merchant consent for this data category is required')
-                if role=='lender_analyst' and not db.execute('SELECT 1 FROM applications WHERE merchant_id=? AND recipient_id=?',(merchant,row['user_id'])).fetchone():
-                    raise AccessDenied('An assigned financing application is required')
             if action=='submit_application' and not self._owner_consent(db,merchant,row['user_id']):
                 raise AccessDenied('Active financing consent including applications is required before submission')
         return self.policies(db).get('ai_tiers',{}).get(role,int(ROLE_MAX_TIER[role]))
 
     def _consent(self,db,mid,recipient,category=None):
-        for row in db.execute('SELECT c.* FROM consents c JOIN users o ON o.user_id=c.owner_id WHERE c.merchant_id=? AND c.recipient_id=? AND c.revoked_at IS NULL AND c.expires_at>? AND o.account_status=\'active\' AND o.role=\'owner\' AND EXISTS (SELECT 1 FROM memberships m WHERE m.user_id=o.user_id AND m.merchant_id=c.merchant_id)',(mid,recipient,self.clock())):
+        if not db.execute("SELECT 1 FROM users u JOIN memberships m ON m.user_id=u.user_id WHERE u.user_id=? AND m.merchant_id=? AND u.role='BANK' AND u.account_status='active'",(recipient,mid)).fetchone():return None
+        for row in db.execute('SELECT c.* FROM consents c JOIN users o ON o.user_id=c.owner_id WHERE c.merchant_id=? AND c.recipient_id=? AND c.revoked_at IS NULL AND c.expires_at>? AND o.account_status=\'active\' AND o.role=\'SME_OWNER\' AND EXISTS (SELECT 1 FROM memberships m WHERE m.user_id=o.user_id AND m.merchant_id=c.merchant_id)',(mid,recipient,self.clock())):
             if category is None or category in json.loads(row['categories']): return row
         return None
 
     def _owner_consent(self,db,mid,owner):
-        for row in db.execute('SELECT c.* FROM consents c JOIN users u ON u.user_id=c.recipient_id WHERE c.merchant_id=? AND c.owner_id=? AND c.revoked_at IS NULL AND c.expires_at>? AND u.account_status=\'active\' AND u.role=\'lender_analyst\' AND EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=u.user_id AND m.merchant_id=c.merchant_id)',(mid,owner,self.clock())):
+        for row in db.execute('SELECT c.* FROM consents c JOIN users u ON u.user_id=c.recipient_id WHERE c.merchant_id=? AND c.owner_id=? AND c.revoked_at IS NULL AND c.expires_at>? AND u.account_status=\'active\' AND u.role=\'BANK\' AND EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=u.user_id AND m.merchant_id=c.merchant_id)',(mid,owner,self.clock())):
             if 'applications' in json.loads(row['categories']): return row
         return None
 
@@ -354,7 +367,7 @@ class AuthStore:
         with self.db() as db:
             return [self._public_user(db,r) for r in db.execute('SELECT * FROM users ORDER BY username')
                     if query.casefold() in (r['username']+' '+r['email']+' '+r['display_name']).casefold()
-                    and (not status or r['account_status']==status) and (not role or r['role']==role)]
+                    and (not status or r['account_status']==status) and (not role or resolve_role(r['role'])==resolve_role(role))]
 
     def create_user(self,token,body):
         self.authorize(token,'manage_users',reauth=True)
@@ -370,6 +383,8 @@ class AuthStore:
         with self.db() as db:
             row=db.execute('SELECT * FROM users WHERE user_id=?',(uid,)).fetchone()
             if not row: raise InputError('User not found',404)
+            row=dict(row);row['role']=resolve_role(row['role'])
+            body={**body,**({'role':resolve_role(body['role'])} if 'role' in body else {})}
             if row['role']=='staff' or body.get('role')=='staff':self.authorize(token,'manage_staff_accounts',reauth=True)
             if actor.role=='user_admin' and row['role'] in ('user_admin','security_admin'): raise AccessDenied('User Administrators cannot modify administrator accounts')
             merged={**self._public_user(db,row),**body}
@@ -389,11 +404,11 @@ class AuthStore:
             if uid==actor.user_id and any(k in body for k in ('role','merchants','optional_permissions','account_status')):
                 raise AccessDenied('Administrators cannot change their own authority or status')
             if row['role']=='security_admin' and row['account_status']=='active' and (merged['role']!='security_admin' or merged['account_status']!='active'):
-                count=db.execute("SELECT COUNT(*) FROM users WHERE role='security_admin' AND account_status='active'").fetchone()[0]
+                count=db.execute("SELECT COUNT(*) FROM users WHERE role='SYSTEM_ADMIN' AND account_status='active'").fetchone()[0]
                 if count<=1: raise InputError('Cannot remove the last active Security Administrator',409)
             try:
                 db.execute('UPDATE users SET username=?,email=?,display_name=?,role=?,account_status=?,organization=?,updated_at=?,locked_until=0,failed_attempts=0 WHERE user_id=?',
-                    (merged['username'].strip(),merged['email'].strip(),merged['display_name'].strip(),merged['role'],merged['account_status'],str(merged.get('organization',''))[:150],self.clock(),uid))
+                    (merged['username'].strip(),merged['email'].strip(),merged['display_name'].strip(),AUTHORITATIVE_ROLES[merged['role']],merged['account_status'],str(merged.get('organization',''))[:150],self.clock(),uid))
             except sqlite3.IntegrityError: raise InputError('Username or email is already registered',409)
             db.execute('DELETE FROM memberships WHERE user_id=?',(uid,));db.execute('DELETE FROM optional_permissions WHERE user_id=?',(uid,))
             db.executemany('INSERT INTO memberships VALUES (?,?)',[(uid,m) for m in set(merged['merchants'])])
@@ -499,7 +514,7 @@ class AuthStore:
         if not 1<=len(purpose)<=250:raise InputError('Consent purpose required (max 250 characters)')
         with self.db() as db:
             recipient=db.execute('SELECT * FROM users WHERE user_id=?',(body.get('recipient_id'),)).fetchone()
-            if not recipient or recipient['role'] not in ('lender_analyst','coach') or recipient['account_status']!='active' or not db.execute('SELECT 1 FROM memberships WHERE user_id=? AND merchant_id=?',(recipient['user_id'],mid)).fetchone():raise InputError('Recipient must be an active assigned Financing Agent or legacy coach')
+            if not recipient or resolve_role(recipient['role'])!='lender_analyst' or recipient['account_status']!='active' or not db.execute('SELECT 1 FROM memberships WHERE user_id=? AND merchant_id=?',(recipient['user_id'],mid)).fetchone():raise InputError('Recipient must be an active Bank scoped to this merchant')
             cid=secrets.token_hex(12)
             db.execute('INSERT INTO consents VALUES (?,?,?,?,?,?,?,?,NULL)',(cid,mid,actor.user_id,recipient['user_id'],purpose,json.dumps(sorted(set(categories))),self.clock(),expires))
             self.audit('consent_granted',actor,mid,cid,db=db)
@@ -509,7 +524,7 @@ class AuthStore:
         self.authorize(token,'manage_consents',mid)
         with self.db() as db:
             rows=[dict(r) for r in db.execute('SELECT c.*,u.display_name AS recipient_name,u.organization FROM consents c JOIN users u ON u.user_id=c.recipient_id WHERE merchant_id=?',(mid,))]
-            recipients=[dict(r) for r in db.execute("SELECT u.user_id,u.display_name,u.organization FROM users u JOIN memberships m ON m.user_id=u.user_id WHERE m.merchant_id=? AND u.role IN ('lender_analyst','coach') AND u.account_status='active'",(mid,))]
+            recipients=[dict(r) for r in db.execute("SELECT u.user_id,u.display_name,u.organization FROM users u JOIN memberships m ON m.user_id=u.user_id WHERE m.merchant_id=? AND u.role='BANK' AND u.account_status='active'",(mid,))]
             for r in rows:r['categories']=json.loads(r['categories'])
             return {'consents':rows,'recipients':recipients}
 
@@ -526,11 +541,18 @@ class AuthStore:
         with self.db() as db:
             # The call has already passed PolicyGuard and the owner approval token.
             principal.authorizer('submit_application',mid)
-            consent=self._owner_consent(db,mid,principal.user_id)
-            if not consent:raise AccessDenied('Financing consent unavailable')
+            if not isinstance(packet.get('recipient_id'),str):raise AccessDenied('Explicit Bank recipient required')
+            consent=self._consent(db,mid,packet.get('recipient_id'),'applications')
+            if not consent or consent['owner_id']!=principal.user_id:raise AccessDenied('Explicit Owner-authorized Bank recipient required')
+            if packet.get('draft_id'):
+                draft=db.execute("SELECT * FROM financing_drafts WHERE draft_id=? AND merchant_id=? AND state='DRAFT'",(packet['draft_id'],mid)).fetchone()
+                if not draft:raise InputError('Draft no longer editable',409)
+                saved=json.loads(draft['body'])
+                if saved['recipient_id']!=packet['recipient_id'] or float(saved['amount'])!=packet['requested_amount']:raise InputError('Draft changed; propose again',409)
             aid='APP-'+secrets.token_hex(10)
             packet={**packet,'application_id':aid,'recipient_id':consent['recipient_id'],'sandbox':True}
             db.execute('INSERT INTO applications VALUES (?,?,?,?,?,?)',(aid,mid,principal.user_id,consent['recipient_id'],self.clock(),json.dumps(packet)))
+            if packet.get('draft_id'):db.execute("UPDATE financing_drafts SET state='SUBMITTED',application_id=? WHERE draft_id=?",(aid,packet['draft_id']))
             self.audit('financing_application_submitted',principal,mid,aid,db=db)
             return packet
 
@@ -538,33 +560,29 @@ class AuthStore:
         self.authorize(token,'view_applications',mid);p=self.principal(token)
         with self.db() as db:
             rows=db.execute('SELECT * FROM applications WHERE merchant_id=?',(mid,)).fetchall()
-            return [dict(json.loads(r['packet']),reviews=[dict(x) for x in db.execute('SELECT outcome,note,created_at FROM application_reviews WHERE application_id=?',(r['application_id'],))])
-                    for r in rows if p.role=='owner' or r['recipient_id']==p.user_id]
+            result=[]
+            for row in rows:
+                if p.role!='owner' and not (p.role=='lender_analyst' and row['recipient_id']==p.user_id):continue
+                packet=json.loads(row['packet'])
+                if p.role=='lender_analyst':
+                    try:self._authorize(db,token,'view_assessment',mid)
+                    except AccessDenied:packet={k:v for k,v in packet.items() if k not in ('scores','stage')}
+                packet['submitted_at']=row['created_at']
+                packet['reviews']=self.application_reviews(db,row['application_id'])
+                result.append(packet)
+            return result
 
     def review_application(self,token,aid,body):
-        with self.db() as db:
-            row=db.execute('SELECT * FROM applications WHERE application_id=?',(aid,)).fetchone()
-            if not row:raise InputError('Application not found',404)
-            self.authorize(token,'review_application',row['merchant_id']);p=self.principal(token)
-            if row['recipient_id']!=p.user_id:raise AccessDenied('Application is not assigned to this agent')
-            outcome=body.get('outcome')
-            if outcome not in ('request_information','sandbox_recommended','sandbox_declined'):raise InputError('Invalid simulated review outcome')
-            note=str(body.get('note','')).strip()
-            if not 1<=len(note)<=1000:raise InputError('Review note required (max 1000 characters)')
-            db.execute('INSERT INTO application_reviews VALUES (?,?,?,?,?,?)',(secrets.token_hex(12),aid,p.user_id,outcome,note,self.clock()))
-            self.audit('financing_review_recorded',p,row['merchant_id'],aid,db=db)
-            return {'ok':True,'sandbox':True,'disclaimer':'Simulated review only; not a bank credit approval'}
+        from copilot.bank_workflow import BankWorkflow
+        return BankWorkflow(self,None).record_review(token,aid,body)
 
-    def staff_request(self,token,mid,details):
-        self.authorize(token,'request_staff_access',mid);p=self.principal(token)
-        if not isinstance(details,str) or not 1<=len(details.strip())<=1000:raise InputError('Request details required')
-        with self.db() as db:
-            rid=secrets.token_hex(12)
-            db.execute('INSERT INTO staff_access_requests VALUES (?,?,?,?,?)',(rid,mid,p.user_id,details.strip(),self.clock()))
-            self.audit('staff_access_requested',p,mid,rid,db=db)
-        return {'request_id':rid}
+    def application_reviews(self,db,aid):
+        return [dict(row) for row in db.execute("SELECT r.outcome,r.note,r.created_at,u.display_name AS reviewer,u.organization AS bank_name FROM application_reviews r LEFT JOIN users u ON u.user_id=r.actor_id WHERE r.application_id=? ORDER BY r.created_at,r.review_id",(aid,))]
+
 
 def main():
+    from copilot.demo_environment import configure_storage
+    configure_storage()
     parser=argparse.ArgumentParser(description='Migrate identity database or bootstrap the first Security Administrator')
     parser.add_argument('command',choices=['migrate','bootstrap'])
     parser.add_argument('--database',default=os.environ.get('COPILOT_IDENTITY_DB','logs/identity.sqlite3'))

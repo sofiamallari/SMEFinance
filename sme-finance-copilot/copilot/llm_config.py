@@ -1,9 +1,9 @@
-"""Load only local LLM configuration; never execute or log dotenv contents."""
+"""Load allowlisted local LLM settings and the optional simulation flag; never execute or log dotenv contents."""
 import os
 from pathlib import Path
 
 LLM_KEYS = frozenset({'COPILOT_LLM_BASE_URL', 'COPILOT_LLM_API_KEY',
-                      'COPILOT_LLM_MODEL', 'COPILOT_AGENT_MODE'})
+                      'COPILOT_LLM_MODEL', 'COPILOT_AGENT_MODE', 'FINANCIAL_SURVIVAL_SIMULATION_ENABLED'})
 
 def load_llm_env(path=None, environ=None):
     env = os.environ if environ is None else environ

@@ -33,7 +33,7 @@ class PartnerState:
     def propose(self,p,mid,session,kind,parameters):
         if not isinstance(parameters,dict):raise InputError('Action parameters must be an object')
         if kind not in ('payment_create','prepare_financing_application'):raise AccessDenied('Action is not supported')
-        allowed={'method','amount','items'} if kind=='payment_create' else {'product_id','amount'}
+        allowed={'method','amount','items'} if kind=='payment_create' else {'product_id','amount','recipient_id','draft_id'}
         if set(parameters)-allowed:raise InputError('Unexpected action parameters')
         if kind=='payment_create' and parameters.get('method') not in ('qr_pay','tap_pay','pay_link'):raise InputError('Select a supported sandbox payment method')
         if kind=='payment_create' and parameters.get('items'):
@@ -46,7 +46,13 @@ class PartnerState:
         tool=self.c.tools[kind];approval=None
         try:self.c.guard.check(p,kind,tool.tier,mid,required_consent=tool.consent)
         except ApprovalRequired as exc:approval=exc.token
-        if kind=='prepare_financing_application':self.c.call(p,'rbf_quote',mid,advance=float(amount))
+        if kind=='prepare_financing_application':
+            if p.authenticated:
+                if not parameters.get('recipient_id'):raise InputError('Select an authorized Bank in Financing Applications before proposing submission')
+                with self.c.identity_store.db() as db:
+                    consent=self.c.identity_store._consent(db,mid,parameters['recipient_id'],'applications')
+                    if not consent or consent['owner_id']!=p.user_id:raise AccessDenied('Owner authorization for selected Bank required')
+            self.c.call(p,'rbf_quote',mid,advance=float(amount))
         aid='ACT-'+secrets.token_hex(16)
         action={'action_id':aid,'user_id':p.user_id,'merchant_id':mid,'session_hash':self.key(p,session),'kind':kind,'parameters':parameters,'approval_token':approval,
                 'expires_at':self.c.clock()+300,'data_version':self.c.financial_data.version(mid),'state':'proposed','result':None}

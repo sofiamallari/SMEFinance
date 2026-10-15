@@ -1,5 +1,5 @@
 """
-Zero-dependency HTTP server (Python standard library only) exposing the
+HTTP server using standard-library transport and CLDR metadata, exposing the
 copilot as a JSON API, the unified web UI, and an MCP endpoint.
 
     python -m copilot.server --port 8000
@@ -37,6 +37,8 @@ from copilot.security import AccessDenied, ApprovalRequired, Principal
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(ROOT, "..", "web", "index.html")
 MAX_BODY = 4_100_000  # base64-free JSON rows, max 1000 per import
+from copilot.demo_environment import configure_storage
+configure_storage()
 TRANSACTION_FILE = os.environ.get("COPILOT_TRANSACTION_FILE", "logs/manual_transactions.jsonl")
 TRANSACTION_LOCK = threading.RLock()
 
@@ -59,14 +61,7 @@ SECURITY_HEADERS = {
 
 
 def principal_from_request(headers) -> Principal:
-    if not demo_mode():
-        return AUTH.principal(session_token(headers))
-    role = headers.get("X-Demo-Role", "owner")
-    if role not in ("owner", "staff", "coach", "lender_analyst", "demo_guest"):
-        role = "demo_guest"
-    consent = headers.get("X-Demo-Consent", "") == "yes"
-    consents = {"coach_access", "share_with_lender"} if consent else set()
-    return Principal(user_id=f"demo-{role}", role=role, merchant_ids=set(COPILOT.merchants), consents=consents)
+    return AUTH.principal(session_token(headers))
 
 
 def session_token(headers):
@@ -126,7 +121,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _read_raw(self) -> bytes:
         n = int(self.headers.get("Content-Length", 0) or 0)
-        maximum=14_100_000 if urlparse(self.path).path=='/api/pos-import/stage' else MAX_BODY
+        maximum=14_100_000 if urlparse(self.path).path in ('/api/pos-import/stage','/api/pos-import/inspect') else MAX_BODY
         if n < 0 or n > maximum:
             raise ValueError("request too large")
         return self.rfile.read(n) if n else b""
@@ -136,8 +131,13 @@ class Handler(BaseHTTPRequestHandler):
         return f'sme_session={token}; Path=/; HttpOnly; SameSite=Strict'+secure+('; Max-Age=0' if clear else '')
 
     def _page(self, name):
-        with open(os.path.join(ROOT,'..','web',name),'rb') as f:
-            return self._send(200,f.read(),'text/html; charset=utf-8')
+        with open(os.path.join(ROOT,'..','web',name),'rb') as f:page=f.read()
+        if name in ('security.html','users.html','merchants.html'):
+            # One presentation fragment; route authorization runs before _page.
+            with open(os.path.join(ROOT,'..','web','admin-shell.html'),'rb') as f:
+                header,sidebar=f.read().split(b'<!-- ADMIN_SIDEBAR -->',1)
+            page=page.replace(b'<!-- ADMIN_HEADER -->',header).replace(b'<!-- ADMIN_NAVIGATION -->',sidebar)
+        return self._send(200,page,'text/html; charset=utf-8')
 
     def _mcp(self, method):
         if method != 'POST':return self._send(405,{'error':'Use POST'},headers={'Allow':'POST'})
@@ -156,7 +156,10 @@ class Handler(BaseHTTPRequestHandler):
         # Called only after authentication and CSRF verification.
         if path=='/api/auth/me' and method=='GET':
             if demo_mode():return self._send(200,{'demo':True,'user':{'user_id':p.user_id,'role':p.role,'display_name':'Explicit demo'},'permissions':sorted(BOUNDARIES.get(p.role,set())),'csrf_token':''})
-            return self._send(200,AUTH.me(token))
+            value=AUTH.me(token)
+            from copilot.survival_simulation import enabled
+            value['features']={'financial_survival_simulation':enabled() and p.role=='owner'}
+            return self._send(200,value)
         if path=='/api/auth/logout' and method=='POST':
             if not demo_mode():AUTH.logout(token)
             return self._send(200,{'ok':True},headers={'Set-Cookie':self._cookie('',True)})
@@ -165,11 +168,56 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200,{'ok':True,'login_required':True},headers={'Set-Cookie':self._cookie('',True)})
         if path=='/api/auth/reauthenticate' and method=='POST':
             AUTH.reauthenticate(token,body.get('password'));return self._send(200,{'ok':True})
+        from copilot.bank_workflow import BankWorkflow
+        workflow=BankWorkflow(AUTH,COPILOT)
+        mid=q.get('merchant') or body.get('merchant')
+        if path in ('/api/survival-simulation/baseline','/api/survival-simulation/run'):
+            from copilot.survival_simulation import SurvivalSimulation
+            service=SurvivalSimulation(pos_service())
+            if path.endswith('/baseline') and method=='GET':return self._send(200,service.baseline(token,mid))
+            if path.endswith('/run') and method=='POST':return self._send(200,service.run(token,mid,body))
+            raise InputError('Unsupported simulation operation',405)
+        if path=='/api/merchant-transactions/settings':
+            settings=pos_service().settings
+            if method=='GET':return self._send(200,settings.get(token,mid,q.get('catalog')=='1'))
+            if method=='PATCH':return self._send(200,settings.save(token,mid,body.get('settings')))
+        if path=='/api/merchant-transactions/templates':
+            settings=pos_service().settings
+            if method=='GET':return self._send(200,{'templates':settings.templates(token,mid)})
+            if method=='POST':return self._send(201,settings.save_template(token,mid,body.get('template')))
+        if path=='/api/transaction-currencies' and method=='GET':
+            with AUTH.db() as db:pos_service().settings.guard(db,token,mid)
+            from copilot.currency_catalog import search
+            return self._send(200,{'currencies':search(q.get('search',''))})
+        if path=='/api/owner/staff':
+            if method=='GET':return self._send(200,workflow.staff(token,mid))
+            if method=='PATCH':return self._send(200,workflow.staff(token,mid,body.get('user_id'),{'permissions':body.get('permissions')}))
+        if path=='/api/merchant/audit' and method=='GET':return self._send(200,workflow.audit(token,mid))
+        if path=='/api/financing-drafts':
+            if method=='GET':return self._send(200,workflow.draft(token,mid))
+            if method=='POST':return self._send(201,workflow.draft(token,mid,body=body.get('draft')))
+        if path.startswith('/api/financing-drafts/'):
+            parts=path.split('/')
+            if len(parts)==4 and method=='PATCH':return self._send(200,workflow.draft(token,mid,parts[3],body.get('draft')))
+            if len(parts)==5 and parts[4]=='propose' and method=='POST':return self._send(201,workflow.propose(token,mid,parts[3]))
+        if path=='/api/bank/applications' and method=='GET':return self._send(200,{'applications':workflow.applications(token)})
+        if path.startswith('/api/bank/applications/') and method=='GET' and len(path.split('/'))==5:return self._send(200,workflow.applications(token,path.split('/')[-1]))
+        if path=='/api/bank/merchants' and method=='GET':return self._send(200,workflow.merchants(token))
+        if path=='/api/bank/review' and method=='GET':return self._send(200,workflow.review(token,mid,q.get('application_id')))
+        if path=='/api/bank/export' and method=='GET':return self._send(200,workflow.review(token,mid,q.get('application_id'),True),'text/csv; charset=utf-8',{'Content-Disposition':'attachment; filename="simulated-bank-review.csv"'})
+        if path=='/api/admin/merchants' or path.startswith('/api/admin/merchants/'):
+            from copilot.merchant_management import MerchantManagement
+            service=MerchantManagement(pos_service())
+            if path=='/api/admin/merchants':
+                if method=='GET':return self._send(200,service.listing(token))
+                if method=='POST':return self._send(201,service.save(token,body))
+            elif method=='PATCH' and len(path.split('/'))==5:return self._send(200,service.save(token,body,path.split('/')[-1]))
+            raise InputError('Unsupported merchant operation',405)
         if path=='/api/admin/roles' and method=='GET':
             AUTH.authorize(token,'manage_users')
             roles={k:v for k,v in ROLE_LABELS.items() if k!='coach' or os.environ.get('COPILOT_ALLOW_COACH_ASSIGNMENT')=='yes'}
             if p.role=='user_admin':roles={k:v for k,v in roles.items() if k in ('owner','staff','lender_analyst')}
-            return self._send(200,{'roles':roles,'merchants':[{'id':m.merchant_id,'name':m.name} for m in COPILOT.merchants.values()]})
+            return self._send(200,{'staff_actions':sorted(__import__('copilot.authorization',fromlist=['STAFF_ACTIONS']).STAFF_ACTIONS),'roles':roles,'merchants':[{'id':m.merchant_id,'name':m.name} for m in COPILOT.merchants.values()]})
         if path=='/api/admin/users':
             if method=='GET':return self._send(200,{'users':AUTH.users(token,q.get('search',''),q.get('status',''),q.get('role',''))})
             if method=='POST':return self._send(201,AUTH.create_user(token,body))
@@ -189,6 +237,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200,pos_service().single(token,body.get('merchant'),body.get('entry'),body.get('idempotency_key')))
         if path=='/api/merchant-transactions/history' and method=='GET':
             return self._send(200,pos_service().history(token,q.get('merchant'),q))
+        if path=='/api/pos-import/inspect' and method=='POST':
+            if set(body)-{'merchant','files'}:raise InputError('Unsupported source inspection fields')
+            return self._send(200,pos_service().inspect_files(token,body.get('merchant'),body.get('files')))
         if path=='/api/pos-import/stage' and method=='POST':
             if set(body)-{'merchant','files'}:raise InputError('Unsupported upload request fields')
             return self._send(201,pos_service().stage(token,body.get('merchant'),body.get('files')))
@@ -231,7 +282,9 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith('/api/consents/') and path.endswith('/revoke') and method=='POST':
             return self._send(200,AUTH.revoke_consent(token,path.split('/')[3]))
         if path=='/api/staff-access-requests' and method=='POST':return self._send(201,AUTH.staff_request(token,body.get('merchant'),body.get('details')))
-        if path=='/api/applications' and method=='GET':return self._send(200,{'applications':AUTH.application_list(token,q.get('merchant'))})
+        if path=='/api/applications' and method=='GET':
+            if p.role=='staff':raise AccessDenied('Staff can access delegated drafts, not submitted applications')
+            return self._send(200,{'applications':AUTH.application_list(token,q.get('merchant'))})
         if path.startswith('/api/applications/') and path.endswith('/review') and method=='POST':
             return self._send(200,AUTH.review_application(token,path.split('/')[3],body))
         return False
@@ -285,26 +338,50 @@ class Handler(BaseHTTPRequestHandler):
                 if method=='GET' and not path.startswith('/api/'):
                     return self._send(303,b'',headers={'Location':'/login'})
                 raise AccessDenied('Change your temporary password first')
+            if method=='GET' and path=='/api/partner/conversation':
+                from copilot.owner_partner import conversations
+                return self._send(200,{'messages':conversations.get(p,q.get('merchant')),'retention':'session-memory-30-minutes'})
+            if method=='GET' and path in ('/assets/portal-navigation.js','/assets/portal-navigation.css'):
+                with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8' if path.endswith('.css') else 'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/icons.svg':
                 with open(os.path.join(ROOT,'..','web','icons.svg'),'rb') as f:return self._send(200,f.read(),'image/svg+xml')
+            if method=='GET' and path in ('/assets/bank.css','/assets/bank-components.js','/assets/bank-views.js','/assets/bank-portal.js'):
+                AUTH.authorize(token,'view_bank_review')
+                with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8' if path.endswith('.css') else 'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/financial-partner.js':
                 with open(os.path.join(ROOT,'..','web','financial-partner.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
-            if method=='GET' and path=='/assets/merchant-transactions.js':
-                with open(os.path.join(ROOT,'..','web','merchant-transactions.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
+            if method=='GET' and path in ('/assets/merchant-transactions.js','/assets/transaction-settings.js','/assets/financing-applications.js','/assets/dashboard-tabs.js','/assets/owner-management.js','/assets/survival-simulation.js'):
+                with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/security-admin.js':
                 AUTH.authorize(token,'manage_security')
                 with open(os.path.join(ROOT,'..','web','security-admin.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
+            if method=='GET' and path=='/assets/currency.js':
+                from copilot.currency_policy import PUBLIC
+                with open(os.path.join(ROOT,'..','web','currency.js'),encoding='utf-8') as f:return self._send(200,f.read().replace('__CURRENCY_META__',json.dumps(PUBLIC)).encode('utf-8'),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/admin.js':
                 with open(os.path.join(ROOT,'..','web','admin.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
+            if method=='GET' and path=='/owner/users':
+                AUTH.authorize(token,'manage_merchant_staff');return self._page('index.html')
+            if method=='GET' and path=='/bank':
+                if p.role!='lender_analyst':raise AccessDenied('Bank page only')
+                AUTH.authorize(token,'view_bank_review');return self._page('bank.html')
             if method=='GET' and path=='/consents':
-                require(p,'manage_consents');return self._page('consents.html')
+                require(p,'manage_consents');return self._page('index.html')
+            if method=='GET' and path in ('/admin/merchants','/assets/merchants.js'):
+                if p.role!='security_admin':raise AccessDenied('System Admin only')
+                AUTH.authorize(token,'manage_users')
+                if path=='/admin/merchants':return self._page('merchants.html')
+                with open(os.path.join(ROOT,'..','web','merchants.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/admin/users':
                 AUTH.authorize(token,'manage_users');return self._page('users.html')
             if method=='GET' and path=='/admin/security':
                 AUTH.authorize(token,'manage_security');return self._page('security.html')
             business_routes={'/':'use_copilot','/dashboard':'view_dashboard','/copilot':'use_copilot','/financing':'view_financing','/financing/rbf':'view_financing','/financing/progression':'view_financing','/cash-flow':'view_forecasts','/payment-sandbox':'simulate_payments','/financing/applications':'view_applications',
-                '/merchant-transactions/single':'create_transactions','/merchant-transactions/import':'bulk_import','/merchant-transactions/history':'view_transactions','/merchant-transactions/data-quality':'view_quality_monitoring'}
+                '/merchant-transactions/single':'create_transactions','/merchant-transactions/import':'bulk_import','/merchant-transactions/history':'view_transactions','/merchant-transactions/data-quality':'view_quality_monitoring','/merchant-transactions/settings':'manage_transactions'}
             if method=='GET' and path in business_routes:
+                if p.role=='lender_analyst':
+                    if path=='/':return self._send(303,b'',headers={'Location':'/bank'})
+                    raise AccessDenied('Bank uses read-only review views')
                 if p.role in ('user_admin','security_admin'):
                     if path=='/':return self._send(303,b'',headers={'Location':'/admin/users' if p.role=='user_admin' else '/admin/security'})
                     raise AccessDenied('Administrative roles have no merchant transaction access')
@@ -314,9 +391,18 @@ class Handler(BaseHTTPRequestHandler):
                     require(p,business_routes[path],mid)
                 return self._page('index.html')
             if method == "GET" and path == "/api/merchants":
-                from copilot.tools_spec import execute
-                result=execute(COPILOT,p,'list_merchants',{})['merchants']
-                return self._send(200,[{**m,'id':m['merchant_id']} for m in result])
+                if p.role not in ('owner','staff','lender_analyst'):raise AccessDenied('No merchant access')
+                result=[]
+                for mid in sorted(p.merchant_ids):
+                    if mid not in COPILOT.merchants:continue
+                    with AUTH.db() as db:
+                        if db.execute("SELECT 1 FROM merchant_profiles WHERE merchant_id=? AND status='inactive'",(mid,)).fetchone():continue
+                    if p.role=='lender_analyst':
+                        try:AUTH.authorize(token,'view_bank_review',mid)
+                        except AccessDenied:continue
+                    m=COPILOT.merchants[mid]
+                    result.append({'id':mid,'merchant_id':mid,'name':m.name,'currency':m.currency,'country':m.country})
+                return self._send(200,result)
             mid = q.get("merchant") or body.get("merchant")
             if p.role in ("user_admin","security_admin"):
                 raise AccessDenied("Administrative accounts cannot access merchant financial APIs")
@@ -325,7 +411,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, {"error": "unknown merchant"})
             if method == "GET":
                 if path == "/api/capabilities":
-                    require(p,"use_copilot",mid)
                     allowed=[]
                     from copilot.authorization import BOUNDARIES
                     for action in BOUNDARIES.get(p.role,set()):
@@ -394,9 +479,13 @@ class Handler(BaseHTTPRequestHandler):
                     if set(body)-{"merchant","action_id","confirmed"}:raise InputError("Unexpected confirmation fields")
                     return self._send(200,COPILOT.partner_state.confirm(p,mid,p.session_id,body.get("action_id"),body.get("confirmed")))
                 if path == "/api/chat":
-                    hist = body.get("history") if isinstance(body.get("history"), list) else None
-                    return self._send(200, COPILOT.handle(p, mid, str(body.get("message", "")),
-                                                          body.get("approval_token"), hist, module=body.get("module") if body.get("module") in ("dashboard","transactions","pos-import","transaction-history","data-quality","payments","cashflow","financing","applications","rbf","journey") else None))
+                    from copilot.owner_partner import read,conversations
+                    message=str(body.get("message", ""))[:2000]
+                    result=COPILOT.handle(p,mid,message,body.get("approval_token"),module=body.get("module") if body.get("module") in ("dashboard","transactions","pos-import","transaction-history","data-quality","transaction-settings","payments","cashflow","financing","applications","rbf","journey") else None,
+                                          owner_reader=lambda text:read(COPILOT,p,mid,text,AUTH,token,pos_service(),module=body.get("module")),explain_actions=body.get("explain_actions") is True)
+                    conversations.append(p,mid,message,result)
+                    return self._send(200,result)
+
             return self._send(404, {"error": "not found"})
         except ApprovalRequired as e:
             return self._send(202, {"approval_required": True, "approval_token": e.token, "message": str(e)})

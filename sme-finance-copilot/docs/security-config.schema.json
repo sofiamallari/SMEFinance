@@ -78,14 +78,26 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "coach",
         "lender_analyst",
         "owner",
         "security_admin",
-        "staff",
-        "user_admin"
+        "staff"
       ],
       "properties": {
+        "security_admin": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "manage_security",
+              "manage_staff_accounts",
+              "manage_users",
+              "view_account_audit",
+              "view_security_audit"
+            ]
+          }
+        },
         "owner": {
           "type": "array",
           "uniqueItems": true,
@@ -94,8 +106,11 @@
             "enum": [
               "acknowledge_quality_alerts",
               "bulk_import",
+              "create_financing_draft",
               "create_transactions",
+              "edit_financing_draft",
               "manage_consents",
+              "manage_merchant_staff",
               "manage_transactions",
               "prepare_application",
               "request_staff_access",
@@ -109,6 +124,7 @@
               "view_financing",
               "view_financing_data",
               "view_forecasts",
+              "view_merchant_audit",
               "view_quality_monitoring",
               "view_reports",
               "view_transactions"
@@ -123,13 +139,19 @@
             "enum": [
               "acknowledge_quality_alerts",
               "bulk_import",
+              "create_financing_draft",
               "create_transactions",
+              "edit_financing_draft",
               "resolve_quality_alerts",
               "simulate_payments",
               "use_copilot",
+              "view_applications",
+              "view_assessment",
               "view_dashboard",
+              "view_financing",
               "view_forecasts",
               "view_quality_monitoring",
+              "view_reports",
               "view_transactions"
             ]
           }
@@ -140,74 +162,18 @@
           "items": {
             "type": "string",
             "enum": [
-              "review_application",
+              "export_bank_review",
               "use_copilot",
               "view_applications",
               "view_assessment",
+              "view_bank_audit",
+              "view_bank_review",
               "view_financing",
               "view_financing_data",
               "view_forecasts",
               "view_reports"
             ]
           }
-        },
-        "coach": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "enum": [
-              "use_copilot",
-              "view_assessment",
-              "view_dashboard",
-              "view_financing",
-              "view_forecasts",
-              "view_reports"
-            ]
-          }
-        },
-        "user_admin": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "enum": [
-              "manage_staff_accounts",
-              "manage_users",
-              "view_account_audit"
-            ]
-          }
-        },
-        "security_admin": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "enum": [
-              "manage_security",
-              "manage_staff_accounts",
-              "manage_users",
-              "view_account_audit",
-              "view_security_audit"
-            ]
-          },
-          "allOf": [
-            {
-              "contains": {
-                "const": "manage_users"
-              }
-            },
-            {
-              "contains": {
-                "const": "manage_security"
-              }
-            },
-            {
-              "contains": {
-                "const": "view_security_audit"
-              }
-            }
-          ]
         }
       }
     },
@@ -215,14 +181,17 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "coach",
         "lender_analyst",
         "owner",
         "security_admin",
-        "staff",
-        "user_admin"
+        "staff"
       ],
       "properties": {
+        "security_admin": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 0
+        },
         "owner": {
           "type": "integer",
           "minimum": 0,
@@ -237,21 +206,6 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 1
-        },
-        "coach": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "user_admin": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 0
-        },
-        "security_admin": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 0
         }
       }
     }

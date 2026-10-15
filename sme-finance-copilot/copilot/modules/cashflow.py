@@ -11,6 +11,7 @@ Forecasting method (transparent, explainable – no black box):
 Alerts are rule-based and each maps to a framework intervention.
 """
 from __future__ import annotations
+from copilot.currency_policy import format_money
 
 from collections import defaultdict
 from datetime import date, timedelta
@@ -115,7 +116,7 @@ def alerts(merchant, as_of: date, fc: dict | None = None) -> list[dict]:
         amt = sum(r["amount"] for r in overdue)
         aged = [r for r in overdue if (as_of - date.fromisoformat(r["due"])).days > C["receivable_aged_days"]]
         add("warning" if aged else "info", "RECEIVABLES_OVERDUE",
-            f"{len(overdue)} customer invoice(s) overdue totalling {amt:,.0f} {cur}"
+            f"{len(overdue)} customer invoice(s) overdue totalling {format_money(amt,cur)}"
             + (f"; {len(aged)} more than {C['receivable_aged_days']} days." if aged else "."),
             "Send Pay Link reminders so customers can pay instantly; this is a timing gap, not a default.",
             "Pay Link / Revenue-Based Financing")
@@ -125,7 +126,7 @@ def alerts(merchant, as_of: date, fc: dict | None = None) -> list[dict]:
                if as_of < date.fromisoformat(p["due"]) <= as_of + timedelta(days=7))
     if due7 and due7 > merchant.wallet_balance * 0.5:
         add("warning", "OBLIGATIONS_DUE",
-            f"{due7:,.0f} {cur} of supplier bills due within 7 days (over half of current balance).",
+            f"{format_money(due7,cur)} of supplier bills due within 7 days (over half of current balance).",
             "Schedule payments after expected inflows or negotiate terms.", "Business Wallet")
 
     # household / business mixing

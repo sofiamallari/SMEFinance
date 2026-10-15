@@ -12,8 +12,8 @@ function selectSection(value,focus=false){
   if(focus)$('#heading-'+section).focus();
 }
 document.querySelectorAll('[data-section]').forEach((b,index)=>{
-  b.onclick=()=>selectSection(b.dataset.section,true);
-  b.onkeydown=e=>{if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?sections.length-1:(index+(e.key==='ArrowDown'?1:-1)+sections.length)%sections.length;const target=document.querySelectorAll('[data-section]')[next];selectSection(target.dataset.section);target.focus()};
+  b.onclick=e=>{e.preventDefault();selectSection(b.dataset.section,true)};
+  b.onkeydown=e=>{if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;e.preventDefault();const available=[...document.querySelectorAll('[data-section]')].filter(n=>!n.hidden),current=available.indexOf(b);const next=e.key==='Home'?0:e.key==='End'?available.length-1:(current+(e.key==='ArrowDown'?1:-1)+available.length)%available.length;const target=available[next];selectSection(target.dataset.section);target.focus()};
 });
 document.querySelector('#section-picker').onchange=e=>selectSection(e.target.value,true);
 window.addEventListener('hashchange',()=>selectSection(location.hash.slice(1)));

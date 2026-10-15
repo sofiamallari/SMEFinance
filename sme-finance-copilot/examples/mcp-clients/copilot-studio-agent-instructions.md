@@ -1,4 +1,8 @@
+> **Client instruction example, not an authority source.** Follow the current [AI safeguards](../../docs/technical/ai-safeguards.md) and [MCP session requirements](../../docs/technical/mcp.md). Older sample identities/currencies do not describe the active CNY dataset. Tool schema and server authorization override this prompt.
+
 # Suggested Copilot Studio agent setup
+
+Current access rules: [four-role permissions](../../docs/technical/security-permissions.md).
 
 **Name:** SME Finance Copilot
 

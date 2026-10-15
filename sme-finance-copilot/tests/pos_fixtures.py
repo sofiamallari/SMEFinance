@@ -36,5 +36,5 @@ def mapping(session,controls=None):
     result={}
     for file in session['files']:
         columns={k:v for k,v in file['suggestions'].items()}
-        result[file['file_id']]={'columns':columns,'defaults':{'currency':'IDR','transaction_type':'sale','status':'completed'},'timezone':'+07:00','date_format':'iso','report_kind':'transactions','control_totals':controls or {}}
+        result[file['file_id']]={'columns':columns,'defaults':{'currency':'IDR','transaction_type':'sale','status':'completed'},'timezone':'+07:00','date_format':'iso','report_kind':'transactions','review':{'type_confirmed':True},'control_totals':controls or {}}
     return result

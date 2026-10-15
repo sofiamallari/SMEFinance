@@ -21,7 +21,7 @@ class Transactions(unittest.TestCase):
         self.path = str(Path(self.tmp.name)/'ledger.jsonl')
         self.store = TransactionStore(self.c,self.path)
         self.owner = Principal('o','owner',{'M002'})
-        self.staff = Principal('s','staff',{'M002'})
+        self.staff = Principal('s','staff',{'M002'}, permissions={'create_transactions','bulk_import'})
         self.row = dict(date='2026-09-29',type='income',amount='123.45',channel='qr_pay',reference='SALE-1',description='Sale',category='sales')
 
     def test_validation(self):

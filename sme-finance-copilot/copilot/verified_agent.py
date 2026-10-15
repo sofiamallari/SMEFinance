@@ -12,7 +12,7 @@ from copilot.reliability import Fact,fact,claim,validate_claims,EvidenceError,do
 FIELDS={'financing_journey':[], 'assess_business':['stage','composite_score'],'rbf_quote':['advance','fee','total_repayable','fee_rate','remittance_rate','estimated_payoff_days'],
         'cashflow_forecast':['opening_balance','min_balance','closing_balance','buffer_days'],
         'incentive_status':['tier','ecosystem_sales_previous'],'data_quality':['unresolved_quality_alerts','failed_import_validations'],'latest_payment':['payment_reference','payment_status','payment_amount','payment_refunded_amount'],'application_status':['application_reference','application_status','requested_amount'],'get_dashboard':[],'match_financing':[],'financial_report':[]}
-LABELS={'revenue_projection_30_days':'Estimated recorded sales for the next 30 days','risk_critical_count':'Critical rule alerts','risk_warning_count':'Warning rule alerts','risk_info_count':'Informational rule alerts','stage':'Stage','composite_score':'Business assessment score','advance':'Indicative advance','fee':'Financing fee','total_repayable':'Total repayment',
+LABELS={'capture_digital_share':'Digital capture (fraction)','capture_ecosystem_share':'Own-rail capture (fraction)','capture_cash_share':'Cash share (fraction)','revenue_projection_30_days':'Estimated recorded sales for the next 30 days','risk_critical_count':'Critical rule alerts','risk_warning_count':'Warning rule alerts','risk_info_count':'Informational rule alerts','stage':'Stage','composite_score':'Business assessment score','advance':'Indicative advance','fee':'Financing fee','total_repayable':'Total repayment',
         'fee_rate':'Fee rate','remittance_rate':'Revenue share rate','estimated_payoff_days':'Estimated repayment days','opening_balance':'Sandbox opening cash balance',
         'min_balance':'Lowest projected balance','closing_balance':'Projected closing balance','buffer_days':'Estimated cash buffer days',
         'net_sales':'Recorded net sales','gross_sales':'Recorded sales before refunds','refunds':'Refunds','expenses':'Recorded expenses','completed_transactions':'Completed transactions',
@@ -40,7 +40,9 @@ def render(facts,insights=()):
             product=next((item for item in CATALOG if item['id']==f.metric.removeprefix('offer_score_')),None)
             if not product:raise EvidenceError('Unknown configured financing option')
             label=product['name']+' — indicative match score'
-        lines.append((f'Stage {f.value}' if f.metric=='stage' else f'{label}: {f.value}')+(f' {f.currency}' if f.currency else '')+f' [{f.status}]')
+        from copilot.currency_policy import format_money
+        display=format_money(f.value,f.currency) if f.currency else f.value
+        lines.append((f'Stage {f.value}' if f.metric=='stage' else f'{label}: {display}')+f' [{f.status}]')
     if any(f.source in ('rbf_quote','match_financing','assess_business') for f in facts):lines.append('Indicative sandbox analysis only; lenders make credit decisions. This is not a credit approval or real application.')
     if any(f.provenance in ('synthetic_seed','simulated_payment','simulated_application','mixed') for f in facts):lines.append('Includes sandbox/synthetic activity; not verified bank settlement evidence.')
     if any(f.status=='ESTIMATED' for f in facts):lines.append('Forecasts are estimates, not guaranteed outcomes.')
@@ -120,6 +122,11 @@ def execute(c,p,mid,question,history=None,session=None,module=None):
         for metric in ('net_sales','positive_sales','gross_sales','refunds','expenses','net_income','completed_transactions','pending_transactions','failed_transactions','voided_transactions'):
             if snapshot[metric] is None:continue
             facts.append(fact('canonical_transactions',mid,metric,snapshot[metric],snapshot['currency'] if 'transactions' not in metric else None,start,end,provenance,count=snapshot['record_count'],limitations=snapshot['limitations'],method='decimal-aggregation-v1'))
+        if preferred=='get_dashboard' and re.search(r'digital capture|payment.method.*(?:breakdown|mix)|payment mix',question,re.I):
+            for key,value in result['capture'].items():
+                facts.append(fact('get_dashboard',mid,'capture_'+key,value,None,start,end,provenance,count=snapshot['record_count'],limitations=(*snapshot['limitations'],'Capture shares are fractions, using the existing dashboard net-sale channel definitions.'),method='existing-dashboard-capture'))
+            for key,value in snapshot['payment_methods'].items():
+                facts.append(fact('canonical_transactions',mid,'payment_method_'+key,value,snapshot['currency'],start,end,provenance,count=snapshot['record_count'],limitations=snapshot['limitations'],method='decimal-aggregation-v1'))
         if re.search(r'why|change|declin|compar',question,re.I):
             previous_end=start-timedelta(days=1);previous_start=previous_end-(end-start)
             previous=c.financial_data.aggregate(mid,previous_start,previous_end)

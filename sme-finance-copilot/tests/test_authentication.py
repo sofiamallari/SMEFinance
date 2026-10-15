@@ -24,7 +24,7 @@ class Authentication(unittest.TestCase):
     def submit(self):
         p=self.p('owner')
         with self.assertRaises(ApprovalRequired) as ctx:self.c.call(p,'prepare_financing_application','M002')
-        return self.c.call(p,'prepare_financing_application','M002',approval_token=ctx.exception.token)
+        return self.c.call(p,'prepare_financing_application','M002',approval_token=ctx.exception.token,recipient_id=self.ids['lender_analyst'])
 
     def test_login_and_no_plaintext_password(self):
         token,csrf,change=self.auth.login('owner',PASSWORD)
@@ -96,10 +96,11 @@ class Authentication(unittest.TestCase):
             with self.assertRaises(AccessDenied):self.c.call(self.p(role),'get_dashboard','M002')
             with self.assertRaises(AccessDenied):execute(self.c,self.p(role),'list_merchants',{})
 
-    def test_user_administrator_cannot_escalate_roles(self):
-        body={'username':'escalate','email':'escalate@example.test','display_name':'No','role':'security_admin','merchants':[],'password':PASSWORD}
-        with self.assertRaises(AccessDenied):self.auth.create_user(self.tokens['user_admin'],body)
-        with self.assertRaises(AccessDenied):self.auth.update_user(self.tokens['user_admin'],self.ids['owner'],{'role':'security_admin','merchants':[]})
+    def test_unmapped_legacy_administrator_cannot_escalate_roles(self):
+        with self.auth.db() as db:db.execute("UPDATE users SET role='user_admin' WHERE user_id=?",(self.ids['user_admin'],))
+        body={'username':'escalate','email':'escalate@example.test','display_name':'No','role':'SYSTEM_ADMIN','merchants':[],'password':PASSWORD}
+        with self.assertRaises(AuthError):self.auth.create_user(self.tokens['user_admin'],body)
+        with self.assertRaises(AuthError):self.auth.update_user(self.tokens['user_admin'],self.ids['owner'],{'role':'SYSTEM_ADMIN','merchants':[]})
         with self.assertRaises(AccessDenied):self.auth.update_user(self.tokens['security_admin'],self.ids['security_admin'],{'role':'owner','merchants':['M002']})
 
     def test_last_security_administrator_protected(self):
@@ -138,8 +139,8 @@ class Authentication(unittest.TestCase):
     def test_consent_expiry_and_application_persistence(self):
         consent=self.grant();packet=self.submit()
         self.assertEqual(len(self.auth.application_list(self.tokens['lender_analyst'],'M002')),1)
-        self.auth.review_application(self.tokens['lender_analyst'],packet['application_id'],{'outcome':'request_information','note':'Please provide inventory details'})
-        self.assertEqual(len(self.auth.application_list(self.tokens['owner'],'M002')[0]['reviews']),1)
+        with self.assertRaises(AccessDenied):self.auth.review_application(self.tokens['lender_analyst'],packet['application_id'],{'outcome':'request_information','note':'Please provide inventory details'})
+        self.assertEqual(len(self.auth.application_list(self.tokens['owner'],'M002')[0]['reviews']),0)
         with self.auth.db() as db:db.execute('UPDATE consents SET expires_at=0')
         with self.assertRaises(AccessDenied):self.auth.application_list(self.tokens['lender_analyst'],'M002')
         replay=AuthStore(self.auth.path,self.c.merchants)
@@ -148,7 +149,7 @@ class Authentication(unittest.TestCase):
     def test_policies_boundaries_reauthentication_and_audit(self):
         for body in ({'settings':{'idle_timeout':1}},{'settings':{'password_require_mixed':False}}, {'permissions':{'staff':['submit_application']}},{'ai_tiers':{'owner':4}}):
             with self.assertRaises(InputError):self.auth.update_policies(self.tokens['security_admin'],body)
-        with self.assertRaises(AccessDenied):self.auth.update_policies(self.tokens['user_admin'],{})
+        with self.assertRaises(AccessDenied):self.auth.update_policies(self.tokens['staff'],{})
         self.auth.update_policies(self.tokens['security_admin'],{'settings':{'idle_timeout':600},'ai_tiers':{'owner':0}})
         with self.assertRaises(AccessDenied):self.c.call(self.p('owner'),'rbf_quote','M002')
         for role in self.tokens:
@@ -181,7 +182,7 @@ class Authentication(unittest.TestCase):
             with self.assertRaises(AuthError):self.auth.reauthenticate(token,'wrong')
         with self.assertRaises(AuthError):self.auth.principal(token)
         self.auth.update_user(self.tokens['security_admin'],self.ids['user_admin'],{'account_status':'active'})
-        self.assertEqual(self.auth.principal(self.auth.login('user_admin',PASSWORD)[0]).role,'user_admin')
+        self.assertEqual(self.auth.principal(self.auth.login('user_admin',PASSWORD)[0]).role,'security_admin')
 
     def test_live_principal_policy_refresh_and_consent_loss(self):
         p=self.p('owner')
@@ -195,7 +196,17 @@ class Authentication(unittest.TestCase):
         before=Path(self.store.path).read_bytes()
         self.auth.migrate();self.auth.migrate()
         self.assertEqual(Path(self.store.path).read_bytes(),before)
-        with self.auth.db() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0],6)
+        expected=[p.name for p in sorted((Path(__file__).resolve().parents[1]/'copilot/migrations').glob('*.sql'))]
+        self.assertEqual(expected[-1],'008_transaction_settings.sql')
+        with self.auth.db() as db:
+            versions=[r[0] for r in db.execute('SELECT version FROM schema_migrations ORDER BY rowid')]
+            self.assertEqual([v for v in versions if v.endswith('.sql')],expected)
+            self.assertEqual(versions.count('four_role_permissions_v1'),1)
+            self.assertEqual(len(versions),len(expected)+1)
+            for table,columns in {'merchant_transaction_settings':{'merchant_id','config_json','version','updated_by','updated_at'},'merchant_mapping_templates':{'merchant_id','template_id','version','name','headers_json','mapping_json','updated_by','updated_at'}}.items():
+                self.assertEqual({r[1] for r in db.execute('PRAGMA table_info('+table+')')},columns)
+            self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
+
 
     def test_financing_data_master_permission_is_enforced(self):
         self.grant();self.submit()

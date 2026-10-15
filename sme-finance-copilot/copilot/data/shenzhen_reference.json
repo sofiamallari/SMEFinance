@@ -1,0 +1,70 @@
+{
+  "synthetic": true,
+  "users": [
+    {
+      "user_id": "synthetic-party-1",
+      "role": "BANK",
+      "merchants": [
+        "M001",
+        "M002",
+        "M003",
+        "M004",
+        "M005",
+        "M006"
+      ],
+      "grants": []
+    },
+    {
+      "user_id": "synthetic-party-2",
+      "role": "SME_OWNER",
+      "merchants": [
+        "M001",
+        "M002",
+        "M003",
+        "M004",
+        "M005",
+        "M006"
+      ],
+      "grants": []
+    },
+    {
+      "user_id": "synthetic-party-3",
+      "role": "SME_STAFF",
+      "merchants": [
+        "M001",
+        "M002",
+        "M003",
+        "M004",
+        "M005",
+        "M006"
+      ],
+      "grants": []
+    },
+    {
+      "user_id": "synthetic-party-4",
+      "role": "SYSTEM_ADMIN",
+      "merchants": [],
+      "grants": []
+    }
+  ],
+  "consents": [
+    {
+      "merchant_id": "M001",
+      "owner_id": "synthetic-party-2",
+      "recipient_id": "synthetic-party-1",
+      "categories": "[\"applications\", \"assessment\", \"financing\", \"forecasts\", \"reports\"]",
+      "revoked_at": null
+    },
+    {
+      "merchant_id": "M002",
+      "owner_id": "synthetic-party-2",
+      "recipient_id": "synthetic-party-1",
+      "categories": "[\"applications\", \"assessment\", \"financing\", \"forecasts\", \"reports\"]",
+      "revoked_at": null
+    }
+  ],
+  "applications": [
+    "M002",
+    "M002"
+  ]
+}

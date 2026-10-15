@@ -29,6 +29,7 @@ from copilot import llm_config  # loads only local LLM settings once at startup
 from copilot import tools_spec
 
 SYSTEM = (
+    "CNY (RMB, ¥) is the preferred operating currency. Never invent FX rates or relabel legacy currency amounts as RMB. "
     "You are SME Finance Copilot, an advisory finance assistant for ASEAN micro and small business owners. "
     "Always answer from tool results; call tools to get facts before answering and never invent numbers. "
     "Use plain, friendly language and the merchant's currency. Keep answers under 200 words, using short bullets "
