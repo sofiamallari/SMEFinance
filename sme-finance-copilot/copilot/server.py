@@ -320,7 +320,10 @@ class Handler(BaseHTTPRequestHandler):
                     raise InputError('Content-Type must be application/json')
             if method=='GET' and path=='/assets/common.css':
                 with open(os.path.join(ROOT,'..','web','common.css'),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8')
+            if method=='GET' and path=='/assets/auth.css':
+                with open(os.path.join(ROOT,'..','web','auth.css'),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8')
             if method=='GET' and path=='/login':return self._page('login.html')
+            if method=='GET' and path=='/reset-password':return self._page('reset-password.html')
             if method=='GET' and path=='/api/health':return self._send(200,{'ok':True,'auth_mode':'demo' if demo_mode() else 'authenticated','as_of':COPILOT.as_of.isoformat(),'agent_mode':'ai_agent' if ai_agent.configured() else 'rule_engine','mcp_endpoint':'/mcp','mcp_auth':'explicit_demo' if demo_mode() else 'session'})
             if method=='POST' and path=='/api/auth/login':
                 token,csrf,must_change=AUTH.login(body.get('username'),body.get('password'),self.client_address[0])

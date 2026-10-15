@@ -1,0 +1,19 @@
+/* Shared, scoped authentication presentation; no portal styles are changed. */
+.auth-page{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
+.auth-page header{padding:22px clamp(20px,5vw,64px)}
+.auth-page header p{margin:6px 0 0;font-size:14px;color:#e2f3f5}
+.auth-page .login{width:100%;max-width:480px;flex:1;display:flex;align-items:center;margin:0 auto;padding:32px 20px}
+.auth-page .card{width:100%;margin:0;padding:28px;box-shadow:0 8px 30px #0b3b5c0a}
+.auth-page h2{font-size:24px;margin-bottom:8px}
+.auth-page .muted{line-height:1.6;margin-top:0}
+.auth-page input{min-height:44px}
+.auth-page input[type=checkbox]{min-height:18px;width:18px;margin:0;accent-color:var(--teal)}
+.auth-options{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:16px 0 20px;font-size:14px}
+.auth-options .check{margin:0}
+.auth-page form>button{display:block;width:100%;min-height:44px;margin:16px 0 0;font-weight:600}
+.auth-page a{font-weight:600;text-underline-offset:3px}
+.auth-page .auth-back{display:block;text-align:center;margin-top:20px}
+.auth-page .auth-help{margin-top:20px;font-size:13px;line-height:1.6}
+.auth-page :focus-visible{outline:3px solid var(--teal);outline-offset:3px}
+.auth-page .message:empty{display:none}
+@media(max-width:480px){.auth-page header h1{font-size:21px}.auth-page .login{padding:24px 16px}.auth-page .card{padding:22px}.auth-options{gap:16px}}
