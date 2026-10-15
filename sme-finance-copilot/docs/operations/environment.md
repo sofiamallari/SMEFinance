@@ -10,6 +10,7 @@
 | COPILOT_IDENTITY_DB / TRANSACTION_FILE / AUDIT_LOG / EXEC_LOG | Derived from the selected data root; conflicting explicit paths fail closed |
 | HOST / PORT | Local 127.0.0.1/8000 unless overridden; Railway needs 0.0.0.0 and supplied PORT |
 | COPILOT_HTTPS | yes only behind actual HTTPS; enables Secure cookies |
+| COPILOT_INITIALIZE_CNY | Docker lifecycle only: yes for first empty-volume initialization, then no/unset; see [Railway lifecycle](railway.md) |
 | COPILOT_CNY_DEMO_PASSWORD | Private seed-time synthetic password; remove after initialization |
 | COPILOT_APPROVAL_SECRET | Private stable approval-signing secret; never example placeholder values |
 | COPILOT_LLM_BASE_URL / API_KEY / MODEL | Optional OpenAI-compatible provider configuration; no credentials in docs |
