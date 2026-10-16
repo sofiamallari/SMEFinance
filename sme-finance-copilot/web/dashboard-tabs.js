@@ -5,7 +5,7 @@ const maturityStages=['Survival Borrower','Striving Amateur','Steady Upgrader','
 const dimensionLabel=name=>name.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 function resetDashboardContext(){
  dashboardSnapshot=null;$('#export-overview').disabled=true;$('#export-status').textContent='';$('#dashboard-partial-period').hidden=true;$('#dashboard-partial-period').textContent='';closeBusinessNotifications();$('#cfkpis').replaceChildren();$('#cfchart').replaceChildren();$('#cfalerts').replaceChildren();cashflowLoadedFor=null;dashboardRequest++;growthRequest++;alertRequest++;dashboardAssessment=null;dashboardAssessmentPromise=null;businessAlertsLoaded=false;businessAlertRows=[];dismissedBusinessAlerts.clear();businessAlertsRetrieved=null;businessAlertState={page:1,size:3,severity:'all'};revenueTableState={page:1,size:10,context:''};
- for(const id of ['dkpis','dvol','drev','overview-volume','overview-revenue','dvoltrend','drevtrend','business-growth','business-alerts','financing-readiness','dashboard-insights','dashboard-incentive','dashboard-provenance','dashboard-limitations','matches','rbfelig','rbfsummary','rbfdays','rbfcmp'])$('#'+id)?.replaceChildren();
+ for(const id of ['dkpis','dvol','drev','overview-volume','overview-revenue','dvoltrend','drevtrend','business-growth','business-alerts','financing-readiness','channel-performance','dashboard-provenance','dashboard-limitations','matches','rbfelig','rbfsummary','rbfdays','rbfcmp'])$('#'+id)?.replaceChildren();
  $('#business-growth').textContent='Open Business Growth to load the current assessment.';$('#business-alerts').textContent='Open Alerts to load the available business alerts.';
 }
 function selectDashboardPane(name){
@@ -19,9 +19,8 @@ async function assessmentForMerchant(){
  const mid=M.id;
  if(dashboardAssessment?.merchant_id===mid)return dashboardAssessment;
  if(dashboardAssessmentPromise?.mid===mid)return dashboardAssessmentPromise.promise;
- const promise=api('/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:'owner-maturity',method:'tools/call',params:{name:'assess_business',arguments:{merchant_id:mid}}})}).then(r=>{
-  if(r.error||r.result?.isError||!r.result?.structuredContent)throw Error('The current assessment is unavailable or not authorized.');
-  const assessment=r.result.structuredContent;if(M?.id!==mid||assessment.merchant_id!==mid)throw Error('Merchant changed.');
+ const promise=api('/api/assessment?merchant='+encodeURIComponent(mid)).then(r=>{
+  const assessment=r;if(M?.id!==mid||assessment.merchant_id!==mid)throw Error('Merchant changed.');
   dashboardAssessment=assessment;return assessment;
  }).finally(()=>{if(dashboardAssessmentPromise?.mid===mid)dashboardAssessmentPromise=null});
  dashboardAssessmentPromise={mid,promise};return promise;
@@ -38,9 +37,9 @@ async function loadBusinessAlerts(){
  if(businessAlertsLoaded)return;
  const mid=M.id,request=++alertRequest,box=$('#business-alerts');box.textContent='Loading notifications…';
  if(!can('view_forecasts')){box.textContent='Business alerts are not delegated to this account.';return}
- try{const response=await api('/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:'owner-alerts',method:'tools/call',params:{name:'cashflow_alerts',arguments:{merchant_id:mid}}})});
-  if(M.id!==mid||request!==alertRequest)return;if(response.error||response.result?.isError)throw Error('Alerts unavailable');
-  businessAlertRows=response.result.structuredContent.items;dismissedBusinessAlerts.clear();businessAlertsRetrieved=new Date();
+ try{const response=await api('/api/business-alerts?merchant='+encodeURIComponent(mid));
+  if(M.id!==mid||request!==alertRequest)return;
+  businessAlertRows=response.items;dismissedBusinessAlerts.clear();businessAlertsRetrieved=new Date();
   if(!businessAlertRows.some(a=>a.severity===businessAlertState.severity))businessAlertState.severity='all';
   businessAlertState.page=1;businessAlertsLoaded=true;renderCompactBusinessAlerts();
  }catch(error){if(M.id===mid&&request===alertRequest)box.textContent='Notifications could not be loaded. Close and reopen to try again.'}
@@ -57,11 +56,10 @@ async function loadDashboard(){
  $('#dkpis').innerHTML=[['Recorded Net Sales',fmt(f?.net_sales),'Canonical sales net of recorded refunds'],['Expenses',fmt(f?.expenses),'Recorded expenses in this reporting period'],['Net Income',fmt(f?.net_income),'Authoritative canonical net income'],['Digital Capture',pct(d.capture.digital_share),'Own rails '+pct(d.capture.ecosystem_share)+' · cash '+pct(d.capture.cash_share)]].map(([name,value,note])=>'<div class="card"><div class="muted">'+name+'</div><div class="kpi">'+value+'</div><p class="muted">'+esc(note)+'</p></div>').join('');
  const channels=Object.values(d.mix.by_channel),volume=donut(channels.map(c=>c.volume_share),channels.map(c=>c.label),d.mix.total_transactions.toLocaleString()+'<br><small>txns</small>'),revenue=donut(channels.map(c=>c.revenue_share),channels.map(c=>c.label),short(d.mix.gross_revenue)+'<br><small>net</small>');
  for(const id of ['overview-volume'])$('#'+id).innerHTML=volume;for(const id of ['overview-revenue'])$('#'+id).innerHTML=revenue;
+ $('#channel-performance').innerHTML=ChannelPerformance.render(d.channel_performance);
  const trendOpen=$('#dashboard-trend-values')?.open;$('#dvoltrend').innerHTML=bars(d.trend.map(t=>t.period),d.trend.map(t=>t.transactions),'vol');$('#drevtrend').innerHTML=financialTrend(d.trend,d.merchant.currency);renderRevenueValues(d,trendOpen);
  $('#dashboard-trend-period').textContent=d.period.start+' to '+d.period.end+' · '+d.period.granularity+' · '+d.merchant.currency;
  const periodNote=overviewPartialPeriod(d.period);$('#dashboard-partial-period').textContent=periodNote;$('#dashboard-partial-period').hidden=!periodNote;
- $('#dashboard-insights').innerHTML='<p><b>Receivables:</b> '+esc(d.receivables.explanation)+'</p>';
- $('#dashboard-incentive').innerHTML='<p><b>Incentive milestone:</b> '+esc(inc.tier_name||'No milestone yet')+(inc.mom_growth==null?'':' · '+pct(inc.mom_growth)+' month-on-month own-rail growth')+'</p><small class="muted">Provisional sandbox milestone, not a guaranteed reward. Use the notification bell for current business warnings.</small>';
  $('#export-overview').disabled=false;
 }
 const existingLoadFinancing=loadFinancing;

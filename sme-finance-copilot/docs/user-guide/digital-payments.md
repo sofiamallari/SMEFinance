@@ -1,6 +1,6 @@
-# Digital Payments
+# Digital Payments Simulator
 
-Current implemented guide · 15 October 2026.
+Current implemented guide · 16 October 2026.
 
 ## Purpose
 
@@ -12,7 +12,7 @@ Owner or Staff with delegated simulation permission and authorized merchant acce
 
 ## Navigation
 
-Digital Payments (`/payment-sandbox`).
+Digital Payments Simulator (`/payment-sandbox`).
 
 ## Step-by-step instructions
 
@@ -21,7 +21,7 @@ Digital Payments (`/payment-sandbox`).
 3. Review the exact proposal and explicitly confirm creation.
 4. Use the displayed sandbox customer-payment/status controls for the chosen method.
 5. Inspect the payment state, amount, MDR fee and net settlement when paid.
-6. Review the resulting recorded activity; avoid entering the same sale again through POS import.
+6. Review the sandbox status and wallet only. Simulator activity is separate from recorded business transactions; record actual business activity through Merchant Transactions.
 
 ## Understanding results and statuses
 
@@ -33,7 +33,7 @@ An expired or cancelled payment cannot be treated as paid. Integrity-review hold
 
 ## Important limitations
 
-No real money moves. Zero sandbox tax is not Chinese VAT. POS Cash is a notice rather than a completed wallet collection. Existing backend-linked refund support is not a general end-user refund UI.
+No real money moves. Successful, pending, failed and refunded simulator activity does not affect dashboards, cash-flow metrics, Financial Reviews, application amounts or canonical transaction totals. Dedicated simulator SQLite tables persist state and idempotency separately; old simulator ledger evidence is retained but excluded from financial projection. Zero sandbox tax is not Chinese VAT. POS Cash is a notice rather than a completed wallet collection. Existing backend-linked refund support is not a general end-user refund UI.
 
 ## Related guides
 

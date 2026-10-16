@@ -79,6 +79,14 @@ from copilot.modules.transactions import TransactionStore, validate_entry
 STORE = TransactionStore(COPILOT, TRANSACTION_FILE)
 from copilot.pos_import import POSImportService
 POS = POSImportService(AUTH, STORE)
+from copilot.governed_partner import Partner
+GOVERNED = Partner(COPILOT, AUTH, POS)
+
+def governed_partner():
+    global GOVERNED
+    if GOVERNED.auth is not AUTH or GOVERNED.c is not COPILOT:
+        GOVERNED = Partner(COPILOT, AUTH, pos_service())
+    return GOVERNED
 
 def pos_service():
     global POS
@@ -148,7 +156,7 @@ class Handler(BaseHTTPRequestHandler):
             token=session_token(self.headers)
             p=AUTH.principal(token)
             if not self.headers.get('Authorization','').lower().startswith('bearer '):AUTH.csrf(token,self.headers.get('X-CSRF-Token'))
-            handler=mcp_server.MCPHandler(COPILOT,p)
+            handler=mcp_server.MCPHandler(COPILOT,p,partner=governed_partner(),token=token)
         status,body=mcp_server.handle_http(handler,self.headers,raw)
         return self._send(status,body if body is not None else b'')
 
@@ -161,7 +169,9 @@ class Handler(BaseHTTPRequestHandler):
             value['features']={'financial_survival_simulation':enabled() and p.role=='owner'}
             return self._send(200,value)
         if path=='/api/auth/logout' and method=='POST':
-            if not demo_mode():AUTH.logout(token)
+            if not demo_mode():
+                governed_partner().forget_session(p.session_id)
+                AUTH.logout(token)
             return self._send(200,{'ok':True},headers={'Set-Cookie':self._cookie('',True)})
         if path=='/api/auth/change-password' and method=='POST':
             AUTH.change_password(token,body.get('current_password'),body.get('new_password'))
@@ -189,6 +199,19 @@ class Handler(BaseHTTPRequestHandler):
             with AUTH.db() as db:pos_service().settings.guard(db,token,mid)
             from copilot.currency_catalog import search
             return self._send(200,{'currencies':search(q.get('search',''))})
+        if path.startswith('/api/owner/access'):
+            from copilot.owner_access import OwnerAccess
+            access=OwnerAccess(AUTH)
+            if path=='/api/owner/access' and method=='GET':return self._send(200,access.listing(token))
+            if path=='/api/owner/access/candidates' and method=='POST':return self._send(200,access.candidates(token,body))
+            if path=='/api/owner/access/lookup' and method=='POST':return self._send(200,access.lookup(token,body))
+            if path=='/api/owner/access/users' and method=='POST':return self._send(201,access.save(token,body,'create'))
+            if path=='/api/owner/access/link' and method=='POST':return self._send(200,access.save(token,body,'link'))
+            if path=='/api/owner/access/authorizations' and method=='POST':return self._send(201,access.authorize(token,body))
+            parts=path.split('/')
+            if len(parts)==6 and parts[4]=='users' and method=='PATCH':return self._send(200,access.save(token,body,'edit',parts[5]))
+            if len(parts)==7 and parts[4]=='users' and parts[6]=='remove' and method=='POST':return self._send(200,access.remove(token,parts[5],body))
+            raise InputError('Unsupported Owner access operation',405)
         if path=='/api/owner/staff':
             if method=='GET':return self._send(200,workflow.staff(token,mid))
             if method=='PATCH':return self._send(200,workflow.staff(token,mid,body.get('user_id'),{'permissions':body.get('permissions')}))
@@ -200,9 +223,12 @@ class Handler(BaseHTTPRequestHandler):
             parts=path.split('/')
             if len(parts)==4 and method=='PATCH':return self._send(200,workflow.draft(token,mid,parts[3],body.get('draft')))
             if len(parts)==5 and parts[4]=='propose' and method=='POST':return self._send(201,workflow.propose(token,mid,parts[3]))
+        if path=='/api/owner/banks/invite' and method=='POST':return self._send(201,workflow.invite_bank(token,body))
         if path=='/api/bank/applications' and method=='GET':return self._send(200,{'applications':workflow.applications(token)})
         if path.startswith('/api/bank/applications/') and method=='GET' and len(path.split('/'))==5:return self._send(200,workflow.applications(token,path.split('/')[-1]))
         if path=='/api/bank/merchants' and method=='GET':return self._send(200,workflow.merchants(token))
+        if path=='/api/bank/dashboard' and method=='GET':return self._send(200,workflow.dashboard(token,mid,q.get('start'),q.get('end'),q.get('granularity','monthly')))
+        if path=='/api/bank/cashflow' and method=='GET':return self._send(200,workflow.cashflow(token,mid))
         if path=='/api/bank/review' and method=='GET':return self._send(200,workflow.review(token,mid,q.get('application_id')))
         if path=='/api/bank/export' and method=='GET':return self._send(200,workflow.review(token,mid,q.get('application_id'),True),'text/csv; charset=utf-8',{'Content-Disposition':'attachment; filename="simulated-bank-review.csv"'})
         if path=='/api/admin/merchants' or path.startswith('/api/admin/merchants/'):
@@ -318,6 +344,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise AccessDenied('Origin not allowed')
                 if not self.headers.get('Content-Type','').lower().startswith('application/json'):
                     raise InputError('Content-Type must be application/json')
+            if method=='GET' and path in ('/assets/brand.css','/assets/shifu-logo.png'):
+                with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8' if path.endswith('.css') else 'image/png')
             if method=='GET' and path=='/assets/common.css':
                 with open(os.path.join(ROOT,'..','web','common.css'),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8')
             if method=='GET' and path=='/assets/auth.css':
@@ -341,14 +369,34 @@ class Handler(BaseHTTPRequestHandler):
                 if method=='GET' and not path.startswith('/api/'):
                     return self._send(303,b'',headers={'Location':'/login'})
                 raise AccessDenied('Change your temporary password first')
+            if path.startswith('/api/partner/v2/') or path=='/api/chat':
+                partner=governed_partner()
+                # No policy path, identity, role, unrestricted tool or action token
+                # can be supplied through this API. Identity is session-derived.
+                allowed={'merchant','conversation'}
+                if path=='/api/chat':allowed|={'message'}
+                if path.endswith('/research'):allowed|={'approval_reference','exact_query','decision'}
+                if set(body)-allowed:raise InputError('Unexpected governed chat fields')
+                mid=body.get('merchant') or q.get('merchant')
+                if method=='POST' and path=='/api/partner/v2/conversations':
+                    return self._send(200,partner.create(token,mid))
+                if method=='POST' and path=='/api/partner/v2/close':
+                    partner.forget_merchant(token,body.get('conversation'));return self._send(200,{'ok':True})
+                if method=='GET' and path=='/api/partner/v2/tools':
+                    return self._send(200,{'tools':partner.gateway.definitions(token,mid)})
+                if method=='POST' and path=='/api/partner/v2/research':
+                    return self._send(200,partner.decide(token,mid,body.get('conversation'),body))
+                if method=='POST' and path=='/api/chat':
+                    return self._send(200,partner.reply(token,mid,body.get('conversation'),body.get('message')))
+                return self._send(404,{'error':'Governed route not found'})
             if method=='GET' and path=='/api/partner/conversation':
-                from copilot.owner_partner import conversations
-                return self._send(200,{'messages':conversations.get(p,q.get('merchant')),'retention':'session-memory-30-minutes'})
-            if method=='GET' and path in ('/assets/portal-navigation.js','/assets/portal-navigation.css'):
+                governed_partner().gateway.identity(token,q.get('merchant'))
+                return self._send(200,{'messages':[],'retention':'active-page-memory-only'})
+            if method=='GET' and path in ('/assets/ui-standard.js','/assets/channel-performance.js','/assets/portal-navigation.js','/assets/portal-navigation.css'):
                 with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8' if path.endswith('.css') else 'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/icons.svg':
                 with open(os.path.join(ROOT,'..','web','icons.svg'),'rb') as f:return self._send(200,f.read(),'image/svg+xml')
-            if method=='GET' and path in ('/assets/bank.css','/assets/bank-components.js','/assets/bank-views.js','/assets/bank-portal.js'):
+            if method=='GET' and path in ('/assets/bank.css','/assets/bank-components.js','/assets/bank-views.js','/assets/bank-dashboard.js','/assets/bank-portal.js'):
                 AUTH.authorize(token,'view_bank_review')
                 with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8' if path.endswith('.css') else 'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/financial-partner.js':
@@ -363,8 +411,11 @@ class Handler(BaseHTTPRequestHandler):
                 with open(os.path.join(ROOT,'..','web','currency.js'),encoding='utf-8') as f:return self._send(200,f.read().replace('__CURRENCY_META__',json.dumps(PUBLIC)).encode('utf-8'),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/admin.js':
                 with open(os.path.join(ROOT,'..','web','admin.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
-            if method=='GET' and path=='/owner/users':
-                AUTH.authorize(token,'manage_merchant_staff');return self._page('index.html')
+            if method=='GET' and path in ('/owner/users','/owner/access'):
+                if p.role!='owner':raise AccessDenied('SME Owner required')
+                try:AUTH.authorize(token,'manage_merchant_staff')
+                except AccessDenied:AUTH.authorize(token,'manage_consents')
+                return self._page('index.html')
             if method=='GET' and path=='/bank':
                 if p.role!='lender_analyst':raise AccessDenied('Bank page only')
                 AUTH.authorize(token,'view_bank_review');return self._page('bank.html')
@@ -434,6 +485,10 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/dashboard":
                     return self._send(200, COPILOT.call(p, "get_dashboard", mid, start=q.get("start"),
                                                         end=q.get("end"), granularity=q.get("granularity", "monthly")))
+                if path == "/api/assessment":
+                    return self._send(200,COPILOT.call(p,"assess_business",mid))
+                if path == "/api/business-alerts":
+                    return self._send(200,{"items":COPILOT.call(p,"cashflow_alerts",mid)})
                 if path == "/api/cashflow":
                     return self._send(200, {"forecast": COPILOT.call(p, "cashflow_forecast", mid),
                                             "alerts": COPILOT.call(p, "cashflow_alerts", mid)})
@@ -481,13 +536,7 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/partner/actions/confirm":
                     if set(body)-{"merchant","action_id","confirmed"}:raise InputError("Unexpected confirmation fields")
                     return self._send(200,COPILOT.partner_state.confirm(p,mid,p.session_id,body.get("action_id"),body.get("confirmed")))
-                if path == "/api/chat":
-                    from copilot.owner_partner import read,conversations
-                    message=str(body.get("message", ""))[:2000]
-                    result=COPILOT.handle(p,mid,message,body.get("approval_token"),module=body.get("module") if body.get("module") in ("dashboard","transactions","pos-import","transaction-history","data-quality","transaction-settings","payments","cashflow","financing","applications","rbf","journey") else None,
-                                          owner_reader=lambda text:read(COPILOT,p,mid,text,AUTH,token,pos_service(),module=body.get("module")),explain_actions=body.get("explain_actions") is True)
-                    conversations.append(p,mid,message,result)
-                    return self._send(200,result)
+
 
             return self._send(404, {"error": "not found"})
         except ApprovalRequired as e:
@@ -498,6 +547,8 @@ class Handler(BaseHTTPRequestHandler):
                 AUTH.security_config.rejected(session_token(self.headers),operation,e,'request_rejected')
             AUTH.audit("access_denied",p,target=path,result="denied",reason="authorization",request_id=self.request_id)
             code=getattr(e,"status",403)
+            if code==401:
+                governed_partner().forget_session(__import__("hashlib").sha256(token.encode()).hexdigest())
             if code==401 and method=="GET" and not path.startswith("/api/"):
                 return self._send(303,b"",headers={"Location":"/login"})
             return self._send(code, {"error": str(e),"request_id":self.request_id,**({"batch_id":e.batch_id} if hasattr(e,"batch_id") else {})})

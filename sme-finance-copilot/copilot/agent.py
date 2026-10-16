@@ -62,7 +62,7 @@ class Copilot:
         self.partner_state = PartnerState(self)
         self.payments.on_event = self.financial_data.record_payment
         self.payments.on_refund = self.financial_data.record_refund
-        self.payments.existing_refund = self.financial_data.existing_refund
+        self.payments.existing_refund = None  # Simulator refunds never consult the financial ledger.
         self.tools = {t.name: t for t in self._register_tools()}
 
     def partner_context(self, principal, mid, session=None):

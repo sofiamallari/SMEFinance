@@ -7,6 +7,34 @@ from copilot.authorization import STAFF_ACTIONS
 
 class BankWorkflow:
     def __init__(self,auth,copilot):self.a=auth;self.c=copilot
+    def invite_bank(self,token,body):
+        """Owner-scoped provisioning; never reset or edit an existing account."""
+        from copilot.auth import digest
+        if not isinstance(body,dict) or set(body)-{'merchant','username','email','display_name','organization'}:raise InputError('Unsupported Bank invitation fields')
+        mid=body.get('merchant')
+        if not isinstance(mid,str) or not mid:raise InputError('Merchant required')
+        with self.a.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            self.a._authorize(db,token,'manage_consents',mid)
+            session=self.a._session(db,token,touch=False)
+            actor=Principal(session['user_id'],session['role'])
+            if actor.role!='owner':raise AccessDenied('SME Owner required')
+            email=body.get('email','')
+            if not isinstance(email,str) or '@' not in email or len(email)>150:raise InputError('Valid Bank email required')
+            existing=db.execute('SELECT * FROM users WHERE lower(email)=lower(?)',(email.strip(),)).fetchone()
+            if existing:
+                if existing['role']!='BANK' or existing['account_status']!='active':raise InputError('This account cannot receive Bank access',409)
+                uid=existing['user_id'];invitation=None
+            else:
+                user=self.a._create(db,actor,{'username':body.get('username'),'email':email.strip(),'display_name':body.get('display_name'),'organization':body.get('organization'),'role':'BANK','merchants':[mid]},secrets.token_urlsafe(48)+'Aa1!',True)
+                uid=user['user_id'];invitation=secrets.token_urlsafe(32)
+                db.execute('INSERT INTO reset_tokens VALUES (?,?,?,0)',(digest(invitation),uid,self.a.clock()+self.a.policies(db)['reset_expiration']))
+                self.a.audit('bank_invitation_created',actor,mid,uid,db=db)
+            db.execute('INSERT OR IGNORE INTO memberships VALUES (?,?)',(uid,mid))
+            self.a.audit('bank_membership_assigned',actor,mid,uid,db=db)
+            row=db.execute('SELECT display_name,organization FROM users WHERE user_id=?',(uid,)).fetchone()
+            return {'recipient':{'user_id':uid,**dict(row)},'created':invitation is not None,'invitation_token':invitation,'expires_in':self.a.policies(db)['reset_expiration'] if invitation else None,'message':'New Bank invitation: securely deliver the one-time activation token to the intended recipient. No email was sent.' if invitation else 'Existing Bank linked. Its credentials and profile were not changed. Grant explicit data categories separately.'}
+
     def merchants(self,token):
         """Own active Owner grants only; never a directory of unrelated users."""
         self.a.authorize(token,'view_bank_review');p=self.a.principal(token)
@@ -19,7 +47,7 @@ class BankWorkflow:
             try:self.a.authorize(token,'view_bank_audit',mid)
             except AccessDenied:can_audit=False
             with self.a.db() as db:
-                grants=[{'categories':json.loads(r['categories']),'granted_at':r['granted_at'],'expires_at':r['expires_at']} for r in db.execute("SELECT c.* FROM consents c JOIN users o ON o.user_id=c.owner_id WHERE c.merchant_id=? AND c.recipient_id=? AND c.revoked_at IS NULL AND c.expires_at>? AND o.account_status='active' AND o.role='SME_OWNER' AND EXISTS(SELECT 1 FROM memberships x WHERE x.user_id=o.user_id AND x.merchant_id=c.merchant_id)",(mid,p.user_id,self.a.clock()))]
+                grants=[{'categories':json.loads(r['categories']),'granted_at':r['granted_at'],'expires_at':r['expires_at'],'allow_download':bool(db.execute('SELECT 1 FROM consent_downloads WHERE consent_id=? AND allow_csv=1',(r['consent_id'],)).fetchone())} for r in db.execute("SELECT c.* FROM consents c JOIN users o ON o.user_id=c.owner_id WHERE c.merchant_id=? AND c.recipient_id=? AND c.revoked_at IS NULL AND c.expires_at>? AND o.account_status='active' AND o.role='SME_OWNER' AND EXISTS(SELECT 1 FROM memberships x WHERE x.user_id=o.user_id AND x.merchant_id=c.merchant_id)",(mid,p.user_id,self.a.clock()))]
                 last=None
                 for row in (db.execute('SELECT record FROM audit_events ORDER BY seq DESC') if can_audit else []):
                     event=json.loads(row[0])
@@ -43,7 +71,14 @@ class BankWorkflow:
         args=[actor.user_id]
         if aid:query+=' AND a.application_id=?';args.append(aid)
         rows=db.execute(query+' ORDER BY a.created_at DESC,a.application_id',args).fetchall()
-        rows=[row for row in rows if row['merchant_id'] in self.a.merchants]
+        authorized=[]
+        for row in rows:
+            try:
+                self.a._authorize(db,token,'view_applications',row['merchant_id'])
+                if action!='view_bank_review':self.a._authorize(db,token,action,row['merchant_id'])
+            except AccessDenied:continue
+            authorized.append(row)
+        rows=authorized
         if aid and not rows:raise AccessDenied('Application is not available to this Bank')
         return actor,rows
 
@@ -63,17 +98,21 @@ class BankWorkflow:
     def record_review(self,token,aid,body):
         if not isinstance(body,dict) or set(body)-{'outcome','note'}:raise InputError('Unsupported review fields')
         outcome=body.get('outcome');note=body.get('note','')
-        if outcome not in ('reviewed','more_information_needed','ready_for_further_assessment'):raise InputError('Select a supported simulated review outcome')
+        if outcome not in ('reviewed','more_information_needed','ready_for_further_assessment','approved','rejected'):raise InputError('Select a supported simulated review outcome')
         if not isinstance(note,str) or len(note.strip())>1000:raise InputError('Review notes must be text, at most 1000 characters')
         note=note.strip()
-        if outcome=='more_information_needed' and not note:raise InputError('Review notes are required when more information is needed')
+        if outcome in ('more_information_needed','rejected') and not note:raise InputError('Review notes are required when more information is needed')
         with self.a.db() as db:
             db.execute('BEGIN IMMEDIATE');actor,rows=self._routed(db,token,aid,'record_bank_review');row=rows[0];packet=json.loads(row['packet'])
             if packet.get('status')!='SUBMITTED_FOR_LENDER_REVIEW':raise InputError('Application is not in a reviewable submitted state',409)
             stamp=self.a.clock()
+            if outcome in ('approved','rejected'):
+                packet.update(status=outcome.upper(),decision_at=stamp,decision_by=actor.user_id,decision_note=note,simulated_decision=True)
+                db.execute('UPDATE applications SET packet=? WHERE application_id=?',(json.dumps(packet),aid))
+                self.a.audit('financing_simulated_'+outcome,actor,row['merchant_id'],aid,db=db,reason=outcome)
             db.execute('INSERT INTO application_reviews VALUES (?,?,?,?,?,?)',(secrets.token_hex(12),aid,actor.user_id,outcome,note,stamp))
             self.a.audit('financing_review_recorded',actor,row['merchant_id'],aid,db=db,reason=outcome)
-            return {'ok':True,'outcome':outcome,'created_at':stamp,'sandbox':True,'disclaimer':'Simulated review only; not credit approval'}
+            return {'ok':True,'outcome':outcome,'created_at':stamp,'sandbox':True,'disclaimer':'Simulated decision/review only; no real credit approval, loan or disbursement'}
 
     def staff(self,token,mid,uid=None,body=None):
         self.a.authorize(token,'manage_merchant_staff',mid);p=self.a.principal(token)
@@ -130,6 +169,30 @@ class BankWorkflow:
             consent=self.a._consent(db,mid,body['recipient_id'],'applications')
             if not consent or consent['owner_id']!=p.user_id:raise AccessDenied('Owner Bank authorization for applications is required')
         return self.c.partner_state.propose(p,mid,p.session_id,'prepare_financing_application',{'product_id':'RBF','amount':body['amount'],'recipient_id':body['recipient_id'],'draft_id':did})
+    def _bank_principal(self,token,mid,action):
+        self.a.authorize(token,'view_bank_review',mid);p=self.a.principal(token)
+        if p.role!='lender_analyst':raise AccessDenied('Bank review only')
+        self.a.authorize(token,action,mid)
+        return p
+    def dashboard(self,token,mid,start=None,end=None,granularity='monthly'):
+        """Owner-style Overview under the Owner's reports grant; never SME Dashboard authority."""
+        from datetime import date
+        p=self._bank_principal(token,mid,'view_reports')
+        if granularity not in ('daily','weekly','monthly','quarterly'):raise InputError('Unsupported granularity')
+        try:parsed=[date.fromisoformat(v) if v else None for v in (start,end)]
+        except (TypeError,ValueError):raise InputError('Dates must use YYYY-MM-DD')
+        if parsed[0] and parsed[1] and parsed[0]>parsed[1]:raise InputError('Start date must be on or before end date.')
+        m=self.c.merchants[mid];result=self.c.financial_data.dashboard(mid,start,end,granularity)
+        result['merchant']={**result.get('merchant',{}),'id':mid,'name':m.name,'currency':m.currency}
+        self.a.authorize(token,'view_reports',mid)
+        self.a.audit('bank_review_accessed',p,mid,None)
+        return result
+    def cashflow(self,token,mid):
+        """Existing forecast and alerts under the Owner's forecasts grant."""
+        p=self._bank_principal(token,mid,'view_forecasts')
+        result={'forecast':self.c.call(p,'cashflow_forecast',mid),'alerts':self.c.call(p,'cashflow_alerts',mid),'currency':self.c.merchants[mid].currency}
+        self.a.authorize(token,'view_forecasts',mid)
+        return result
     def review(self,token,mid,aid=None,export=False):
         self.a.authorize(token,'export_bank_review' if export else 'view_bank_review',mid);p=self.a.principal(token)
         if p.role!='lender_analyst':raise AccessDenied('Bank review only')
@@ -140,13 +203,20 @@ class BankWorkflow:
         if aid and not any(a['application_id']==aid for a in apps):raise AccessDenied('Application is not routed to this Bank')
         m=self.c.merchants[mid];data={'merchant_id':mid,'merchant_name':m.name,'currency':m.currency,'application':next((a for a in apps if a['application_id']==aid),None),'as_of':self.c.financial_data.as_of(mid).isoformat(),'retrieved_at':self.a.clock(),'data_version':self.c.financial_data.version(mid),'disclaimer':'Simulated financial review; not an official lending decision. Synthetic/demo attributes and provisional rules may apply.','applications':apps,'sections':{},'missing':[]}
         for name,tool,action in [('historical','financial_report','view_reports'),('assessment','assess_business','view_assessment'),('forecast','cashflow_forecast','view_forecasts'),('risk_indicators','cashflow_alerts','view_forecasts'),('financing','match_financing','view_financing'),('journey','financing_journey','view_financing'),('rbf','rbf_quote','view_financing')]:
-            try:self.a.authorize(token,action,mid);data['sections'][name]=self.c.call(p,tool,mid)
+            try:
+                self.a.authorize(token,action,mid)
+                if export:
+                    from copilot.authorization import CATEGORIES
+                    with self.a.db() as db:
+                        if not self.a._consent(db,mid,p.user_id,CATEGORIES[action],download=True):raise AccessDenied('Download is not authorized for this category')
+                data['sections'][name]=self.c.call(p,tool,mid)
             except AccessDenied:data['missing'].append(name+': category not authorized')
             except ValueError:data['missing'].append(name+': evidence unavailable')
         # Existing aggregate/trends used only under report authorization, never SME Dashboard authority.
         if 'historical' in data['sections']:
             self.a.authorize(token,'view_reports',mid)
             data['sections']['recorded_metrics']=self.c.financial_data.aggregate(mid)
+            data['sections']['channel_performance']=self.c.financial_data.channel_performance(mid)
             from copilot.modules import dashboard
             merchant=self.c.financial_data.project(mid);asof=self.c.financial_data.as_of(mid)
             data['sections']['trends']=self.c.financial_data.dashboard(mid)['trend']
@@ -155,11 +225,21 @@ class BankWorkflow:
             data['disclaimer']+=' '+legacy_note(data['currency'])
         data['missing'].append('Historical bank cash and post-financing outcome baseline are unavailable; current cash-flow chart is a forecast.')
         self.a.authorize(token,'export_bank_review' if export else 'view_bank_review',mid)
-        actions={'historical':'view_reports','recorded_metrics':'view_reports','trends':'view_reports','assessment':'view_assessment','forecast':'view_forecasts','risk_indicators':'view_forecasts','financing':'view_financing','journey':'view_financing','rbf':'view_financing'}
-        for section in data['sections']:self.a.authorize(token,actions[section],mid)
+        actions={'channel_performance':'view_reports','historical':'view_reports','recorded_metrics':'view_reports','trends':'view_reports','assessment':'view_assessment','forecast':'view_forecasts','risk_indicators':'view_forecasts','financing':'view_financing','journey':'view_financing','rbf':'view_financing'}
+        for section in data['sections']:
+            self.a.authorize(token,actions[section],mid)
+            if export:
+                from copilot.authorization import CATEGORIES
+                with self.a.db() as db:
+                    if not self.a._consent(db,mid,p.user_id,CATEGORIES[actions[section]],download=True):raise AccessDenied('Download authorization changed; refresh report')
         if apps:self.a.authorize(token,'view_applications',mid)
         if self.c.financial_data.version(mid)!=data['data_version']:raise InputError('Financial data changed; refresh report',409)
         self.a.audit('bank_report_exported' if export else 'bank_review_accessed',p,mid,aid)
+        with self.a.db() as db:
+            data['download_available']=bool(self.a._consent(db,mid,p.user_id,download=True))
+            data['download_categories']=[category for category in ('reports','assessment','forecasts','financing','applications') if self.a._consent(db,mid,p.user_id,category,download=True)]
+            if export and data['application'] and 'assessment' not in data['download_categories']:data['application']={k:v for k,v in data['application'].items() if k not in ('stage','scores')}
+            if export and not self.a._consent(db,mid,p.user_id,'applications',download=True):data['application']=None
         if not export:return data
         out=io.StringIO(newline='');writer=csv.writer(out);writer.writerow(['merchant_id','section','field','value','classification'])
         def safe(v):

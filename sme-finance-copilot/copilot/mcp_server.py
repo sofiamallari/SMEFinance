@@ -1,5 +1,6 @@
 """
-Model Context Protocol (MCP) server for SME Finance Copilot. Zero dependencies.
+Model Context Protocol (MCP) server for SME Finance Copilot.
+Authenticated tools use the JSON-Schema-validated governed gateway.
 
 Lets real AI agents (Microsoft Copilot Studio, GitHub Copilot agent mode in VS Code,
 Claude Desktop, or any MCP client) discover and call the copilot's tools.
@@ -19,7 +20,8 @@ Protocol
 Security
   * HTTP and stdio require authenticated server sessions and live authorization.
   * Environment-selected roles and API keys do not grant merchant access.
-  * Every tools/call goes through Copilot.call(): tiers, consent, audit log.
+  * Authenticated tools/call uses the governed gateway: live permissions, minimization, audit.
+  * Legacy trusted internal test dispatch retains Copilot.call(); it is not an HTTP identity.
   * T3 (application submission) and T4 (credit approval, funds) are not exposed over MCP.
 """
 from __future__ import annotations
@@ -41,9 +43,10 @@ LATEST = SUPPORTED_VERSIONS[0]
 META_VERSION = "io.modelcontextprotocol/protocolVersion"
 META_SERVER = "io.modelcontextprotocol/serverInfo"
 INSTRUCTIONS = (
-    "Tools for an advisory finance copilot serving ASEAN micro and small businesses (synthetic sandbox data). "
-    "Start with list_merchants to get merchant IDs. Use ask_copilot for open questions, or the specific tools "
-    "for structured data. All financing figures are indicative; the copilot cannot approve credit or move money."
+    "Governed read-only financial tools for synthetic data. Start a merchant-authorized page conversation "
+    "with conversation/start, then pass its opaque reference as params._meta.conversation for tools/list "
+    "and tools/call. Tool arguments cannot select merchants. Research only proposes exact-query human "
+    "approval; it never searches directly. Financial execution tools are not exposed."
 )
 
 PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR = -32700, -32600, -32601, -32602, -32603
@@ -56,9 +59,10 @@ def principal_from_env(merchants) -> Principal:
 
 
 class MCPHandler:
-    """Transport-independent JSON-RPC dispatcher."""
+    """Transport-independent dispatcher; authenticated clients require governed context."""
 
-    def __init__(self, copilot, principal: Principal | None = None):
+    def __init__(self, copilot, principal: Principal | None = None, *, partner=None, token=""):
+        self.partner, self.token = partner, token
         self.copilot = copilot
         self.principal = principal or principal_from_env(copilot.merchants)
         self.negotiated = None
@@ -109,6 +113,9 @@ class MCPHandler:
             return self._err(id_, METHOD_NOT_FOUND, f"Method not found: {method}")
         except _BadParams as e:
             return self._err(id_, INVALID_PARAMS, str(e))
+        except AccessDenied:
+            if self.partner:self.partner.gateway.event(self.principal,None,'ai_mcp_authorization_denied',outcome='denied')
+            return self._err(id_, INVALID_PARAMS, 'Governed operation is not authorized in this context')
         except Exception as e:  # never leak stack traces
             return self._err(id_, INTERNAL_ERROR, f"Internal error: {type(e).__name__}")
         if req_version or self.negotiated == "2026-07-28":
@@ -126,6 +133,39 @@ class MCPHandler:
                     "serverInfo": SERVER_INFO, "instructions": INSTRUCTIONS}
         if method == "ping":
             return {}
+        if method == "conversation/start":
+            if not self.partner:raise AccessDenied('Governed session required')
+            if set(params)-{'merchant'}:raise ValueError('Unexpected conversation fields')
+            return self.partner.create(self.token,params.get('merchant'))
+        if method in ('tools/list','tools/call') and self.principal.authenticated:
+            if not self.partner:raise AccessDenied('Governed session adapter required')
+            ref=(params.get('_meta') or {}).get('conversation')
+            with self.partner.lock:
+                row=self.partner.records.get(ref)
+                if not row:raise AccessDenied('Start a page-session conversation first')
+                mid=row['merchant']
+                self.partner.context(self.token,mid,ref)
+            definitions=self.partner.gateway.definitions(self.token,mid)
+            if method=='tools/list':
+                return {'tools':[{'name':d['function']['name'],'description':d['function']['description'],
+                    'inputSchema':d['function']['parameters'],
+                    'annotations':{'readOnlyHint':True,'destructiveHint':False}} for d in definitions]}
+            name=params.get('name');args=params.get('arguments') or {}
+            if name not in {d['function']['name'] for d in definitions}:raise AccessDenied('Tool is not authorized')
+            with row['lock']:
+                if name=='search_public_financial_information':
+                    from jsonschema import Draft202012Validator
+                    from copilot.governed_tools import INPUTS
+                    Draft202012Validator(INPUTS[name]).validate(args)
+                    value=self.partner.research.propose(self.token,mid,row,args['topic'])
+                else:
+                    requested=row.get('simulation_requested') is True
+                    if name=='run_survival_simulation':
+                        if not requested or set(row['assumptions'])!={'sales_change_percent','expense_change_percent','months'} or args!=row['assumptions']:
+                            raise AccessDenied('Complete user-supplied simulation assumptions are required')
+                        row['simulation_requested']=False
+                    value=self.partner.gateway.execute(self.token,mid,name,args,simulation_requested=requested)
+            return {'content':[{'type':'text','text':json.dumps(value,ensure_ascii=False)}],'structuredContent':value,'isError':False}
         if method == "tools/list":
             return {"tools": self._tools_list()}
         if method == "tools/call":
@@ -150,7 +190,7 @@ class MCPHandler:
         except (AccessDenied, ApprovalRequired) as e:
             return _tool_error(f"Access denied: {e}")
         except (ValueError, KeyError) as e:
-            return _tool_error(f"Invalid input: {e}")
+            return _tool_error("Invalid tool input")
 
 
 class _MethodNotFound(Exception):
@@ -206,8 +246,10 @@ def run_stdio(copilot):
     principal = auth.principal(token)
     copilot.identity_store=auth
     copilot.audit.sink=auth.financial_audit
-    TransactionStore(copilot,os.environ.get('COPILOT_TRANSACTION_FILE','logs/manual_transactions.jsonl'))
-    mcp = MCPHandler(copilot,principal)
+    store=TransactionStore(copilot,os.environ.get('COPILOT_TRANSACTION_FILE','logs/manual_transactions.jsonl'))
+    from copilot.pos_import import POSImportService
+    from copilot.governed_partner import Partner
+    mcp = MCPHandler(copilot,principal,partner=Partner(copilot,auth,POSImportService(auth,store)),token=token)
     print(f"[sme-finance-copilot MCP] stdio ready; role={mcp.principal.role}", file=sys.stderr, flush=True)
     for line in sys.stdin:
         line = line.strip()

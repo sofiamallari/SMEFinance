@@ -38,7 +38,7 @@ class TestPartnerIntegration(unittest.TestCase):
         threads=[threading.Thread(target=complete) for _ in range(2)]
         for t in threads:t.start()
         for t in threads:t.join()
-        self.assertEqual(outcomes.count('paid'),1);self.assertEqual(len(self.c.financial_data.journal.read()[0]),1)
+        self.assertEqual(outcomes.count('paid'),1);self.assertEqual(len(self.c.financial_data.journal.read()[0]),0)
         self.assertEqual(self.c.payments.wallets['M002'],p.net_settled)
     def test_nonfinite_payment_inputs_rejected(self):
         for value in (float('nan'),float('inf'),-1,0):
@@ -88,8 +88,9 @@ class TestPartnerIntegration(unittest.TestCase):
             with self.assertRaises(OSError):self.c.payments.simulate_customer_payment(p.ref)
         restarted=Copilot();restarted.identity_store=self.auth;TransactionStore(restarted,str(self.path/'transactions.jsonl'))
         restored=restarted.payments.status(p.ref)
-        self.assertEqual(restored.status,'PAID');self.assertEqual(restarted.payments.wallets['M002'],restored.net_settled)
-        self.assertEqual(len(restarted.financial_data.journal.read()[0]),1)
+        self.assertEqual(restored.status,'PENDING');self.assertEqual(restarted.payments.wallets.get('M002',0),0)
+        self.assertEqual(len(restarted.financial_data.journal.read()[0]),0)
+        restarted.payments.simulate_customer_payment(p.ref);self.assertEqual(restarted.payments.status(p.ref).status,'PAID')
     def test_refund_crash_gap_recovers_exact_wallet_delta(self):
         p=self.c.payments.create(self.c.merchants['M002'],'qr_pay',amount=45000);self.c.payments.simulate_customer_payment(p.ref)
         before=self.c.payments.wallets['M002']
@@ -97,9 +98,10 @@ class TestPartnerIntegration(unittest.TestCase):
             with self.assertRaises(OSError):self.c.payments.refund(p.ref,10000,'interrupted-r1')
         expected=self.c.payments.wallets['M002']
         restarted=Copilot();restarted.identity_store=self.auth;TransactionStore(restarted,str(self.path/'transactions.jsonl'))
-        self.assertEqual(restarted.payments.wallets['M002'],expected);self.assertLess(expected,before)
-        self.assertEqual(restarted.payments.status(p.ref).refunded_amount,10000)
-        restarted.payments.refund(p.ref,10000,'interrupted-r1');self.assertEqual(restarted.payments.wallets['M002'],expected)
+        self.assertEqual(restarted.payments.wallets['M002'],before)
+        self.assertEqual(restarted.payments.status(p.ref).refunded_amount,0)
+        restarted.payments.refund(p.ref,10000,'interrupted-r1');self.assertLess(restarted.payments.wallets['M002'],before)
+        self.assertFalse(restarted.financial_data.journal.read()[0])
 
 
 class TestReportEvidence(unittest.TestCase):

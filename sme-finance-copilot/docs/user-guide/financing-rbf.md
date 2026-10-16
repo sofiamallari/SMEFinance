@@ -33,7 +33,7 @@ A missing active assigned Bank, missing applications-category authorization, sta
 
 ## Important limitations
 
-No separate Progression Engine/Financing Journey menu is part of current Financing navigation. No actual loan approval, rejection, remittance deduction or disbursement occurs.
+No separate Progression Engine/Financing Journey menu is part of current Financing navigation. Bank can record simulated approval/rejection, visible with reviewer, time and remarks in Applications. No actual loan approval, rejection, remittance deduction or disbursement occurs.
 
 ## Related guides
 

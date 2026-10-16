@@ -1,0 +1,173 @@
+"""Backend-first routing for the AI Financial Partner (docs/technical/ai-chat-logic.md, section 2).
+
+Rules run before Gemini. Fixed routes (blocked actions, not-in-app data, unclear messages,
+doubt, return-to-topic) are answered here without a model; record and reasoning routes get
+a backend plan so they still answer when the model is unavailable. No financial formulas live here.
+"""
+import re
+from copilot import conversation_state as cs
+from copilot.authorization import require
+from copilot.security import AccessDenied
+
+TX_REF=re.compile(r'\bTX-[A-Za-z0-9-]{4,120}\b')
+APP_REF=re.compile(r'\bAPP-[A-Za-z0-9-]{1,80}\b')
+DOUBT=re.compile(r"\s*(?:(?:hmm+|wait|but|ok(?:ay)?|really)[,.!]?\s+)?(?:are you (?:sure|certain)|you sure|is (?:that|this) (?:right|correct|accurate|true)|really|double[- ]check(?: (?:that|it|this))?|(?:can|could) you (?:double[- ]check|re-?check|verify|confirm)(?: (?:that|it|this|those numbers))?|(?:that|this) (?:doesn'?t|does not) (?:look|seem|sound) right|that'?s wrong|i don'?t (?:think so|believe (?:that|it)))\s*[?.!]*\s*",re.I)
+VAGUE=re.compile(r"\s*(?:(?:and|so|ok(?:ay)?|hmm+|well)[,.]?\s+)?(?:(?:how|what) about (?:it|that|this|them|those)|and (?:then|that|it|this)|what then|huh|what|so|then what|that one|this one|it|that|this|and)\s*[?.!]*\s*",re.I)
+BACK=re.compile(r"^\s*(?:(?:ok(?:ay)?|so|now|alright|right)[,.]?\s+)?(?:(?:let'?s|can we|could we|i want to|please)\s+)?(?:go\s+|get\s+|come\s+)?(?:back|return|resume|continue)\b(?:\s+(?:to|with|on))?",re.I)
+EXPORT=re.compile(r"\b(?:export|download|print)\b|\b(?:pdf|excel|xlsx|csv|spreadsheet)\b|\bsend (?:me )?(?:a |the )?(?:report|file|statement)\b|\b(?:generate|create|make|give me) (?:a |an |the )?(?:report|statement|file)\b",re.I)
+ACTION=re.compile(r"^\s*(?:(?:please|pls|kindly|ok(?:ay)?|now)[,.]?\s+)?(?:(?:can|could|would|will) you\s+|go ahead and\s+|i want you to\s+|help me\s+)?(?:please\s+)?"
+ r"(?P<verb>submit|approve|pay|transfer|send money|purchase|buy|delete|remove|edit|update|modify|change|correct|fix|cancel|apply for|sign|withdraw|refund|record|add|enter|authori[sz]e|grant|revoke)\b(?!\s+(?:me|if|whether)\b)",re.I)
+BANK_BALANCE=re.compile(r"\bbank (?:account )?balance\b|\bbalance (?:in|of) (?:my|the|our) bank(?: account)?\b|\bhow much (?:money )?(?:is|do (?:i|we) have) in (?:my|the|our) bank\b|\bmy bank account\b",re.I)
+PAYROLL=re.compile(r"\bpayroll\b|\b(?:salar(?:y|ies)|wages?) (?:i|we) (?:paid|pay)\b|\bhow much (?:did|do) (?:i|we) pay (?:my |our )?(?:staff|employees|workers)\b|\b(?:staff|employee) (?:pay|salar(?:y|ies)|wages?) (?:last|this|in)\b",re.I)
+OTHERS=re.compile(r"\bcompetitors?'?s?\b|\b(?:rival|neighbou?ring|nearby|another|other) (?:business|shop|store|caf[eé]|restaurant|merchant)s?'?s?\b.{0,40}\b(?:sales|revenue|income|profit|customers|figures|numbers)\b|\bcustomers?'?s? (?:income|salary|bank|personal|address|phone|spending|details)\b|\b(?:supplier|landlord|employee)'?s? (?:bank|personal|salary|income)\b",re.I)
+SEARCH=re.compile(r"\b(?:search|research|look (?:it )?up|google|check online|online|on the (?:web|internet)|latest news)\b",re.I)
+OUTSIDE=re.compile(r"\bindustry\b|\bbenchmarks?\b|\b(?:average|typical|normal|standard) (?:for|in|among)\b|\b(?:average|typical) (?:margin|profit|sales|revenue|rent|wage|cost)s?\b|\bmarket rates?\b|\bregulations?\b|\b(?:tax|vat) (?:rules?|rates?|law|filing|requirements?)\b|\bfapiao\b|\bminimum wage\b|\blaws?\b|\blicen[cs]e requirements?\b|\b(?:current|today'?s|latest) (?:sme |business )?(?:lending|loan|interest) rates?\b|\blending rates?\b",re.I)
+MINE=re.compile(r"\b(?:my|our|mine|i'?m|we'?re|am i|are we)\b",re.I)
+RECORD_WORDS=re.compile(r"\b(?:sales|revenue|margins?|profit|expenses?|costs?|income|turnover|growth|rent)\b",re.I)
+LOAN=re.compile(r"\b(?:loan|borrow\w*|mortgage|credit line)\b.{0,60}\b(?:monthly|payments?|repay\w*|installments?|amorti[sz]\w*|schedule|interest|pay back|per month|a month|each month|every month|cost)\b|\b(?:repayments?|monthly payments?|installments?|amorti[sz]\w*)\b.{0,40}\b(?:loan|borrow\w*|\d|rates?)\b|\bif (?:interest )?rates? (?:rise|rises|go up|goes up|increase|increases|drop|drops|fall|falls|change|changes)\b",re.I)
+PAST=re.compile(r"\b(?:had ?n[o']t|had not|did ?n[o']t|did not|never)\b.{0,25}\b(?:spen[dt]|paid|pay|bought|buy|purchased?|hired?)\b|\bwhat if I had (?:spent|paid|bought|hired)\b|\bwithout (?:the|that|my)\b.{0,30}\b(?:expense|cost|spend\w*|purchase|payment)\b.{0,30}\b(?:in|last|during)\b",re.I)
+DIAGNOSE=re.compile(r"\bwhy (?:did|do|does|is|are|was|were|have|has)\b.{0,50}\b(?:drop\w*|fall|fell|falling|declin\w*|decreas\w*|down|low|lower|empty|zero|missing|change\w*|differ\w*|worse|less|go(?:ne)? down)\b|\bwhat (?:caused|is causing|explains)\b.{0,40}\b(?:sales|revenue|drop|decline|fall|difference|change)\b|\bwhy (?:is|are) (?:my )?(?:\w+ )?(?:sales|revenue|records?|numbers?|figures?) (?:so )?(?:low|empty|zero|missing|down)\b",re.I)
+QUALITY=re.compile(r"\bdata quality\b|\bimport(?:s|ed)? (?:status|errors?|failed|history)\b|\b(?:is|are) my (?:data|records) (?:complete|up to date|accurate)\b|\bmissing (?:data|records|imports?)\b|\bdata issues?\b",re.I)
+PERCENT_CHANGE=re.compile(r"\b(?:sales|revenue|expenses?|costs?)\b.{0,25}[+\-]?\d+(?:\.\d+)?\s*%|[+\-]?\d+(?:\.\d+)?\s*%.{0,25}\b(?:sales|revenue|expenses?|costs?)\b",re.I)
+AMOUNT=re.compile(r"(?:RMB|CNY|[¥￥])?\s*\d[\d,]*(?:\.\d+)?\s*(?:k|thousand|m|million)?\b(?!\s*%)",re.I)
+COST_WORDS=re.compile(r"\b(?:buy|purchase|spend|invest|pay for|cost|costs|warehouse|equipment|renovat\w*|expan\w*|hire|hiring|salary|rent|oven|vehicle|machine\w*|branch|afford)\b",re.I)
+WHATIF=re.compile(r"\bwhat if\b|\bwhat happens if\b|\bcan (?:i|we) afford\b|\bafford\b|\bshould (?:i|we)\b|\bif (?:i|we)\b|\bsimulat\w*|\bscenario\b",re.I)
+CASH=re.compile(r"\bcash ?flow\b|\bforecast\b|\brunway\b|\bnext month\b|\b(?:cash|balance) (?:today|now|position)\b|\bmy balance\b|\balerts?\b|\bwarnings?\b",re.I)
+SALES=re.compile(r"\bsales\b|\brevenue\b|\bexpenses?\b|\bnet income\b|\bprofit\b|\bbest (?:month|week|period)\b|\bhow (?:am i|are we|is my business) (?:doing|performing)\b|\b(?:compare|vs\.?|versus)\b",re.I)
+GROWTH=re.compile(r"\bmaturity\b|\bmy stage\b|\bgrowth stage\b|\bbusiness growth\b|\bready for (?:financing|growth)\b",re.I)
+FINANCING=re.compile(r"\bfinancing (?:options|matches)\b|\bwhich (?:loan|financing)\b|\brbf (?:quote|offer)\b|\bhow much can I borrow\b",re.I)
+CHANNELS=re.compile(r"\bpayment (?:channel|method)s?\b|\bchannel mix\b",re.I)
+# Typo-tolerant ("transsaction", "teansaction"); a single/manual or user-named transaction is a record lookup too.
+TXN=r"(?:t[a-z]{0,2}ans?\w{0,3}ctions?|transactions?)"
+RECENT=re.compile(r"\b(?:recent|latest|last|newest|today'?s|single|manual)\s+(?:single\s+|manual\s+)?"+TXN+r"\b|\b"+TXN+r" today\b|\b[A-Za-z]*\d[A-Za-z0-9_.-]*\s+"+TXN+r"\b",re.I)
+SUBJECTS=re.compile(r"\b(?:warehouse|equipment|oven|vehicle|van|truck|machine|branch|renovation|expansion|inventory|shop|store|kitchen|freezer|fridge|computer|laptop|signage|website)\b",re.I)
+MONTHLY=re.compile(r"(?:per|a|each|/)\s*month\b|\bmonthly\b|\bsalary\b|\bhire\b|\bhiring\b|\brent\b|\bwages?\b",re.I)
+RISE=re.compile(r"\b(?:rise|rises|go(?:es)? up|increase[sd]?|higher|drop|drops|fall|falls|lower|decrease[sd]?|change[sd]?|up|down)\b",re.I)
+
+def normalize(text):
+    """Common misspellings of "transaction" ("transsaction", "transaciton") read as the word itself."""
+    import difflib
+    def fix(match):
+        word=match.group();plural=word.lower().endswith('s') and not word.lower().endswith('ss')
+        base=word[:-1] if plural else word
+        return ('transaction'+('s' if plural else '')) if difflib.SequenceMatcher(None,base.lower(),'transaction').ratio()>=0.8 else word
+    return re.sub(r'\b[A-Za-z]{8,14}\b',fix,text)
+
+def classify(text,state):
+    """The backend route for a message, or None when only the model can classify it."""
+    t=text.strip();has_context=bool(state.get('last_requests') or state.get('pending') or state.get('entities'))
+    if DOUBT.fullmatch(t):return {'route':'doubt'}
+    if BACK.search(t) and (state.get('parked') or state.get('topics') or state.get('entities')):return {'route':'back'}
+    if VAGUE.fullmatch(t) and not has_context:return {'route':'unclear'}
+    if EXPORT.search(t) and not WHATIF.search(t):return {'route':'export'}
+    if ACTION.search(t) and not WHATIF.search(t):return {'route':'action','verb':ACTION.search(t)['verb'].lower()}
+    if OTHERS.search(t):return {'route':'not_in_app','kind':'others'}
+    if BANK_BALANCE.search(t):return {'route':'not_in_app','kind':'bank_balance','intent':'cash_flow'}
+    if PAYROLL.search(t) and not (AMOUNT.search(t) and WHATIF.search(t)):return {'route':'not_in_app','kind':'payroll','intent':'sales_analysis'}
+    if LOAN.search(t) and not APP_REF.search(t):return {'route':'C','intent':'loan_calculation','strong':True,'search':'sme_lending_rates' if re.search(r'\b(?:market|current|public|today\'?s)\b',t,re.I) else None}
+    outside=OUTSIDE.search(t) or (SEARCH.search(t) and re.search(r'rates?|industry|tax|regulat|law|benchmark|average',t,re.I))
+    if outside or SEARCH.search(t):
+        topic=search_topic(t)
+        mixed=bool(topic=='industry_benchmarks' and MINE.search(t) and RECORD_WORDS.search(t))
+        return {'route':'mixed' if mixed else 'search','topic':topic,'intent':'sales_analysis' if mixed else 'public_research'}
+    if TX_REF.search(t) or RECENT.search(t):return {'route':'B','intent':'transactions','strong':True}
+    if APP_REF.search(t):return {'route':'B','intent':'financing','strong':True}
+    if PAST.search(t):return {'route':'C','intent':'past_what_if','strong':True}
+    if DIAGNOSE.search(t):return {'route':'E','intent':'sales_analysis','strong':True,'diagnose':True}
+    if QUALITY.search(t):return {'route':'B','intent':'data_quality','strong':True}
+    amount=any(not re.search(r'%',m.group()) and re.search(r'\d',m.group()) for m in AMOUNT.finditer(t))
+    if PERCENT_CHANGE.search(t) and amount and COST_WORDS.search(t):return {'route':'C','intent':'decision_support','strong':True,'combined':True}
+    if PERCENT_CHANGE.search(t) and (WHATIF.search(t) or re.search(r'\bfor \d+ months?\b',t,re.I)):return {'route':'C','intent':'simulation'}
+    if (WHATIF.search(t) or COST_WORDS.search(t)) and (amount or state.get('intent')=='decision_support' or re.search(r'\bafford\b',t,re.I)):return {'route':'C','intent':'decision_support'}
+    if GROWTH.search(t):return {'route':'B','intent':'business_growth'}
+    if FINANCING.search(t):return {'route':'B','intent':'financing'}
+    if CHANNELS.search(t):return {'route':'B','intent':'payment_channels'}
+    if CASH.search(t):return {'route':'C' if re.search(r'forecast|next month|runway',t,re.I) else 'B','intent':'cash_flow'}
+    if SALES.search(t):return {'route':'B','intent':'sales_analysis'}
+    if has_context and state.get('intent') not in (None,'unknown'):return {'route':'B','intent':state['intent'],'follow_up':True}
+    return None
+
+def search_topic(text):
+    if re.search(r'lending|loan|interest rates?|borrow',text,re.I):return 'sme_lending_rates'
+    if re.search(r'regulat|\btax|\bvat\b|\blaws?\b|licen[cs]e|fapiao|minimum wage|social insurance|compliance|registration',text,re.I):return 'regulations_tax'
+    if re.search(r'industry|benchmark|average|typical|normal|margin|competit|market|peers?',text,re.I):return 'industry_benchmarks'
+    return None
+
+def private_terms(text,merchant_name=''):
+    """Figures, references or the business name in a search request (they are never searched)."""
+    found=bool(re.search(r'\d',text) or TX_REF.search(text) or APP_REF.search(text) or re.search(r'\bM\d{3}\b',text))
+    words=[w for w in re.findall(r'[a-z]{3,}',(merchant_name or '').lower()) if w not in ('the','and','shop','store','company','ltd','limited','business')]
+    return found or any(re.search(r'\b'+re.escape(w)+r'\b',text,re.I) for w in words)
+
+# X1/X2: blocked actions get the right screen instead of a bare refusal. Paths match partner_help.HELP.
+GUIDES=[
+ (r'export|download|print|pdf|excel|xlsx|csv|spreadsheet|report|statement|file','view_dashboard',"I can't create or send files from chat. To export, open Dashboard → Overview and choose \"Export overview as PDF\"; your browser's print dialog saves it as a PDF. Transaction History lets you filter and review the records themselves."),
+ (r'submit|apply for|application|financing|loan','view_applications',"I can't submit or change applications from chat. Open Financing → Applications to create or review an application; only the business owner submits it, and the lender makes the credit decision."),
+ (r'approve','view_applications',"I can't approve anything; credit decisions are made by the lender. You can follow an application's status in Financing → Applications."),
+ (r'authori[sz]e|grant|revoke|consent|bank access','manage_consents',"I can't change bank access from chat. Open Bank Authorization in the sidebar to authorize a bank or review and revoke existing grants."),
+ (r'pay|transfer|send money|purchase|buy|withdraw|refund','create_transactions',"I can't move money or make purchases. Payments are made through your bank outside this app; once paid, you can record it in Merchant Transactions → Single Transaction."),
+ (r'delete|remove|edit|update|modify|change|correct|fix|cancel','view_transactions',"I can't change business records from chat. Review records in Merchant Transactions → Transaction History; corrections go through Single Transaction or a corrected file in Bulk POS Import."),
+ (r'record|add|enter','create_transactions',"I can't add records from chat. Use Merchant Transactions → Single Transaction for one entry, or Bulk POS Import for a file."),
+]
+
+def guidance(p,mid,text,route):
+    """A deterministic pointer to the screen that does the action; only screens the account may open."""
+    target=text if route=='export' else (ACTION.search(text)['verb']+' '+text if ACTION.search(text) else text)
+    for pattern,permission,message in (GUIDES[:1] if route=='export' else GUIDES[1:]):
+        if not re.search(pattern,target,re.I):continue
+        try:require(p,permission,mid)
+        except AccessDenied:return "I can't do that from chat, and that screen isn't available for your account. Ask the business owner if you need it."
+        return message
+    return "I can't take actions or change records from chat; I can only look things up and explain them."
+
+NOT_IN_APP={
+ 'others':"Other businesses' figures and customers' private details aren't recorded in the app, and I don't search the web for private business or personal data. I can show your own recorded figures, or search public industry benchmarks if you ask.",
+ 'bank_balance':"Your bank balance is not recorded in the app, so I can't confirm it.",
+ 'payroll':"Payroll is not recorded as a separate category in the app, so I can't show what was paid in salaries.",
+}
+
+def unclear(state):
+    """J1: one clarifying question."""
+    return "Could you tell me a bit more about what you'd like to know? For example: your sales for a month, your cash-flow forecast, a planned cost, or a financing question."
+
+# Backend interpretation: typed values from the user's own text, chosen by route and nearby words.
+def updates(text,spans,intent,state):
+    out=[];taken=set()
+    def add(entity,quote):
+        if entity in taken:return
+        key=next((k for k,v in spans.items() if v==quote),None)
+        if key:out.append({'entity':entity,'source':key});taken.add(entity)
+    dates=[v for v in spans.values() if re.fullmatch(r'(?:on\s+)?(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?|(?:the\s+)?\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*)',v,re.I)]
+    periods=[v for v in spans.values() if re.fullmatch(r'last month|this month|previous month|current month|last quarter|Q[1-4](?:\s+\d{4})?|last \d+ days',v,re.I) or (v.lower().rstrip('.') in cs.MONTHS and len(v)>=3 and v.lower()!='may' and not any(v in d for d in dates))]
+    for value in spans.values():
+        position=text.find(value);before=text[max(0,position-40):position];after=text[position+len(value):position+len(value)+25];near=before+' '+after
+        if re.fullmatch(r'\s*[+-]?\d+(?:\.\d+)?\s*%\s*',value):
+            if intent=='loan_calculation':add('interest_rate_change' if RISE.search(before[-25:]) else 'annual_interest_rate',value)
+            elif re.search(r'sales|revenue',before[-30:]+after[:15],re.I):add('sales_change_percent',value)
+            elif re.search(r'expense|cost',before[-30:]+after[:15],re.I):add('expense_change_percent',value)
+        elif re.fullmatch(r'\d+\s+(?:months?|years?)',value,re.I):
+            add('financing_duration' if intent=='loan_calculation' else 'simulation_duration',value)
+        elif re.fullmatch(cs.BARE_AMOUNT,value,re.I) and re.search(r'\d',value) and not re.match(r'\s*(?:%|months?|years?|days?|st\b|nd\b|rd\b|th\b)',after,re.I) and not any(value.strip() in d for d in dates) and not re.fullmatch(r'\s*(?:19|20)\d\d\s*',value):
+            if intent=='loan_calculation':add('financing_amount',value)
+            elif intent=='past_what_if':add('past_expense',value)
+            elif intent in ('decision_support','simulation'):add('recurring_expense' if MONTHLY.search(before[-20:]+after[:15]) else 'one_time_cost',value)
+    if intent in ('decision_support','simulation'):
+        dates=dates+[v for v in spans.values() if re.fullmatch(r'next week|tomorrow|today|in a week',v,re.I)]
+    if intent in ('decision_support','simulation') and dates:
+        one_time=any(u['entity']=='one_time_cost' for u in out) or 'one_time_cost' in state['entities']
+        add('purchase_date' if one_time else 'start_date',dates[0])
+    if intent in ('sales_analysis','past_what_if','data_quality','transactions','payment_channels') and periods:
+        add('reporting_period',periods[0])
+        if len(periods)>1 and intent=='sales_analysis':add('comparison_period',periods[1])
+    if intent=='decision_support':
+        subject=SUBJECTS.search(text)
+        if subject:add('business_subject',subject.group())
+    return out
+
+def plan(text,spans,rule,state):
+    """A model-free interpretation in the same contract the model fills; the backend binds every tool argument."""
+    # A new route on a different topic switches topic (the old one is parked if it has an open question), so its periods and costs don't leak in.
+    switch=state.get('intent') not in (None,'unknown',rule['intent']) and not rule.get('follow_up') and rule.get('route')!='answer'
+    value={'intent':rule['intent'],'topic_change':bool(switch),'updates':updates(text,spans,rule['intent'],state),'question':None}
+    if rule['intent']=='transactions' and TX_REF.search(text):value['tool_requests']=[] # the reference lookup is added by the backend
+    return value

@@ -1,0 +1,7 @@
+/* Presentation only: percentages are supplied by authorized backend services. */
+window.ChannelPerformance={render(data){
+ const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ if(!data?.available)return '<p role="status">'+esc(data?.message||'Payment-channel information is unavailable.')+'</p>';
+ const row=(item,key,color,label)=>{const value=item[key];return '<div class="channel-bar-line"><span>'+label+'</span><div class="channel-bar-track">'+(value==null?'<span>Unavailable</span>':'<span class="channel-bar" style="width:'+Math.max(0,Math.min(100,value))+'%;background:'+color+'" title="'+esc(item.label+' · '+label+': '+value.toFixed(2)+'% · '+item.transactions+' transactions · '+item.net_sales+' '+data.currency)+'"></span>')+'</div><b>'+ (value==null?'—':value.toFixed(2)+'%')+'</b></div>'};
+ return '<p>'+esc(data.period_start)+' to '+esc(data.period_end)+' · '+esc(data.currency)+'</p><p class="channel-legend"><span>■ Transaction count</span> <span>■ Recorded net sales</span></p>'+(data.message?'<p role="status">'+esc(data.message)+'</p>':'')+'<div class="channel-performance" role="img" aria-label="Transaction count and recorded net sales percentages by payment channel">'+data.channels.map(item=>'<section><strong>'+esc(item.label)+'</strong>'+row(item,'count_percent','#08663d','Transaction count')+row(item,'revenue_percent','#76bd94','Recorded net sales')+'</section>').join('')+'</div><small>'+esc(data.note)+'</small>';
+}};

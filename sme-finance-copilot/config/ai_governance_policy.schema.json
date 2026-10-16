@@ -613,6 +613,18 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 1000
+        },
+        "allowed_topics": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "sme_lending_rates",
+              "industry_benchmarks",
+              "regulations_tax"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1
         }
       },
       "required": [

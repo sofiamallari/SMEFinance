@@ -36,11 +36,16 @@ def _weekday_profile(rows: list, as_of: date, days: int, cats: set | None = None
     return [s / c if c else 0 for s, c in zip(sums, counts)]
 
 
-def forecast(merchant, as_of: date, days: int | None = None, include_overdue: bool = False) -> dict:
+def forecast(merchant, as_of: date, days: int | None = None, include_overdue: bool = False, extra_outflows: list | None = None,
+             inflow_factor: float = 1.0, outflow_factor: float = 1.0) -> dict:
     days = days or C["forecast_days"]
     inflow_prof = _weekday_profile(merchant.transactions, as_of, C["lookback_days"])
     out_prof = _weekday_profile(merchant.expenses, as_of, C["lookback_days"],
                                 {"supplies", "operating", "household_draw"})
+    # Optional hypothetical what-if factors on the recent sales/expense pattern only (scheduled items unchanged);
+    # the defaults keep the exact original path.
+    if inflow_factor != 1.0: inflow_prof = [v * inflow_factor for v in inflow_prof]
+    if outflow_factor != 1.0: out_prof = [v * outflow_factor for v in out_prof]
     sched_out, sched_in = defaultdict(float), defaultdict(float)
     for p in merchant.payables:
         sched_out[date.fromisoformat(p["due"])] += p["amount"]
@@ -52,18 +57,38 @@ def forecast(merchant, as_of: date, days: int | None = None, include_overdue: bo
             continue
         sched_in[max(due, as_of + timedelta(days=1))] += r["amount"]
 
+    # Optional hypothetical schedule; omitted callers retain the exact original path.
+    from decimal import Decimal, InvalidOperation
+    extra = defaultdict(float)
+    if extra_outflows is not None:
+        if not isinstance(extra_outflows, list) or len(extra_outflows) > 24:
+            raise ValueError("Use at most 24 hypothetical outflows")
+        for item in extra_outflows:
+            if not isinstance(item, dict) or set(item) != {'date', 'amount'}:
+                raise ValueError("Invalid hypothetical outflow")
+            d = date.fromisoformat(item['date'])
+            try: amount = Decimal(str(item['amount']))
+            except InvalidOperation: raise ValueError("Invalid hypothetical amount") from None
+            if not amount.is_finite() or amount < 0 or amount > Decimal('1000000000') or amount != amount.quantize(Decimal('.01')):
+                raise ValueError("Invalid hypothetical amount")
+            if as_of <= d <= as_of + timedelta(days=days): extra[d] += float(amount)
     bal, path, runway = merchant.wallet_balance, [], None
+    if extra.get(as_of):
+        bal -= extra[as_of]
+        path.append({'date': as_of.isoformat(), 'inflow': 0.0, 'outflow': round(extra[as_of], 2), 'balance': round(bal, 2)})
+        if bal < 0: runway = 0
     for i in range(1, days + 1):
         d = as_of + timedelta(days=i)
         loan = merchant.monthly_debt_service if d.day == 15 else 0
         inflow = inflow_prof[d.weekday()] + sched_in[d]
-        outflow = out_prof[d.weekday()] + sched_out[d] + loan
+        outflow = out_prof[d.weekday()] + sched_out[d] + loan + extra[d]
         bal += inflow - outflow
         path.append({"date": d.isoformat(), "inflow": round(inflow, 2),
                      "outflow": round(outflow, 2), "balance": round(bal, 2)})
         if runway is None and bal < 0:
             runway = i
     avg_out = sum(out_prof) / 7 + merchant.monthly_debt_service / 30
+    if extra_outflows: avg_out += sum(extra.values()) / days
     return {"currency": merchant.currency, "opening_balance": merchant.wallet_balance,
             "days": days, "path": path,
             "min_balance": round(min(p["balance"] for p in path), 2),

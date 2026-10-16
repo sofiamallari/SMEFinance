@@ -44,3 +44,12 @@ No client role headers, demo identity environment values or MCP API key establis
 use_copilot alone does not authorize every financial tool. Live Principal/PolicyGuard checks, domain services, typed claim/evidence checks, source freshness and merchant-scoped context apply. Existing sensitive sandbox actions use separate proposals and explicit confirmation. Suggested questions are not authorization.
 
 Policy JSON represents bounded role-level configuration; it is not users, passwords, Staff delegation or Bank grants. See [security configuration](security-configuration.md), [architecture](architecture.md), [limitations](known-limitations.md) and [account recovery](../operations/authentication.md).
+
+
+## Local Bank workflow extension — 16 October 2026
+
+SME Owner Bank Access Management uses existing `manage_consents` authority scoped to the selected owned merchant. `/api/owner/banks/invite` accepts only merchant and new-recipient identity fields. Existing active BANK accounts are looked up by exact email and linked without modifying passwords, reset tokens, profile or role. New accounts use existing account validation/password hashing and a hashed, expiring, single-use reset token for initial activation. There is no email delivery integration; the Owner must deliver that new-account token privately to the intended recipient. Email/organization identity is not independently verified; this is a local simulated POC, not bank identity assurance.
+
+BANK financial reads continue through existing consent categories. Routed application metadata and decisions now additionally require current `applications` consent. Routing never substitutes for active consent. Owner/Staff/Admin cannot invoke Bank review decisions. `record_bank_review` remains the existing BANK permission; only the actual routed recipient can decide. Final simulated APPROVED/REJECTED packet updates, review history and audit inserts use the existing SQLite `BEGIN IMMEDIATE` transaction, preventing concurrent overwrites. Decision actor and time are backend-derived. No loans or funds are created.
+
+Digital Payments Simulator writes only dedicated simulator state tables. Its rows, statuses, wallets and current timestamps are excluded from financial analytics/versioning. Existing historical simulator journal records are retained as evidence, not reclassified as business revenue.

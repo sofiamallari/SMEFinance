@@ -14,14 +14,12 @@ class FinancialData:
         self.restore_payments()
     def rows(self,mid):
         records=self.journal.read()[0] if self.journal else self.ephemeral
-        return [copy.deepcopy(r) for r in records.values() if r['merchant_id']==mid]
+        return [copy.deepcopy(r) for r in records.values() if r['merchant_id']==mid and r.get('source')!='simulated_payment']
     def as_of(self,mid):
         days=[date.fromisoformat(r['business_date']) for r in self.rows(mid)]
-        days.extend(datetime.fromtimestamp(p.created_at,timezone.utc).astimezone(zone(OFFSETS.get(self.base[mid].country,'+00:00'))).date() for p in self.c.payments.payments.values() if p.merchant_id==mid)
         return max([self.c.as_of,*days])
     def version(self,mid):
-        payments=[(p.ref,p.status,p.amount,p.net_settled) for p in self.c.payments.payments.values() if p.merchant_id==mid]
-        return hashlib.sha256(json.dumps([self.rows(mid),payments,self.c.payments.wallets.get(mid,0),self.base[mid].currency,config.RBF,config.CASHFLOW],sort_keys=True,default=str).encode()).hexdigest()
+        return hashlib.sha256(json.dumps([self.rows(mid),self.base[mid].currency,config.RBF,config.CASHFLOW],sort_keys=True,default=str).encode()).hexdigest()
     def project(self,mid):
         m=copy.deepcopy(self.base[mid])
         for row in self.rows(mid):
@@ -31,7 +29,6 @@ class FinancialData:
             target=m.expenses if kind=='expense' else m.transactions
             target.append({'id':row['transaction_id'],'date':row['business_date'],'amount':float(abs(amount) if kind=='expense' else amount),
                            'channel':row['payment_method'],'category':row.get('category','other'),'count':1,'source':row['source']})
-        m.wallet_balance+=self.c.payments.wallets.get(mid,0)
         return m
     def validate(self,row,m):
         try:
@@ -75,49 +72,55 @@ class FinancialData:
                 if row.get('gross_amount') is None:gross_known=False
                 else:gross_total+=Decimal(row['gross_amount'])
             add(row['transaction_type'],Decimal(row['amount']),row['payment_method'],source)
-        for payment in self.c.payments.payments.values():
-            if payment.merchant_id==mid and payment.status!='PAID' and start<=datetime.fromtimestamp(payment.created_at,timezone.utc).astimezone(zone(OFFSETS.get(self.base[mid].country,'+00:00'))).date()<=end:
-                status='pending' if payment.status=='PENDING' else 'failed' if payment.status=='FAILED' else 'voided'
-                totals[status+'_transactions']+=1
         return {'merchant_id':mid,'currency':currency,'period_start':start.isoformat(),'period_end':end.isoformat(),
                 **{k:format(v.quantize(Decimal('.01')),'.2f') if isinstance(v,Decimal) else v for k,v in totals.items()},
                 'gross_sales':format(gross_total,'.2f') if gross_known else None,'net_income':format((totals['net_sales']-totals['expenses']).quantize(Decimal('.01')),'.2f'),
                 'payment_methods':{k:format(v.quantize(Decimal('.01')),'.2f') for k,v in methods.items()},'provenance':provenance,
                 'record_count':count,'data_version':self.version(mid),'as_of':datetime.now(timezone.utc).isoformat(),
-                'limitations':(['Gross sales are unavailable where sources provide net amounts without gross components.'] if not gross_known else [])+([__import__('copilot.currency_policy',fromlist=['legacy_note']).legacy_note(currency)] if currency!='CNY' else [])+['Recorded revenue is not available cash.','Synthetic seed and simulated payment activity are sandbox data, not bank settlement evidence.']}
+                'limitations':(['Gross sales are unavailable where sources provide net amounts without gross components.'] if not gross_known else [])+([__import__('copilot.currency_policy',fromlist=['legacy_note']).legacy_note(currency)] if currency!='CNY' else [])+['Recorded revenue is not available cash.','Synthetic seed data is demonstration evidence, not bank settlement evidence. Digital Payments Simulator activity is excluded.']}
     def dashboard(self,mid,start=None,end=None,granularity='monthly'):
         from copilot.modules.dashboard import build_dashboard
         result=build_dashboard(self.project(mid),self.as_of(mid),date.fromisoformat(start) if start else None,date.fromisoformat(end) if end else None,granularity)
         metrics=self.aggregate(mid,start,end)
+        result['channel_performance']=self.channel_performance(mid,start,end)
         result['financial_metrics']=metrics
         result['mix']['gross_revenue']=float(metrics['net_sales']) # compatibility label; UI now calls this recorded net sales
         result['expenses']=float(metrics['expenses']);result['net_income']=float(Decimal(metrics['net_sales'])-Decimal(metrics['expenses']))
         result['provenance']=metrics['provenance'];result['data_freshness']=metrics['as_of']
         return result
+    def channel_performance(self,mid,start=None,end=None):
+        """Recorded sales/payment counts and net values; simulator excluded by projection."""
+        metrics=self.aggregate(mid,start,end)
+        start=metrics['period_start'];end=metrics['period_end']
+        counts={}
+        for row in self.project(mid).transactions:
+            if start<=row['date']<=end:
+                channel=row['channel'];counts[channel]=counts.get(channel,0)+row.get('count',1)
+        amounts={k:Decimal(v) for k,v in metrics['payment_methods'].items()}
+        total=sum(counts.values());net=Decimal(metrics['net_sales'])
+        reconciled=sum(amounts.values(),Decimal(0))==net and set(counts)==set(amounts)
+        reason=None
+        if not reconciled:reason='Channel values cannot be reconciled with recorded net sales.'
+        elif total<=0:reason='No eligible recorded sales/payment transactions in this period.'
+        elif net<=0:reason='Revenue contribution is unavailable because total recorded net sales are zero or negative.'
+        elif any(v<0 for v in amounts.values()):reason='Revenue contribution is unavailable because a channel has negative recorded net sales.'
+        share_ok=reconciled and total>0 and net>0 and all(v>=0 for v in amounts.values())
+        return {'merchant_id':mid,'currency':metrics['currency'],'period_start':start,'period_end':end,
+                'available':reconciled and total>0,'revenue_available':share_ok,'message':reason,
+                'total_transactions':total,'net_sales':str(net),'channels':[
+                    {'channel':k,'label':config.CHANNELS[k]['label'],'transactions':counts[k],
+                     'net_sales':str(amounts.get(k,Decimal(0))),
+                     'count_percent':float(Decimal(counts[k])*100/total) if reconciled and total>0 else None,
+                     'revenue_percent':float(amounts[k]*100/net) if share_ok else None} for k in counts],
+                'note':'Completed recorded sales, refunds and reversals; expenses and Digital Payments Simulator excluded. Synthetic seed activity remains demo evidence. Percentages may differ slightly due to display rounding.'}
+
     def record_payment(self,p):
-        if p.status!='PAID':
-            self.persist_payment(p)
-            return
-        m=self.base[p.merchant_id]
-        stamp=datetime.fromtimestamp(p.paid_at,timezone.utc).isoformat()
-        values={'transaction_date':stamp,'net_amount':str(p.amount),'currency':p.currency,'transaction_type':'sale',
-                'payment_method':p.paid_channel,'status':'completed','external_reference':p.ref,'description':'Simulated payment; no real bank settlement',
-                'category':'sales','settlement_amount':str(p.net_settled)}
-        row=normalize(values,m,{'timezone':OFFSETS.get(m.country,'+00:00')},max(time.time(),p.paid_at))
-        row.update(transaction_id='PAY-'+p.ref,merchant_id=p.merchant_id,source='simulated_payment',import_batch_id=None,created_by='payment_service',created_at=stamp)
-        if self.journal:self.journal.append_batch('PAY-'+p.ref,p.merchant_id,[row])
-        else:self.ephemeral[row['transaction_id']]=row
+        # Simulator state has its own SQLite tables; never append a financial row.
         self.persist_payment(p)
     def record_refund(self,p,amount,reference):
-        m=self.base[p.merchant_id];stamp=datetime.now(timezone.utc).isoformat()
-        row=normalize({'transaction_date':stamp,'net_amount':str(amount),'currency':p.currency,'transaction_type':'refund','payment_method':p.paid_channel,
-                       'status':'completed','external_reference':reference,'category':'refunds','description':'Simulated payment refund'},m,{},time.time())
-        before_wallet=self.c.payments.wallets.get(p.merchant_id,0)
-        after_wallet=round(before_wallet-amount*(1-p.mdr_rate),2) if p.net_settled else before_wallet
-        wallet_delta=Decimal(str(after_wallet))-Decimal(str(before_wallet))
-        row.update(transaction_id='REF-'+reference,merchant_id=p.merchant_id,source='simulated_payment',related_payment_reference=p.ref,wallet_delta=format(wallet_delta,'.2f'),import_batch_id=None,created_by='payment_service',created_at=stamp)
-        if self.journal:self.journal.append_batch('REF-'+reference,p.merchant_id,[row])
-        else:self.ephemeral[row['transaction_id']]=row
+        # Final simulator state/refund idempotency is persisted by its event callback.
+        # No canonical ledger, cash-flow or financial report writes are permitted.
+        return None
 
     def persist_payment(self,p):
         auth=self.c.identity_store
@@ -149,7 +152,7 @@ class FinancialData:
                 self.c.payments.wallets[row['merchant_id']]=float(amount)
         for row in refunds:
             if row['merchant_id'] in self.c.merchants:self.c.payments.refunds[row['idempotency_key']]=json.loads(row['result_json'])
-        self.reconcile_payment_state()
+        # Historical simulator ledger evidence is retained, never replayed into analytics.
 
     def existing_refund(self,p,amount,reference):
         records=self.journal.read()[0] if self.journal else self.ephemeral

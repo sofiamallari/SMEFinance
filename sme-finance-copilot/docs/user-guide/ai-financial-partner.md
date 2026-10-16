@@ -1,6 +1,8 @@
 # AI Financial Partner
 
-Current implemented guide · 15 October 2026.
+Local governed-chat update · 16 October 2026.
+
+See [AI governance and current permission gaps](../technical/ai-governance.md). Live AI and public research are disabled by default; deterministic results are labeled. Staff conditional financial reads and Bank financing tools remain blocked pending the exact granular permissions.
 
 ## Purpose
 
@@ -21,7 +23,8 @@ Header AI icon → existing AI Financial Partner drawer → AI Chat.
 3. Ask about recorded performance, supported financing, cash flow, applications or application workflows.
 4. Check the reporting period, source and limitations in the response.
 5. Navigate modules without creating a second assistant; close/reopen the existing drawer as needed.
-6. Review sensitive actions only through their existing authorized confirmation workflow.
+6. Use New to clear this conversation. Refresh, logout and merchant switching clear it; closing/reopening the drawer does not.
+7. The assistant cannot execute financial actions. Use the existing business modules for their separately authorized workflows. Public searches require exact-query, expiring, single-use approval.
 
 ## Understanding results and statuses
 
@@ -33,7 +36,7 @@ Provider timeout/unavailability may produce a fallback or readable failure. A fo
 
 ## Important limitations
 
-No credit approvals, real money transfers or permission overrides. Conversation persistence is session/page-context limited; refresh/logout restoration is not a promised cross-session history service. Bank portal has no AI drawer.
+No credit approvals, real money transfers or permission overrides. Conversation lives only in the active page/session; it is not restored after refresh or logout. A new page on the same login invalidates the old conversation. Bank portal has no AI drawer.
 
 ## Related guides
 

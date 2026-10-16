@@ -11,7 +11,7 @@ class FourRoleWorkflow(unittest.TestCase):
  def setUp(self):
   setup_identity(self,all_merchants=True);self.w=BankWorkflow(self.auth,self.c)
  def consent(self,categories=None):
-  return self.auth.grant_consent(self.tokens['owner'],{'merchant':'M002','recipient_id':self.ids['lender_analyst'],'purpose':'Synthetic Bank review','categories':categories or ['reports','assessment','forecasts','financing','applications'],'expires_at':self.auth.clock()+3600})
+  return self.auth.grant_consent(self.tokens['owner'],{'merchant':'M002','recipient_id':self.ids['lender_analyst'],'purpose':'Synthetic Bank review','allow_download':True,'categories':categories or ['reports','assessment','forecasts','financing','applications'],'expires_at':self.auth.clock()+3600})
  def grantstaff(self,actions):
   self.w.staff(self.tokens['owner'],'M002',self.ids['staff'],{'permissions':actions})
   self.tokens['staff']=self.auth.login('staff',PASSWORD)[0]

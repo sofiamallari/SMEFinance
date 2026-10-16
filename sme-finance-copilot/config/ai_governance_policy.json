@@ -1,7 +1,7 @@
 {
   "metadata": {
     "policy_id": "sme-finance-ai-governance",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "status": "proposed",
     "default_effect": "deny",
     "schema_version": "1.0.0",
@@ -181,6 +181,105 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       }
+    },
+    "cash_impact_scenario_run": {
+      "description": "Non-mutating hypothetical cash impact using synthetic opening conditions",
+      "data_classification_ceiling": "D2",
+      "role_effects": {
+        "SME_OWNER": "allow",
+        "SME_STAFF": "conditional",
+        "BANK": "deny",
+        "SYSTEM_ADMIN": "deny"
+      },
+      "required_application_permission": "finance.cash_scenario.run"
+    },
+    "transaction_detail_read": {
+      "description": "Read one recorded transaction by its reference, as shown in Transaction History",
+      "data_classification_ceiling": "D2",
+      "role_effects": {
+        "SME_OWNER": "allow",
+        "SME_STAFF": "conditional",
+        "BANK": "deny",
+        "SYSTEM_ADMIN": "deny"
+      },
+      "required_application_permission": "finance.transactions.read"
+    },
+    "data_quality_read": {
+      "description": "Read import status, data-quality rates and open data-quality alerts",
+      "data_classification_ceiling": "D1",
+      "role_effects": {
+        "SME_OWNER": "allow",
+        "SME_STAFF": "conditional",
+        "BANK": "deny",
+        "SYSTEM_ADMIN": "deny"
+      },
+      "required_application_permission": "finance.data_quality.read"
+    },
+    "income_summary_read": {
+      "description": "Read recorded net sales, expenses and net income for a period",
+      "data_classification_ceiling": "D2",
+      "role_effects": {
+        "SME_OWNER": "allow",
+        "SME_STAFF": "conditional",
+        "BANK": "deny",
+        "SYSTEM_ADMIN": "deny"
+      },
+      "required_application_permission": "finance.income.read"
+    },
+    "cash_flow_alerts_read": {
+      "description": "Read the existing rule-based cash-flow alerts and recommended actions",
+      "data_classification_ceiling": "D2",
+      "role_effects": {
+        "SME_OWNER": "allow",
+        "SME_STAFF": "conditional",
+        "BANK": "deny",
+        "SYSTEM_ADMIN": "deny"
+      },
+      "required_application_permission": "finance.cashflow.read"
+    },
+    "financing_matches_read": {
+      "description": "Read indicative financing matches; not offers or approvals",
+      "data_classification_ceiling": "D2",
+      "role_effects": {
+        "SME_OWNER": "allow",
+        "SME_STAFF": "conditional",
+        "BANK": "deny",
+        "SYSTEM_ADMIN": "deny"
+      },
+      "required_application_permission": "finance.financing.read"
+    },
+    "rbf_quote_read": {
+      "description": "Read an indicative revenue-based financing simulation; not an offer",
+      "data_classification_ceiling": "D2",
+      "role_effects": {
+        "SME_OWNER": "allow",
+        "SME_STAFF": "conditional",
+        "BANK": "deny",
+        "SYSTEM_ADMIN": "deny"
+      },
+      "required_application_permission": "finance.financing.read"
+    },
+    "business_maturity_read": {
+      "description": "Read the existing business maturity assessment, stage and next-stage gap",
+      "data_classification_ceiling": "D2",
+      "role_effects": {
+        "SME_OWNER": "allow",
+        "SME_STAFF": "conditional",
+        "BANK": "deny",
+        "SYSTEM_ADMIN": "deny"
+      },
+      "required_application_permission": "finance.assessment.read"
+    },
+    "loan_repayment_calculation": {
+      "description": "Standard fixed-rate loan repayment arithmetic from user-supplied amount, rate and term",
+      "data_classification_ceiling": "D1",
+      "role_effects": {
+        "SME_OWNER": "allow",
+        "SME_STAFF": "conditional",
+        "BANK": "deny",
+        "SYSTEM_ADMIN": "deny"
+      },
+      "required_application_permission": "finance.loan_calculation.run"
     }
   },
   "tools": {
@@ -196,7 +295,8 @@
         "currency",
         "recorded_net_sales",
         "transaction_count",
-        "source_timestamp"
+        "source_timestamp",
+        "coverage"
       ],
       "approval": "none",
       "read_only": true,
@@ -216,7 +316,8 @@
         "granularity",
         "transaction_count",
         "recorded_net_sales",
-        "source_timestamp"
+        "source_timestamp",
+        "coverage"
       ],
       "approval": "none",
       "read_only": true,
@@ -254,7 +355,15 @@
         "cash_inflows",
         "cash_outflows",
         "net_cash_flow",
-        "available_cash_if_verified"
+        "available_cash_if_verified",
+        "opening_balance",
+        "opening_balance_date",
+        "latest_data_date",
+        "closing_balance",
+        "min_balance",
+        "runway_days",
+        "buffer_days",
+        "limitations"
       ],
       "approval": "none",
       "read_only": true,
@@ -356,6 +465,239 @@
       "server_authorization_required": true,
       "result_max_records": 100,
       "timeout_seconds": 10
+    },
+    "run_cash_impact_scenario": {
+      "capability": "cash_impact_scenario_run",
+      "resource_scope": "authorized_merchant",
+      "allowed_data_classes": [
+        "D2"
+      ],
+      "output_field_allowlist": [
+        "currency",
+        "assessment_date",
+        "opening_balance_date",
+        "latest_data_date",
+        "synthetic_opening_balance",
+        "horizon_days",
+        "baseline",
+        "adjusted",
+        "user_cash_baseline",
+        "user_cash_adjusted",
+        "schedule",
+        "limitations",
+        "assumed_changes"
+      ],
+      "approval": "none",
+      "read_only": true,
+      "server_authorization_required": true,
+      "result_max_records": 100,
+      "timeout_seconds": 10
+    },
+    "get_transaction_details": {
+      "capability": "transaction_detail_read",
+      "resource_scope": "authorized_merchant",
+      "allowed_data_classes": [
+        "D2"
+      ],
+      "output_field_allowlist": [
+        "found",
+        "transaction_id",
+        "reference",
+        "business_date",
+        "transaction_type",
+        "amount",
+        "currency",
+        "payment_method",
+        "status",
+        "description",
+        "category",
+        "source"
+      ],
+      "approval": "none",
+      "read_only": true,
+      "server_authorization_required": true,
+      "result_max_records": 1,
+      "timeout_seconds": 10
+    },
+    "get_recent_transactions": {
+      "capability": "transaction_detail_read",
+      "resource_scope": "authorized_merchant",
+      "allowed_data_classes": [
+        "D2"
+      ],
+      "output_field_allowlist": [
+        "transaction_id",
+        "reference",
+        "business_date",
+        "transaction_type",
+        "amount",
+        "currency",
+        "payment_method",
+        "status",
+        "description",
+        "category",
+        "source"
+      ],
+      "approval": "none",
+      "read_only": true,
+      "server_authorization_required": true,
+      "result_max_records": 20,
+      "timeout_seconds": 10
+    },
+    "get_data_quality": {
+      "capability": "data_quality_read",
+      "resource_scope": "authorized_merchant",
+      "allowed_data_classes": [
+        "D1"
+      ],
+      "output_field_allowlist": [
+        "total_import_runs",
+        "successful_imports",
+        "failed_imports",
+        "parsed_rows",
+        "valid_row_rate",
+        "invalid_row_rate",
+        "open_alerts",
+        "last_successful_import",
+        "attention"
+      ],
+      "approval": "none",
+      "read_only": true,
+      "server_authorization_required": true,
+      "result_max_records": 1,
+      "timeout_seconds": 10
+    },
+    "get_income_summary": {
+      "capability": "income_summary_read",
+      "resource_scope": "authorized_merchant",
+      "allowed_data_classes": [
+        "D2"
+      ],
+      "output_field_allowlist": [
+        "period",
+        "currency",
+        "net_sales",
+        "expenses",
+        "net_income",
+        "record_count",
+        "coverage"
+      ],
+      "approval": "none",
+      "read_only": true,
+      "server_authorization_required": true,
+      "result_max_records": 1,
+      "timeout_seconds": 10
+    },
+    "get_cash_flow_alerts": {
+      "capability": "cash_flow_alerts_read",
+      "resource_scope": "authorized_merchant",
+      "allowed_data_classes": [
+        "D2"
+      ],
+      "output_field_allowlist": [
+        "severity",
+        "code",
+        "message",
+        "recommended_action"
+      ],
+      "approval": "none",
+      "read_only": true,
+      "server_authorization_required": true,
+      "result_max_records": 10,
+      "timeout_seconds": 10
+    },
+    "get_financing_matches": {
+      "capability": "financing_matches_read",
+      "resource_scope": "authorized_merchant",
+      "allowed_data_classes": [
+        "D2"
+      ],
+      "output_field_allowlist": [
+        "product",
+        "provider_type",
+        "match_score",
+        "indicative_size",
+        "indicative_annual_cost",
+        "rationale",
+        "disclaimer"
+      ],
+      "approval": "none",
+      "read_only": true,
+      "server_authorization_required": true,
+      "result_max_records": 10,
+      "timeout_seconds": 10
+    },
+    "get_rbf_quote": {
+      "capability": "rbf_quote_read",
+      "resource_scope": "authorized_merchant",
+      "allowed_data_classes": [
+        "D2"
+      ],
+      "output_field_allowlist": [
+        "currency",
+        "advance",
+        "fee",
+        "fee_rate",
+        "total_repayable",
+        "remittance_rate",
+        "remittance_basis",
+        "estimated_payoff_days",
+        "effective_annualised_cost",
+        "min_advance",
+        "max_advance",
+        "disclaimer"
+      ],
+      "approval": "none",
+      "read_only": true,
+      "server_authorization_required": true,
+      "result_max_records": 1,
+      "timeout_seconds": 10
+    },
+    "get_business_maturity": {
+      "capability": "business_maturity_read",
+      "resource_scope": "authorized_merchant",
+      "allowed_data_classes": [
+        "D2"
+      ],
+      "output_field_allowlist": [
+        "as_of",
+        "stage",
+        "stage_name",
+        "composite_score",
+        "scores",
+        "next_stage_name",
+        "composite_gap",
+        "top_constraints",
+        "note"
+      ],
+      "approval": "none",
+      "read_only": true,
+      "server_authorization_required": true,
+      "result_max_records": 1,
+      "timeout_seconds": 10
+    },
+    "calculate_loan_repayment": {
+      "capability": "loan_repayment_calculation",
+      "resource_scope": "authorized_merchant",
+      "allowed_data_classes": [
+        "D1"
+      ],
+      "output_field_allowlist": [
+        "currency",
+        "principal",
+        "annual_rate_percent",
+        "months",
+        "monthly_payment",
+        "total_paid",
+        "total_interest",
+        "schedule",
+        "alternative"
+      ],
+      "approval": "none",
+      "read_only": true,
+      "server_authorization_required": true,
+      "result_max_records": 1,
+      "timeout_seconds": 5
     }
   },
   "authorization_policy": {
@@ -409,7 +751,12 @@
     "allow_unapproved_retry": false,
     "max_queries_per_approval": 1,
     "max_results_per_search": 5,
-    "timeout_seconds": 10
+    "timeout_seconds": 10,
+    "allowed_topics": [
+      "sme_lending_rates",
+      "industry_benchmarks",
+      "regulations_tax"
+    ]
   },
   "simulation_policy": {
     "require_explicit_user_request": true,
