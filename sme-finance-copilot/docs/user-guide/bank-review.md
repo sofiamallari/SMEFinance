@@ -1,6 +1,6 @@
 # Bank Financing Applications and Simulated Review
 
-Current implemented guide · 15 October 2026.
+Current implemented guide · 16 October 2026.
 
 ## Purpose
 
@@ -8,7 +8,7 @@ Record and communicate scoped Bank review feedback.
 
 ## Access and prerequisites
 
-Bank account receiving the request, live role permission and assignment. Financial data additionally requires valid category consent.
+Bank account receiving the request, live role permission, assignment, and active applications-category consent. Other financial data independently requires its category consent.
 
 ## Navigation
 
@@ -18,22 +18,22 @@ Bank → Financing Applications → View Details → Request Details / Financial
 
 1. Find a request explicitly routed to your Bank.
 2. Review request metadata and available authorized financial evidence.
-3. In Bank Review choose Reviewed, More Information Needed or Ready for Further Assessment.
-4. Provide notes; a note is required for More Information Needed.
+3. In Bank Review choose Reviewed, More Information Needed or Ready for Further Assessment for preliminary feedback; choose Approve · Simulated or Reject · Simulated for a final decision.
+4. Provide notes; a note is required for More Information Needed and rejection.
 5. Save the review and inspect the appended History entry.
 6. Owner opens Financing → Applications → View Application to see feedback.
 
 ## Understanding results and statuses
 
-Reviews append history and do not change the request into an approved/rejected/disbursed loan. Correct recipient identity remains required for review.
+Preliminary reviews append history without changing submission status. Final decisions change SUBMITTED_FOR_LENDER_REVIEW to APPROVED or REJECTED atomically with audit/history. Final decisions cannot be overwritten, repeated, or reopened through this workflow. These are simulated statuses, not a real approved/rejected/disbursed loan. Correct recipient identity and active applications consent remain required.
 
 ## Common errors and troubleshooting
 
-An inaccessible request may belong to another Bank or an inactive merchant. Missing financial sections can reflect revoked/expired/category-limited consent while request metadata remains routed.
+An inaccessible request may belong to another Bank or an inactive merchant. Missing sections can reflect category-limited consent. Revoked/expired applications consent blocks request access and decisions even if the recipient routing remains stored.
 
 ## Important limitations
 
-Only the three simulated outcomes are supported. Prior downloads cannot be recalled; review notes are not underwriting decisions. Existing CSV financial export is supported; PDF/XLSX/email export is not.
+The three preliminary outcomes and two final simulated decisions are supported. Prior downloads cannot be recalled; simulated decisions and review notes are not actual underwriting decisions. Existing CSV financial export is supported; PDF/XLSX/email export is not.
 
 ## Related guides
 

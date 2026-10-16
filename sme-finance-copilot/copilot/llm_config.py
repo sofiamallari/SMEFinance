@@ -3,7 +3,8 @@ import os
 from pathlib import Path
 
 LLM_KEYS = frozenset({'COPILOT_LLM_BASE_URL', 'COPILOT_LLM_API_KEY',
-                      'COPILOT_LLM_MODEL', 'COPILOT_AGENT_MODE', 'FINANCIAL_SURVIVAL_SIMULATION_ENABLED'})
+                      'COPILOT_LLM_MODEL', 'COPILOT_AGENT_MODE', 'FINANCIAL_SURVIVAL_SIMULATION_ENABLED',
+                      'COPILOT_GOVERNED_LIVE','COPILOT_RESEARCH_PROVIDER','COPILOT_RESEARCH_API_KEY'})
 
 def load_llm_env(path=None, environ=None):
     env = os.environ if environ is None else environ

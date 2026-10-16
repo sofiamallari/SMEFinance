@@ -114,7 +114,7 @@ class AuthStore:
         last = db.execute('SELECT seq,hash FROM audit_events ORDER BY seq DESC LIMIT 1').fetchone()
         logger = AuditLog(clock=self.clock)
         logger.prev = last['hash'] if last else 'GENESIS'
-        safe_metadata={k:v for k,v in (metadata or {}).items() if k in {'schema_version','configuration_digest','change_count'}}
+        safe_metadata={k:v for k,v in (metadata or {}).items() if k in {'schema_version','configuration_digest','change_count','tool','policy_version','approval_reference'}}
         record = logger.write(**safe_metadata,seq=last['seq']+1 if last else 1, action=action,
             actor=actor.user_id if isinstance(actor,Principal) else actor,
             role=actor.role if isinstance(actor,Principal) else None, merchant_id=merchant,

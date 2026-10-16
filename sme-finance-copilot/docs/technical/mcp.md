@@ -1,5 +1,7 @@
 # Authenticated MCP
 
+> Local governance branch: authenticated MCP now requires a page-session conversation and exposes only the approved registry. The legacy tool names and examples below are historical until migrated. See [governed MCP lifecycle and contracts](ai-governance.md#mcp-compatibility-change).
+
 Use the initialized active CNY dataset and normal application server. HTTP POST /mcp uses the authenticated session. Cookie clients send the current CSRF token and satisfy origin checks; legitimate non-browser clients can use a server-issued bearer session. An MCP API key or environment role/consent setting never substitutes for a live session.
 
 Stdio entry point is `python -m copilot.mcp_server` with COPILOT_MCP_SESSION_TOKEN supplied privately. Dataset/storage selection must match the application’s active identity database and canonical journal; conflicting overrides fail startup. Never put tokens in Git, documentation or command transcripts. HTTP MCP on the running app avoids independent stale copies of transaction state; do not run multiple writing service processes against the same POC stores.

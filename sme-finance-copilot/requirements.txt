@@ -1,5 +1,7 @@
 # Currency metadata (CLDR) and portable IANA timezone database.
 Babel>=2.17,<3
 tzdata>=2025.2
+# Governed AI configuration and minimized tool input/output validation.
+jsonschema>=4.23,<5
 # Optional, for running tests with pytest instead of unittest:
 pytest>=7

@@ -26,6 +26,8 @@ The standard-library HTTP server serves the static UI, JSON API and authenticate
 
 ## Documentation
 
+- [AI Financial Partner 2.0: local governance, tool contracts and limitations](docs/technical/ai-governance.md)
+
 - [User guides](docs/user-guide/README.md)
 - [Canonical roles, delegation and Bank consent](docs/technical/security-permissions.md)
 - [Architecture and financial algorithms](docs/technical/README.md)

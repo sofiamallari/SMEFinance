@@ -19,9 +19,8 @@ async function assessmentForMerchant(){
  const mid=M.id;
  if(dashboardAssessment?.merchant_id===mid)return dashboardAssessment;
  if(dashboardAssessmentPromise?.mid===mid)return dashboardAssessmentPromise.promise;
- const promise=api('/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:'owner-maturity',method:'tools/call',params:{name:'assess_business',arguments:{merchant_id:mid}}})}).then(r=>{
-  if(r.error||r.result?.isError||!r.result?.structuredContent)throw Error('The current assessment is unavailable or not authorized.');
-  const assessment=r.result.structuredContent;if(M?.id!==mid||assessment.merchant_id!==mid)throw Error('Merchant changed.');
+ const promise=api('/api/assessment?merchant='+encodeURIComponent(mid)).then(r=>{
+  const assessment=r;if(M?.id!==mid||assessment.merchant_id!==mid)throw Error('Merchant changed.');
   dashboardAssessment=assessment;return assessment;
  }).finally(()=>{if(dashboardAssessmentPromise?.mid===mid)dashboardAssessmentPromise=null});
  dashboardAssessmentPromise={mid,promise};return promise;
@@ -38,9 +37,9 @@ async function loadBusinessAlerts(){
  if(businessAlertsLoaded)return;
  const mid=M.id,request=++alertRequest,box=$('#business-alerts');box.textContent='Loading notifications…';
  if(!can('view_forecasts')){box.textContent='Business alerts are not delegated to this account.';return}
- try{const response=await api('/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:'owner-alerts',method:'tools/call',params:{name:'cashflow_alerts',arguments:{merchant_id:mid}}})});
-  if(M.id!==mid||request!==alertRequest)return;if(response.error||response.result?.isError)throw Error('Alerts unavailable');
-  businessAlertRows=response.result.structuredContent.items;dismissedBusinessAlerts.clear();businessAlertsRetrieved=new Date();
+ try{const response=await api('/api/business-alerts?merchant='+encodeURIComponent(mid));
+  if(M.id!==mid||request!==alertRequest)return;
+  businessAlertRows=response.items;dismissedBusinessAlerts.clear();businessAlertsRetrieved=new Date();
   if(!businessAlertRows.some(a=>a.severity===businessAlertState.severity))businessAlertState.severity='all';
   businessAlertState.page=1;businessAlertsLoaded=true;renderCompactBusinessAlerts();
  }catch(error){if(M.id===mid&&request===alertRequest)box.textContent='Notifications could not be loaded. Close and reopen to try again.'}

@@ -16,6 +16,7 @@ payment scheme.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import re
 import secrets
@@ -79,7 +80,12 @@ class Payment:
 def synchronized(method):
     @wraps(method)
     def invoke(self,*args,**kwargs):
-        with self.lock:return method(self,*args,**kwargs)
+        with self.lock:
+            snapshot=copy.deepcopy((self.payments,self.idempotency,self.wallets,self.refunds,self.events))
+            try:return method(self,*args,**kwargs)
+            except Exception:
+                self.payments,self.idempotency,self.wallets,self.refunds,self.events=snapshot
+                raise
     return invoke
 
 class PaymentSimulator:

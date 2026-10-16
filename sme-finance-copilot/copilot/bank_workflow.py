@@ -7,6 +7,34 @@ from copilot.authorization import STAFF_ACTIONS
 
 class BankWorkflow:
     def __init__(self,auth,copilot):self.a=auth;self.c=copilot
+    def invite_bank(self,token,body):
+        """Owner-scoped provisioning; never reset or edit an existing account."""
+        from copilot.auth import digest
+        if not isinstance(body,dict) or set(body)-{'merchant','username','email','display_name','organization'}:raise InputError('Unsupported Bank invitation fields')
+        mid=body.get('merchant')
+        if not isinstance(mid,str) or not mid:raise InputError('Merchant required')
+        with self.a.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            self.a._authorize(db,token,'manage_consents',mid)
+            session=self.a._session(db,token,touch=False)
+            actor=Principal(session['user_id'],session['role'])
+            if actor.role!='owner':raise AccessDenied('SME Owner required')
+            email=body.get('email','')
+            if not isinstance(email,str) or '@' not in email or len(email)>150:raise InputError('Valid Bank email required')
+            existing=db.execute('SELECT * FROM users WHERE lower(email)=lower(?)',(email.strip(),)).fetchone()
+            if existing:
+                if existing['role']!='BANK' or existing['account_status']!='active':raise InputError('This account cannot receive Bank access',409)
+                uid=existing['user_id'];invitation=None
+            else:
+                user=self.a._create(db,actor,{'username':body.get('username'),'email':email.strip(),'display_name':body.get('display_name'),'organization':body.get('organization'),'role':'BANK','merchants':[mid]},secrets.token_urlsafe(48)+'Aa1!',True)
+                uid=user['user_id'];invitation=secrets.token_urlsafe(32)
+                db.execute('INSERT INTO reset_tokens VALUES (?,?,?,0)',(digest(invitation),uid,self.a.clock()+self.a.policies(db)['reset_expiration']))
+                self.a.audit('bank_invitation_created',actor,mid,uid,db=db)
+            db.execute('INSERT OR IGNORE INTO memberships VALUES (?,?)',(uid,mid))
+            self.a.audit('bank_membership_assigned',actor,mid,uid,db=db)
+            row=db.execute('SELECT display_name,organization FROM users WHERE user_id=?',(uid,)).fetchone()
+            return {'recipient':{'user_id':uid,**dict(row)},'created':invitation is not None,'invitation_token':invitation,'expires_in':self.a.policies(db)['reset_expiration'] if invitation else None,'message':'New Bank invitation: securely deliver the one-time activation token to the intended recipient. No email was sent.' if invitation else 'Existing Bank linked. Its credentials and profile were not changed. Grant explicit data categories separately.'}
+
     def merchants(self,token):
         """Own active Owner grants only; never a directory of unrelated users."""
         self.a.authorize(token,'view_bank_review');p=self.a.principal(token)
@@ -43,7 +71,14 @@ class BankWorkflow:
         args=[actor.user_id]
         if aid:query+=' AND a.application_id=?';args.append(aid)
         rows=db.execute(query+' ORDER BY a.created_at DESC,a.application_id',args).fetchall()
-        rows=[row for row in rows if row['merchant_id'] in self.a.merchants]
+        authorized=[]
+        for row in rows:
+            try:
+                self.a._authorize(db,token,'view_applications',row['merchant_id'])
+                if action!='view_bank_review':self.a._authorize(db,token,action,row['merchant_id'])
+            except AccessDenied:continue
+            authorized.append(row)
+        rows=authorized
         if aid and not rows:raise AccessDenied('Application is not available to this Bank')
         return actor,rows
 
@@ -63,17 +98,21 @@ class BankWorkflow:
     def record_review(self,token,aid,body):
         if not isinstance(body,dict) or set(body)-{'outcome','note'}:raise InputError('Unsupported review fields')
         outcome=body.get('outcome');note=body.get('note','')
-        if outcome not in ('reviewed','more_information_needed','ready_for_further_assessment'):raise InputError('Select a supported simulated review outcome')
+        if outcome not in ('reviewed','more_information_needed','ready_for_further_assessment','approved','rejected'):raise InputError('Select a supported simulated review outcome')
         if not isinstance(note,str) or len(note.strip())>1000:raise InputError('Review notes must be text, at most 1000 characters')
         note=note.strip()
-        if outcome=='more_information_needed' and not note:raise InputError('Review notes are required when more information is needed')
+        if outcome in ('more_information_needed','rejected') and not note:raise InputError('Review notes are required when more information is needed')
         with self.a.db() as db:
             db.execute('BEGIN IMMEDIATE');actor,rows=self._routed(db,token,aid,'record_bank_review');row=rows[0];packet=json.loads(row['packet'])
             if packet.get('status')!='SUBMITTED_FOR_LENDER_REVIEW':raise InputError('Application is not in a reviewable submitted state',409)
             stamp=self.a.clock()
+            if outcome in ('approved','rejected'):
+                packet.update(status=outcome.upper(),decision_at=stamp,decision_by=actor.user_id,decision_note=note,simulated_decision=True)
+                db.execute('UPDATE applications SET packet=? WHERE application_id=?',(json.dumps(packet),aid))
+                self.a.audit('financing_simulated_'+outcome,actor,row['merchant_id'],aid,db=db,reason=outcome)
             db.execute('INSERT INTO application_reviews VALUES (?,?,?,?,?,?)',(secrets.token_hex(12),aid,actor.user_id,outcome,note,stamp))
             self.a.audit('financing_review_recorded',actor,row['merchant_id'],aid,db=db,reason=outcome)
-            return {'ok':True,'outcome':outcome,'created_at':stamp,'sandbox':True,'disclaimer':'Simulated review only; not credit approval'}
+            return {'ok':True,'outcome':outcome,'created_at':stamp,'sandbox':True,'disclaimer':'Simulated decision/review only; no real credit approval, loan or disbursement'}
 
     def staff(self,token,mid,uid=None,body=None):
         self.a.authorize(token,'manage_merchant_staff',mid);p=self.a.principal(token)

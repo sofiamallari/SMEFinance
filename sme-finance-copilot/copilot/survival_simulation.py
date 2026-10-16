@@ -42,7 +42,7 @@ class SurvivalSimulation:
         if not periods:return {**result,'message':'Insufficient financial data to run a reliable simulation.'}
         n=Decimal(len(periods));sales=Decimal(amount(sum(Decimal(m['sales']) for m in periods)/n));expenses=Decimal(amount(sum(Decimal(m['expenses']) for m in periods)/n))
         return {**result,'period_start':periods[0]['start'],'period_end':periods[-1]['end'],'monthly_sales':amount(sales),'monthly_expenses':amount(expenses),'monthly_operating_result':amount(sales-expenses)}
-    def run(self,token,mid,body):
+    def run(self,token,mid,body,*,narrate=True):
         actor=self.guard(token,mid);self.auth.audit('survival_simulation_requested',actor,mid,result='requested')
         try:
             if not isinstance(body,dict) or set(body)!={'merchant','sales_change_percent','expense_change_percent','months','confirmed'} or body['confirmed'] is not True or body['merchant']!=mid:raise InputError('Review the three scenario inputs and confirm Run Simulation')
@@ -57,7 +57,7 @@ class SurvivalSimulation:
             sales=Decimal(baseline['monthly_sales']);expenses=Decimal(baseline['monthly_expenses']);base=Decimal(baseline['monthly_operating_result'])
             simulated_sales=Decimal(amount(sales*(1+values[0]/100)));simulated_expenses=Decimal(amount(expenses*(1+values[1]/100)));operating=simulated_sales-simulated_expenses
             result={'merchant_id':mid,'baseline':baseline,'assumptions':{k:body[k] for k in ('sales_change_percent','expense_change_percent','months')},'simulated_monthly_sales':amount(simulated_sales),'simulated_monthly_expenses':amount(simulated_expenses),'simulated_monthly_operating_result':amount(operating),'monthly_impact':amount(operating-base),'sales_contribution':amount(simulated_sales-sales),'expense_contribution':amount(expenses-simulated_expenses),'cumulative_operating_result':amount(operating*body['months']),'projection':[{'month':i,'baseline':amount(base*i),'simulated':amount(operating*i)} for i in range(body['months']+1)],'classification':'HYPOTHETICAL_SIMULATION'}
-            result['explanation']=explain(result)
+            result['explanation']=explain(result) if narrate else None
             self.guard(token,mid)
             if baseline['data_version']!=self.c.financial_data.version(mid):raise InputError('Business data changed during simulation; run again',409)
             self.auth.audit('survival_simulation_completed',actor,mid)

@@ -1,7 +1,7 @@
 import copy,json,tempfile,time,unittest
 from decimal import Decimal
 from unittest.mock import patch
-from copilot.agent import Copilot
+from copilot.agent import Copilot,money
 from copilot.security import Principal,AccessDenied
 from copilot.reliability import EvidenceError,claim,fact,validate_claims
 from copilot.canonical_transactions import normalize
@@ -31,29 +31,29 @@ class TestPartnerAcceptance(unittest.TestCase):
         with patch.dict('os.environ',{'COPILOT_LLM_BASE_URL':'https://example.invalid','COPILOT_LLM_API_KEY':'dummy','COPILOT_LLM_MODEL':'fake','COPILOT_AGENT_MODE':'auto'}),patch('copilot.ai_agent._post',side_effect=model):
             return self.c.handle(principal or self.p,'M002',text)
     def test_T01_empty_records_zero_revenue(self):
-        self.empty();r=self.ai('Show recorded sales');self.assertIn('Recorded net sales: 0.00',r['reply']);self.assertEqual(r['data']['financial_metrics']['record_count'],0)
+        self.empty();r=self.ai('Show recorded sales');self.assertIn('Recorded net sales: '+money(0,self.c.merchants['M002'].currency),r['reply']);self.assertEqual(r['data']['financial_metrics']['record_count'],0)
     def test_T02_simulated_payment_provenance(self):
         self.empty();p=self.c.payments.create(self.c.merchants['M002'],'qr_pay',amount=100);self.c.payments.simulate_customer_payment(p.ref)
-        r=self.c.financial_data.aggregate('M002');self.assertEqual(r['net_sales'],'100.00');self.assertEqual(r['provenance'],{'simulated_payment':1})
+        r=self.c.financial_data.aggregate('M002');self.assertEqual(r['net_sales'],'0.00');self.assertEqual(r['provenance'],{});self.assertEqual(p.status,'PAID')
     def test_T03_pending_excluded(self):
         self.empty();self.c.payments.create(self.c.merchants['M002'],'qr_pay',amount=100)
-        r=self.c.financial_data.aggregate('M002');self.assertEqual(r['net_sales'],'0.00');self.assertEqual(r['pending_transactions'],1)
+        r=self.c.financial_data.aggregate('M002');self.assertEqual(r['net_sales'],'0.00');self.assertEqual(r['pending_transactions'],0)
     def test_T04_failed_excluded(self):
         self.empty();p=self.c.payments.create(self.c.merchants['M002'],'qr_pay',amount=100);self.c.payments.fail(p.ref)
-        r=self.c.financial_data.aggregate('M002');self.assertEqual(r['net_sales'],'0.00');self.assertEqual(r['failed_transactions'],1)
+        r=self.c.financial_data.aggregate('M002');self.assertEqual(r['net_sales'],'0.00');self.assertEqual(r['failed_transactions'],0)
     def test_T05_full_refund(self):
         self.empty();p=self.c.payments.create(self.c.merchants['M002'],'qr_pay',amount=100);self.c.payments.simulate_customer_payment(p.ref);self.c.payments.refund(p.ref,100,'refund1')
-        r=self.c.financial_data.aggregate('M002');self.assertEqual(r['net_sales'],'0.00');self.assertEqual(r['refunds'],'100.00')
+        r=self.c.financial_data.aggregate('M002');self.assertEqual(r['net_sales'],'0.00');self.assertEqual(r['refunds'],'0.00');self.assertEqual(p.refunded_amount,100)
     def test_T06_partial_refund(self):
         self.empty();p=self.c.payments.create(self.c.merchants['M002'],'qr_pay',amount=100);self.c.payments.simulate_customer_payment(p.ref);self.c.payments.refund(p.ref,25,'refund1')
-        self.assertEqual(self.c.financial_data.aggregate('M002')['net_sales'],'75.00')
+        self.assertEqual(self.c.financial_data.aggregate('M002')['net_sales'],'0.00')
     def test_T07_identity_key_prevents_duplicate_projection(self):
         self.empty();self.row('receipt1',100);self.row('receipt1',100)
         self.assertEqual(self.c.financial_data.aggregate('M002')['net_sales'],'100.00')
     def test_T08_repeated_payment_event(self):
         self.empty();p=self.c.payments.create(self.c.merchants['M002'],'qr_pay',amount=100);self.c.payments.simulate_customer_payment(p.ref)
         self.c.financial_data.record_payment(p);self.c.financial_data.record_payment(p)
-        self.assertEqual(self.c.financial_data.aggregate('M002')['net_sales'],'100.00')
+        self.assertEqual(self.c.financial_data.aggregate('M002')['net_sales'],'0.00')
     def test_T09_mixed_currency_rejected(self):
         self.row('invalid',100,currency='PHP')
         with self.assertRaises(EvidenceError):self.c.financial_data.aggregate('M002')
@@ -76,7 +76,7 @@ class TestPartnerAcceptance(unittest.TestCase):
             for c in r['claims']:
                 if c['metric']=='total_repayable':c['value']='12300000'
             return json.dumps(r)
-        r=self.ai('Quote RBF advance 10000000 IDR',bad);self.assertNotIn('12300000',r['reply']);self.assertIn('11300000',r['reply'])
+        r=self.ai('Quote RBF advance 10000000 IDR',bad);self.assertNotIn('12300000',r['reply']);self.assertIn(money(11300000,'IDR'),r['reply']);self.assertNotIn(money(12300000,'IDR'),r['reply'])
     def test_T16_rbf_baseline_exact(self):
         r=self.ai('Quote RBF advance 10000000 IDR');self.assertEqual((r['data']['advance'],r['data']['fee'],r['data']['total_repayable'],r['data']['fee_rate']),(10000000,1300000,11300000,.13))
     def test_T17_invented_approval_date_rejected(self):
@@ -111,9 +111,9 @@ class TestPartnerAcceptance(unittest.TestCase):
         state=self.c.partner_context(p,'M005');self.assertNotIn('advance',state);self.assertEqual(state['merchant_id'],'M005')
     def test_T26_new_records_invalidate_evidence(self):
         self.ai('Show sales');old=self.c.partner_context(self.p,'M002');self.row('new',100);new=self.c.partner_context(self.p,'M002');self.assertTrue(old['evidence_ids']);self.assertNotIn('evidence_ids',new)
-    def test_T27_payment_refreshes_metrics(self):
+    def test_T27_payment_preserves_financial_metrics(self):
         self.empty();first=self.ai('Show sales');p=self.c.payments.create(self.c.merchants['M002'],'qr_pay',amount=100);self.c.payments.simulate_customer_payment(p.ref)
-        second=self.ai('Show sales');self.assertNotEqual(first['data_version'],second['data_version']);self.assertIn('100.00',second['reply'])
+        second=self.ai('Show sales');self.assertEqual(first['data_version'],second['data_version']);self.assertEqual(second['data']['financial_metrics']['net_sales'],'0.00')
     def test_T28_expired_confirmation_denied(self):
         action=self.c.partner_state.propose(self.p,'M002',None,'payment_create',{'amount':100,'method':'qr_pay'})
         self.c.partner_state.actions[action['action_id']]['expires_at']=0
@@ -151,6 +151,6 @@ class TestPartnerAcceptance(unittest.TestCase):
         first=self.c.handle(self.p,'M002','generate a qr for 100');second=self.c.handle(self.p,'M002','generate a qr for 200',first['data']['approval_token']);self.assertIn('denied',second['intent']);self.assertFalse(self.c.payments.payments)
     def test_refund_replay_no_double_count(self):
         self.empty();p=self.c.payments.create(self.c.merchants['M002'],'qr_pay',amount=100);self.c.payments.simulate_customer_payment(p.ref)
-        self.c.payments.refund(p.ref,25,'r1');self.c.payments.refund(p.ref,25,'r1');self.assertEqual(self.c.financial_data.aggregate('M002')['net_sales'],'75.00')
+        self.c.payments.refund(p.ref,25,'r1');self.c.payments.refund(p.ref,25,'r1');self.assertEqual(self.c.financial_data.aggregate('M002')['net_sales'],'0.00')
     def test_dashboard_matches_partner_same_period(self):
         self.empty();self.row('known',100);r=self.ai('Show sales');d=self.c.financial_data.dashboard('M002',r['period']['start'],r['period']['end']);self.assertEqual(Decimal(str(d['mix']['gross_revenue'])),Decimal(r['data']['financial_metrics']['net_sales']))
