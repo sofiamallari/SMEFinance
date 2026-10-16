@@ -5,8 +5,9 @@ function partnerEmpty(){const empty=!$('#chatlog .msg');$('#partner-welcome').hi
 function partnerScroll(force=false){if(force||partnerPinned)requestAnimationFrame(()=>{$('#partner-conversation').scrollTop=$('#partner-conversation').scrollHeight})}
 function partnerComposerState(){$('#chatform button').disabled=partnerBusy||!$('#chatinput').value.trim()}
 function partnerOpen(open){
- document.body.classList.toggle('ai-collapsed',!open);$('#ai-toggle').setAttribute('aria-expanded',String(open));
- const narrow=matchMedia('(max-width:1100px)').matches;
+ // Floating window: minimized to the robot button by default; full screen only on phone widths.
+ document.body.classList.toggle('ai-collapsed',!open);$('#ai-toggle').setAttribute('aria-expanded',String(open));$('#ai-fab').setAttribute('aria-expanded',String(open));
+ const narrow=matchMedia('(max-width:600px)').matches;
  $('#partner-panel').setAttribute('role',narrow&&open?'dialog':'complementary');
  if(narrow&&open){$('#partner-panel').setAttribute('aria-modal','true');$('#chatinput').focus()}else $('#partner-panel').removeAttribute('aria-modal');
  $('#ai-backdrop').hidden=!(narrow&&open);
@@ -42,10 +43,11 @@ function partnerModule(){
   button.onclick=()=>{if(partnerBusy)return;$('#chatinput').value='';partnerSend(question)};$('#chips').appendChild(button)}
  partnerEmpty();
 }
+const partnerFailureLabels={provider_unavailable:'AI service unavailable · safe fallback',provider_timeout:'AI request timed out · safe fallback',tool_timeout:'Business data took too long · safe fallback',backend_tool_failure:'Business data could not be loaded · safe fallback',financial_verification:'Answer could not be verified · safe fallback',unsupported_financial_assessment:'Assessment not supported by authorized data',model_interpretation:'Question could not be interpreted safely',tool_planning:'Question did not match authorized data',internal_error:'Internal error · safe fallback'};
 function partnerEvidence(container,r){
  const note=document.createElement('small');note.className='muted';
- note.textContent=r.connection_status==='live'?'Live provider · authorized backend tools':r.connection_status==='test_double'?'Test double · not live AI':r.connection_status==='fallback'?(r.provider_status==='temporarily_busy'?'AI service temporarily busy · deterministic guidance':r.fallback_reason==='timeout'?'Live request timed out · deterministic fallback':r.fallback_reason==='response_validation'?'Response could not be verified · deterministic fallback':'Live request failed · deterministic fallback'):'Deterministic guidance and backend results · not live AI';container.appendChild(document.createElement('br'));container.appendChild(note);
- if(r.tools_used?.length){const details=document.createElement('details'),summary=document.createElement('summary'),tools=document.createElement('p');details.className='muted';summary.textContent='Sources & tools';tools.textContent=r.tools_used.map(t=>t.replace(/_/g,' ')).join(', ');details.append(summary,tools);container.appendChild(details)}
+ note.textContent=r.connection_status==='live'?'Live provider · authorized backend tools':r.connection_status==='test_double'?'Test double · not live AI':r.connection_status==='composed'?'Backend-verified summary · AI wording was not used':r.connection_status==='fallback'?(r.failure_category&&partnerFailureLabels[r.failure_category]?partnerFailureLabels[r.failure_category]:r.provider_status==='temporarily_busy'?'AI service temporarily busy · deterministic guidance':r.fallback_reason==='timeout'?'Live request timed out · deterministic fallback':r.fallback_reason==='response_validation'?'Response could not be verified · deterministic fallback':'Live request failed · deterministic fallback'):'Deterministic guidance and backend results · not live AI';container.appendChild(document.createElement('br'));container.appendChild(note);
+ if(r.tools_used?.length){const details=document.createElement('details'),summary=document.createElement('summary'),tools=document.createElement('p');details.className='muted';summary.textContent='Sources & tools';tools.textContent=r.tools_used.map(t=>t.replace(/_/g,' ')).join(', ');details.append(summary,tools);if(Array.isArray(r.evidence)&&r.evidence.length){const list=document.createElement('ul');for(const item of r.evidence){if(!item||typeof item.text!=='string')continue;const li=document.createElement('li');li.textContent=item.text;list.appendChild(li)}details.appendChild(list)}container.appendChild(details)}
  for(const source of r.sources||[]){
   const section=document.createElement('blockquote'),link=document.createElement('a');
   try{const u=new URL(source.source_url);if(u.protocol!=='https:')continue;link.href=u.href}catch{continue}
@@ -104,10 +106,9 @@ document.addEventListener('DOMContentLoaded',()=>{
    if(M&&active()==='dashboard')loadDashboard();
    if(!$('#chatlog [data-stale-notice]')){const notice=addMsg('Business data changed. Ask again to refresh earlier financial findings.','bot');notice.dataset.staleNotice='true'}
   }return result};
- $('#ai-toggle').onclick=()=>{partnerOpen(true);$('#chatinput').focus()};$('#ai-close').onclick=()=>{partnerOpen(false);$('#ai-toggle').focus()};$('#ai-backdrop').onclick=()=>partnerOpen(false);
+ $('#ai-toggle').onclick=()=>{partnerOpen(true);$('#chatinput').focus()};$('#ai-close').onclick=()=>{partnerOpen(false);$('#ai-fab').focus()};$('#ai-fab').onclick=()=>{partnerOpen(true);$('#chatinput').focus()};$('#ai-backdrop').onclick=()=>partnerOpen(false);
  $('#financing-parent').onclick=()=>{ownerNavigation.expandDesktop();const open=$('#financing-submenu').hidden;$('#financing-submenu').hidden=!open;$('#financing-parent').setAttribute('aria-expanded',String(open))};
- document.addEventListener('keydown',event=>{if(document.querySelector('dialog[open]'))return;if(event.key==='Tab'&&matchMedia('(max-width:1100px)').matches&&!document.body.classList.contains('ai-collapsed')){const nodes=[...$('#partner-panel').querySelectorAll('button:not(:disabled),input,textarea,summary')].filter(node=>node.offsetParent!==null);if(event.shiftKey&&document.activeElement===nodes[0]){event.preventDefault();nodes.at(-1).focus()}else if(!event.shiftKey&&document.activeElement===nodes.at(-1)){event.preventDefault();nodes[0].focus()}}if(event.key==='Escape'&&!document.body.classList.contains('ai-collapsed')){partnerOpen(false);$('#ai-toggle').focus()}});
- partnerOpen(!matchMedia('(max-width:1100px)').matches);
- const drawerMedia=matchMedia('(max-width:1100px)');drawerMedia.addEventListener('change',event=>partnerOpen(!event.matches));
+ document.addEventListener('keydown',event=>{if(document.querySelector('dialog[open]'))return;if(event.key==='Tab'&&matchMedia('(max-width:600px)').matches&&!document.body.classList.contains('ai-collapsed')){const nodes=[...$('#partner-panel').querySelectorAll('button:not(:disabled),input,textarea,summary')].filter(node=>node.offsetParent!==null);if(event.shiftKey&&document.activeElement===nodes[0]){event.preventDefault();nodes.at(-1).focus()}else if(!event.shiftKey&&document.activeElement===nodes.at(-1)){event.preventDefault();nodes[0].focus()}}if(event.key==='Escape'&&!document.body.classList.contains('ai-collapsed')){partnerOpen(false);$('#ai-fab').focus()}});
+ partnerOpen(false);
 
 },{once:true});

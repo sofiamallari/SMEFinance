@@ -114,7 +114,7 @@ class AuthStore:
         last = db.execute('SELECT seq,hash FROM audit_events ORDER BY seq DESC LIMIT 1').fetchone()
         logger = AuditLog(clock=self.clock)
         logger.prev = last['hash'] if last else 'GENESIS'
-        safe_metadata={k:v for k,v in (metadata or {}).items() if k in {'schema_version','configuration_digest','change_count','tool','policy_version','approval_reference'}}
+        safe_metadata={k:v for k,v in (metadata or {}).items() if k in {'schema_version','configuration_digest','change_count','tool','policy_version','approval_reference','failure_stage','failure_category','provider_status','rejected_claim','required_qualification','retry_count','response_path','validation_code','provider_http_status'}}
         record = logger.write(**safe_metadata,seq=last['seq']+1 if last else 1, action=action,
             actor=actor.user_id if isinstance(actor,Principal) else actor,
             role=actor.role if isinstance(actor,Principal) else None, merchant_id=merchant,
@@ -289,15 +289,16 @@ class AuthStore:
                 raise AccessDenied('Merchant access denied')
             if role in ('lender_analyst','coach'):
                 category=CATEGORIES.get(action)
-                consent=self._consent(db,merchant,row['user_id'],category)
+                consent=self._consent(db,merchant,row['user_id'],category,download=action=='export_bank_review')
                 if not consent: raise AccessDenied('Active merchant consent for this data category is required')
             if action=='submit_application' and not self._owner_consent(db,merchant,row['user_id']):
                 raise AccessDenied('Active financing consent including applications is required before submission')
         return self.policies(db).get('ai_tiers',{}).get(role,int(ROLE_MAX_TIER[role]))
 
-    def _consent(self,db,mid,recipient,category=None):
+    def _consent(self,db,mid,recipient,category=None,download=False):
         if not db.execute("SELECT 1 FROM users u JOIN memberships m ON m.user_id=u.user_id WHERE u.user_id=? AND m.merchant_id=? AND u.role='BANK' AND u.account_status='active'",(recipient,mid)).fetchone():return None
         for row in db.execute('SELECT c.* FROM consents c JOIN users o ON o.user_id=c.owner_id WHERE c.merchant_id=? AND c.recipient_id=? AND c.revoked_at IS NULL AND c.expires_at>? AND o.account_status=\'active\' AND o.role=\'SME_OWNER\' AND EXISTS (SELECT 1 FROM memberships m WHERE m.user_id=o.user_id AND m.merchant_id=c.merchant_id)',(mid,recipient,self.clock())):
+            if download and not db.execute('SELECT 1 FROM consent_downloads WHERE consent_id=? AND allow_csv=1',(row['consent_id'],)).fetchone():continue
             if category is None or category in json.loads(row['categories']): return row
         return None
 
@@ -506,19 +507,27 @@ class AuthStore:
 
     def grant_consent(self,token,body):
         mid=body.get('merchant');self.authorize(token,'manage_consents',mid);actor=self.principal(token)
+        with self.db() as db:return self._grant_consent(db,actor,body)
+
+    def _grant_consent(self,db,actor,body):
+        # Shared validation for single and atomic multi-merchant Owner grants.
+        mid=body.get('merchant')
+        if actor.role!='owner' or not db.execute('SELECT 1 FROM memberships WHERE user_id=? AND merchant_id=?',(actor.user_id,mid)).fetchone():raise AccessDenied('Assigned SME Owner required')
         categories=body.get('categories',[])
         if not isinstance(categories,list) or not categories or any(c not in {'reports','assessment','forecasts','financing','applications'} for c in categories):raise InputError('Invalid permitted data categories')
+        download=body.get('allow_download',False)
+        if type(download) is not bool:raise InputError('Download permission must be explicit true or false')
         expires=body.get('expires_at')
         if type(expires) not in (int,float) or not self.clock()<expires<=self.clock()+366*86400:raise InputError('Consent expiration must be within one year')
-        purpose=str(body.get('purpose','')).strip()
-        if not 1<=len(purpose)<=250:raise InputError('Consent purpose required (max 250 characters)')
-        with self.db() as db:
-            recipient=db.execute('SELECT * FROM users WHERE user_id=?',(body.get('recipient_id'),)).fetchone()
-            if not recipient or resolve_role(recipient['role'])!='lender_analyst' or recipient['account_status']!='active' or not db.execute('SELECT 1 FROM memberships WHERE user_id=? AND merchant_id=?',(recipient['user_id'],mid)).fetchone():raise InputError('Recipient must be an active Bank scoped to this merchant')
-            cid=secrets.token_hex(12)
-            db.execute('INSERT INTO consents VALUES (?,?,?,?,?,?,?,?,NULL)',(cid,mid,actor.user_id,recipient['user_id'],purpose,json.dumps(sorted(set(categories))),self.clock(),expires))
-            self.audit('consent_granted',actor,mid,cid,db=db)
-            return {'consent_id':cid}
+        purpose=body.get('purpose','')
+        if not isinstance(purpose,str) or not 1<=len(purpose.strip())<=250:raise InputError('Consent purpose required (max 250 characters)')
+        recipient=db.execute('SELECT * FROM users WHERE user_id=?',(body.get('recipient_id'),)).fetchone()
+        if not recipient or resolve_role(recipient['role'])!='lender_analyst' or recipient['account_status']!='active' or not db.execute('SELECT 1 FROM memberships WHERE user_id=? AND merchant_id=?',(recipient['user_id'],mid)).fetchone():raise InputError('Recipient must be an active Bank scoped to this merchant')
+        cid=secrets.token_hex(12)
+        db.execute('INSERT INTO consents VALUES (?,?,?,?,?,?,?,?,NULL)',(cid,mid,actor.user_id,recipient['user_id'],purpose.strip(),json.dumps(sorted(set(categories))),self.clock(),expires))
+        db.execute('INSERT INTO consent_downloads VALUES (?,?)',(cid,int(download)))
+        self.audit('consent_granted',actor,mid,cid,db=db)
+        return {'consent_id':cid}
 
     def consents(self,token,mid):
         self.authorize(token,'manage_consents',mid)

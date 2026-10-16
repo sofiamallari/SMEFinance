@@ -11,6 +11,7 @@ def script(partner,plans,narrations):
    data=json.loads(messages[-1]['content']);spans=data['source_spans']
    updates=[{'entity':entity,'source':next(key for key,value in spans.items() if value==quote)} for entity,quote in p.get('updates',[])]
    value={'intent':p.get('intent','sales_analysis'),'topic_change':p.get('topic_change',False),'updates':updates,'question':p.get('question')}
+   if 'tool_requests' in p:value['tool_requests']=p['tool_requests']
   else:
    value=next(narrations)
    if isinstance(value,Exception):raise value

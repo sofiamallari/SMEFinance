@@ -35,7 +35,9 @@ class ContextTests(unittest.TestCase):
   with self.assertRaises(ClaimError):self.apply(self.state(),'The cost is unknown','one_time_cost','CNY 99999')
  def test_no_repeated_resolved_question(self):
   s=self.state('payment_method');cs.answer_pending(s,'cash',currency='CNY',today=TODAY)
-  with self.assertRaises(ClaimError):self.apply(s,'cash',None,question={'entity':'payment_method','text':'Will you pay cash?'})
+  # The already-answered question is dropped instead of re-asked (and no longer aborts the turn).
+  updated=self.apply(s,'cash',None,question={'entity':'payment_method','text':'Will you pay cash?'})
+  self.assertIsNone(updated['pending']);self.assertEqual(updated['entities']['payment_method']['value'],'cash')
  def test_fallback_keeps_answer_and_does_not_repeat(self):
   s=self.state('payment_method');cs.answer_pending(s,'cash',currency='CNY',today=TODAY)
   self.assertNotIn('Will you pay',cs.safe_fallback(s));self.assertEqual(s['entities']['payment_method']['value'],'cash')

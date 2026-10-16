@@ -199,6 +199,19 @@ class Handler(BaseHTTPRequestHandler):
             with AUTH.db() as db:pos_service().settings.guard(db,token,mid)
             from copilot.currency_catalog import search
             return self._send(200,{'currencies':search(q.get('search',''))})
+        if path.startswith('/api/owner/access'):
+            from copilot.owner_access import OwnerAccess
+            access=OwnerAccess(AUTH)
+            if path=='/api/owner/access' and method=='GET':return self._send(200,access.listing(token))
+            if path=='/api/owner/access/candidates' and method=='POST':return self._send(200,access.candidates(token,body))
+            if path=='/api/owner/access/lookup' and method=='POST':return self._send(200,access.lookup(token,body))
+            if path=='/api/owner/access/users' and method=='POST':return self._send(201,access.save(token,body,'create'))
+            if path=='/api/owner/access/link' and method=='POST':return self._send(200,access.save(token,body,'link'))
+            if path=='/api/owner/access/authorizations' and method=='POST':return self._send(201,access.authorize(token,body))
+            parts=path.split('/')
+            if len(parts)==6 and parts[4]=='users' and method=='PATCH':return self._send(200,access.save(token,body,'edit',parts[5]))
+            if len(parts)==7 and parts[4]=='users' and parts[6]=='remove' and method=='POST':return self._send(200,access.remove(token,parts[5],body))
+            raise InputError('Unsupported Owner access operation',405)
         if path=='/api/owner/staff':
             if method=='GET':return self._send(200,workflow.staff(token,mid))
             if method=='PATCH':return self._send(200,workflow.staff(token,mid,body.get('user_id'),{'permissions':body.get('permissions')}))
@@ -214,6 +227,8 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/api/bank/applications' and method=='GET':return self._send(200,{'applications':workflow.applications(token)})
         if path.startswith('/api/bank/applications/') and method=='GET' and len(path.split('/'))==5:return self._send(200,workflow.applications(token,path.split('/')[-1]))
         if path=='/api/bank/merchants' and method=='GET':return self._send(200,workflow.merchants(token))
+        if path=='/api/bank/dashboard' and method=='GET':return self._send(200,workflow.dashboard(token,mid,q.get('start'),q.get('end'),q.get('granularity','monthly')))
+        if path=='/api/bank/cashflow' and method=='GET':return self._send(200,workflow.cashflow(token,mid))
         if path=='/api/bank/review' and method=='GET':return self._send(200,workflow.review(token,mid,q.get('application_id')))
         if path=='/api/bank/export' and method=='GET':return self._send(200,workflow.review(token,mid,q.get('application_id'),True),'text/csv; charset=utf-8',{'Content-Disposition':'attachment; filename="simulated-bank-review.csv"'})
         if path=='/api/admin/merchants' or path.startswith('/api/admin/merchants/'):
@@ -329,6 +344,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise AccessDenied('Origin not allowed')
                 if not self.headers.get('Content-Type','').lower().startswith('application/json'):
                     raise InputError('Content-Type must be application/json')
+            if method=='GET' and path in ('/assets/brand.css','/assets/shifu-logo.png'):
+                with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8' if path.endswith('.css') else 'image/png')
             if method=='GET' and path=='/assets/common.css':
                 with open(os.path.join(ROOT,'..','web','common.css'),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8')
             if method=='GET' and path=='/assets/auth.css':
@@ -375,11 +392,11 @@ class Handler(BaseHTTPRequestHandler):
             if method=='GET' and path=='/api/partner/conversation':
                 governed_partner().gateway.identity(token,q.get('merchant'))
                 return self._send(200,{'messages':[],'retention':'active-page-memory-only'})
-            if method=='GET' and path in ('/assets/portal-navigation.js','/assets/portal-navigation.css'):
+            if method=='GET' and path in ('/assets/ui-standard.js','/assets/channel-performance.js','/assets/portal-navigation.js','/assets/portal-navigation.css'):
                 with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8' if path.endswith('.css') else 'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/icons.svg':
                 with open(os.path.join(ROOT,'..','web','icons.svg'),'rb') as f:return self._send(200,f.read(),'image/svg+xml')
-            if method=='GET' and path in ('/assets/bank.css','/assets/bank-components.js','/assets/bank-views.js','/assets/bank-portal.js'):
+            if method=='GET' and path in ('/assets/bank.css','/assets/bank-components.js','/assets/bank-views.js','/assets/bank-dashboard.js','/assets/bank-portal.js'):
                 AUTH.authorize(token,'view_bank_review')
                 with open(os.path.join(ROOT,'..','web',path.rsplit('/',1)[-1]),'rb') as f:return self._send(200,f.read(),'text/css; charset=utf-8' if path.endswith('.css') else 'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/financial-partner.js':
@@ -394,8 +411,11 @@ class Handler(BaseHTTPRequestHandler):
                 with open(os.path.join(ROOT,'..','web','currency.js'),encoding='utf-8') as f:return self._send(200,f.read().replace('__CURRENCY_META__',json.dumps(PUBLIC)).encode('utf-8'),'text/javascript; charset=utf-8')
             if method=='GET' and path=='/assets/admin.js':
                 with open(os.path.join(ROOT,'..','web','admin.js'),'rb') as f:return self._send(200,f.read(),'text/javascript; charset=utf-8')
-            if method=='GET' and path=='/owner/users':
-                AUTH.authorize(token,'manage_merchant_staff');return self._page('index.html')
+            if method=='GET' and path in ('/owner/users','/owner/access'):
+                if p.role!='owner':raise AccessDenied('SME Owner required')
+                try:AUTH.authorize(token,'manage_merchant_staff')
+                except AccessDenied:AUTH.authorize(token,'manage_consents')
+                return self._page('index.html')
             if method=='GET' and path=='/bank':
                 if p.role!='lender_analyst':raise AccessDenied('Bank page only')
                 AUTH.authorize(token,'view_bank_review');return self._page('bank.html')

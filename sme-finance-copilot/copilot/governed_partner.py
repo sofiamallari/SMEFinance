@@ -45,7 +45,8 @@ def minimized_text(text):
     text=sanitize_input(text)['text']
     text=re.sub(r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}','[email removed]',text)
     text=re.sub(r'(?i)\b(?:bearer\s+\S+|(?:password|token|secret|api.?key)\s*[:=]\s*\S+)','[secret removed]',text)
-    return re.sub(r'\b[A-Za-z0-9_\-]{24,}\b','[opaque value removed]',text)[:2000]
+    # Merchant-scoped transaction/application references are identifiers the user is asking about, not secrets.
+    return re.sub(r'(?<![A-Za-z0-9_\-])(?!(?:TX|APP)-)[A-Za-z0-9_\-]{24,}\b','[opaque value removed]',text)[:2000]
 
 
 def live_configured():

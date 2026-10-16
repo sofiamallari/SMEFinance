@@ -5,8 +5,8 @@ from decimal import Decimal
 from copilot.modules.cashflow import forecast
 
 LIMITATIONS=[
- 'Synthetic demo opening balance is not current spendable cash, a live wallet or a bank balance.',
- 'Imported transactions do not automatically reconcile the synthetic opening balance.',
+ 'The opening balance comes from the app and is not reconciled with your bank account.',
+ 'Imported transactions do not automatically update the opening balance.',
  'Historical variable outflows include only supplies, operating and household_draw; expenses classified other are excluded.',
  'Expense-coverage buffer uses included historical variable outflows and averaged debt service; it does not independently measure all scheduled obligations.',
  'Payroll has no separate existing category. Proposed salary is incremental; existing payroll coverage is incomplete.',
@@ -42,15 +42,26 @@ def run(c,mid,args):
    add(d,args['monthly_cost'])
  if not schedule:raise ValueError('A nonempty explicit hypothetical cost is required')
  m=c.financial_data.project(mid)
+ # The synthetic wallet balance is dated c.as_of, so the existing forecast must start there;
+ # starting at the assessment date would silently skip the days in between.
+ anchor=min(c.as_of,assessment);span=(end-anchor).days
  def metrics(f):
-  return {k:format(Decimal(str(f[k])),'.2f') if k in ('closing_balance','min_balance') else f[k] for k in ('closing_balance','min_balance','runway_days','buffer_days')}
- baseline=forecast(m,assessment,days);adjusted=forecast(m,assessment,days,extra_outflows=schedule)
- result={'currency':m.currency,'assessment_date':assessment.isoformat(),'opening_balance_date':c.as_of.isoformat(),
+  row={k:format(Decimal(str(f[k])),'.2f') if k in ('closing_balance','min_balance') else f[k] for k in ('closing_balance','min_balance','runway_days','buffer_days')}
+  row['first_negative_date']=(anchor+timedelta(days=f['runway_days'])).isoformat() if f['runway_days'] is not None else None
+  return row
+ # Combined scenario: the stated sales/expense % change applies to the recent pattern across the whole projection.
+ changes={k:args.get(k) for k in ('sales_change_percent','expense_change_percent')}
+ factors=dict(inflow_factor=1+float(changes['sales_change_percent'] or 0)/100,outflow_factor=1+float(changes['expense_change_percent'] or 0)/100)
+ baseline=forecast(m,anchor,span);adjusted=forecast(m,anchor,span,extra_outflows=schedule,**factors)
+ result={'currency':m.currency,'assessment_date':assessment.isoformat(),'opening_balance_date':anchor.isoformat(),
   'latest_data_date':latest_data(c,mid) or 'unavailable','synthetic_opening_balance':format(Decimal(str(m.wallet_balance)),'.2f'),
   'horizon_days':days,'baseline':metrics(baseline),'adjusted':metrics(adjusted),
-  'user_cash_baseline':None,'user_cash_adjusted':None,'schedule':schedule,'limitations':list(LIMITATIONS)}
+  'user_cash_baseline':None,'user_cash_adjusted':None,'schedule':schedule,'limitations':list(LIMITATIONS),
+  'assumed_changes':changes if any(v is not None for v in changes.values()) else None}
  if 'user_cash' in args:
   alternate=copy.deepcopy(m);alternate.wallet_balance=float(args['user_cash'])
+  # User-reported cash is "now", so its separate projection starts at the assessment date.
+  anchor=assessment;span=days
   result['user_cash_baseline']=metrics(forecast(alternate,assessment,days))
-  result['user_cash_adjusted']=metrics(forecast(alternate,assessment,days,extra_outflows=schedule))
+  result['user_cash_adjusted']=metrics(forecast(alternate,assessment,days,extra_outflows=schedule,**factors))
  return result

@@ -115,8 +115,8 @@ class Stabilization(unittest.TestCase):
    {'intent':'decision_support'},{'intent':'decision_support','updates':[('one_time_cost','CNY 18000')]},
    {'intent':'decision_support','topic_change':True,'updates':[('recurring_expense','CNY 6000'),('start_date','next month')]}]
   narrations=[{'segments':[{'claim':'user.one_time_cost','kind':'user_assumption'}]},
-   {'segments':[{'claim':'fact0.opening','kind':'backend_fact'},{'claim':'fact0.adjusted','kind':'simulation_result'}]},
-   {'segments':[{'claim':'fact0.adjusted','kind':'simulation_result'}]},
+   {'segments':[{'claim':'fact0.adjusted','kind':'simulation_result'},{'claim':'fact0.scenario_basis','kind':'data_limitation'}]},
+   {'segments':[{'claim':'fact0.adjusted','kind':'simulation_result'},{'claim':'fact0.scenario_basis','kind':'data_limitation'}]},
    {'segments':[{'claim':'fact0.schedule','kind':'simulation_result'}]}]
   script(self.p,plans,narrations)
   for question in ['Can I buy equipment for CNY 15000?','cash','Actually it costs CNY 18000.','Can I hire someone at CNY 6000 monthly starting next month?']:
@@ -128,7 +128,7 @@ class Stabilization(unittest.TestCase):
   updates=[{'entity':key,'source':next(k for k,v in spans.items() if v==value)} for key,value in [('reporting_period','September'),('comparison_period','August')]]
   sequence=iter([{'intent':'sales_analysis','topic_change':False,'updates':updates,'question':None,'tool_requests':[{'name':'get_financial_summary','arguments':{'start':'2026-09-01','end':'2026-09-30'}},{'name':'get_financial_summary','arguments':{'start':'2026-08-01','end':'2026-08-31'}}]}, {'segments':[{'claim':'analysis.comparison','kind':'derived_calculation'}]}])
   self.p.conversation_request=lambda *a:{'content':json.dumps(next(sequence))}
-  r=self.ask(q);self.assertEqual(r.get('verification'),'passed',r);self.assertEqual(r['tools_used'],['get_financial_summary']*2);self.assertIn('Difference:',r['reply'])
+  r=self.ask(q);self.assertEqual(r.get('verification'),'passed',r);self.assertEqual(r['tools_used'],['get_financial_summary']*2);self.assertIn('0.56% higher than August 2026',r['reply']);self.assertIn('Difference:',json.dumps(r['evidence']))
  def test_outflow_outside_horizon_is_not_applied(self):
   m=self.c.financial_data.project('M002');base=forecast(m,TODAY,30)
   self.assertEqual(base,forecast(m,TODAY,30,extra_outflows=[{'date':'2027-01-01','amount':'1000'}]))

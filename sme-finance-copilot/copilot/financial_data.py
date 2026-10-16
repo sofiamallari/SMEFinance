@@ -82,11 +82,38 @@ class FinancialData:
         from copilot.modules.dashboard import build_dashboard
         result=build_dashboard(self.project(mid),self.as_of(mid),date.fromisoformat(start) if start else None,date.fromisoformat(end) if end else None,granularity)
         metrics=self.aggregate(mid,start,end)
+        result['channel_performance']=self.channel_performance(mid,start,end)
         result['financial_metrics']=metrics
         result['mix']['gross_revenue']=float(metrics['net_sales']) # compatibility label; UI now calls this recorded net sales
         result['expenses']=float(metrics['expenses']);result['net_income']=float(Decimal(metrics['net_sales'])-Decimal(metrics['expenses']))
         result['provenance']=metrics['provenance'];result['data_freshness']=metrics['as_of']
         return result
+    def channel_performance(self,mid,start=None,end=None):
+        """Recorded sales/payment counts and net values; simulator excluded by projection."""
+        metrics=self.aggregate(mid,start,end)
+        start=metrics['period_start'];end=metrics['period_end']
+        counts={}
+        for row in self.project(mid).transactions:
+            if start<=row['date']<=end:
+                channel=row['channel'];counts[channel]=counts.get(channel,0)+row.get('count',1)
+        amounts={k:Decimal(v) for k,v in metrics['payment_methods'].items()}
+        total=sum(counts.values());net=Decimal(metrics['net_sales'])
+        reconciled=sum(amounts.values(),Decimal(0))==net and set(counts)==set(amounts)
+        reason=None
+        if not reconciled:reason='Channel values cannot be reconciled with recorded net sales.'
+        elif total<=0:reason='No eligible recorded sales/payment transactions in this period.'
+        elif net<=0:reason='Revenue contribution is unavailable because total recorded net sales are zero or negative.'
+        elif any(v<0 for v in amounts.values()):reason='Revenue contribution is unavailable because a channel has negative recorded net sales.'
+        share_ok=reconciled and total>0 and net>0 and all(v>=0 for v in amounts.values())
+        return {'merchant_id':mid,'currency':metrics['currency'],'period_start':start,'period_end':end,
+                'available':reconciled and total>0,'revenue_available':share_ok,'message':reason,
+                'total_transactions':total,'net_sales':str(net),'channels':[
+                    {'channel':k,'label':config.CHANNELS[k]['label'],'transactions':counts[k],
+                     'net_sales':str(amounts.get(k,Decimal(0))),
+                     'count_percent':float(Decimal(counts[k])*100/total) if reconciled and total>0 else None,
+                     'revenue_percent':float(amounts[k]*100/net) if share_ok else None} for k in counts],
+                'note':'Completed recorded sales, refunds and reversals; expenses and Digital Payments Simulator excluded. Synthetic seed activity remains demo evidence. Percentages may differ slightly due to display rounding.'}
+
     def record_payment(self,p):
         # Simulator state has its own SQLite tables; never append a financial row.
         self.persist_payment(p)

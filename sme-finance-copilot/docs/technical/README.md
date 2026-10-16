@@ -1,6 +1,7 @@
 # Technical references
 
 - [AI Financial Partner 2.0: local governance, tool contracts and limitations](ai-governance.md)
+- [AI chat logic: routes, tools, security controls and scenario matrix](ai-chat-logic.md)
 
 - [System architecture](architecture.md)
 - [Core financial algorithms and provisional formulas](financial-algorithms.md)

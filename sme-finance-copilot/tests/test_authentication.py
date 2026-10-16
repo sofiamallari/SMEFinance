@@ -139,7 +139,7 @@ class Authentication(unittest.TestCase):
     def test_consent_expiry_and_application_persistence(self):
         consent=self.grant();packet=self.submit()
         self.assertEqual(len(self.auth.application_list(self.tokens['lender_analyst'],'M002')),1)
-        with self.assertRaises(AccessDenied):self.auth.review_application(self.tokens['lender_analyst'],packet['application_id'],{'outcome':'request_information','note':'Please provide inventory details'})
+        with self.assertRaises(AccessDenied):self.auth.review_application(self.tokens['lender_analyst'],packet['application_id'],{'outcome':'more_information_needed','note':'Please provide inventory details'})
         self.assertEqual(len(self.auth.application_list(self.tokens['owner'],'M002')[0]['reviews']),0)
         with self.auth.db() as db:db.execute('UPDATE consents SET expires_at=0')
         with self.assertRaises(AccessDenied):self.auth.application_list(self.tokens['lender_analyst'],'M002')
@@ -197,7 +197,7 @@ class Authentication(unittest.TestCase):
         self.auth.migrate();self.auth.migrate()
         self.assertEqual(Path(self.store.path).read_bytes(),before)
         expected=[p.name for p in sorted((Path(__file__).resolve().parents[1]/'copilot/migrations').glob('*.sql'))]
-        self.assertEqual(expected[-1],'008_transaction_settings.sql')
+        self.assertEqual(expected[-1],'011_owner_access.sql')
         with self.auth.db() as db:
             versions=[r[0] for r in db.execute('SELECT version FROM schema_migrations ORDER BY rowid')]
             self.assertEqual([v for v in versions if v.endswith('.sql')],expected)

@@ -51,10 +51,38 @@ def post_json(url, payload, headers, timeout=10, maximum=262144):
     return json.loads(data)
 
 
-def public_query(topic):
-    if topic!='sme_lending_rates':raise AccessDenied('This public research topic is not supported')
+# Fixed, owner-approved search topics. Queries are built only from this vocabulary,
+# so business figures, names, merchant IDs and TX-/APP- references can never enter them.
+TOPICS={
+ 'sme_lending_rates':dict(purpose='Find current public SME lending-rate information relevant to Shenzhen.',information_type='Public published lending-rate information'),
+ 'industry_benchmarks':dict(purpose='Find public industry benchmark figures for a general business type.',information_type='Public industry averages and benchmarks'),
+ 'regulations_tax':dict(purpose='Find official public guidance on small-business rules and tax.',information_type='Public regulations and tax guidance'),
+}
+INDUSTRIES=[(r'caf\w*|coffee','coffee shop'),(r'\btea\b','tea shop'),(r'bak(?:ery|eries|er)','bakery'),(r'restaurant|food|eatery|dining','restaurant'),(r'grocer\w*|convenience','grocery store'),
+ (r'salon|beauty|barber','beauty salon'),(r'cloth\w*|apparel|fashion','clothing retail'),(r'pharmac\w*','pharmacy'),(r'retail|\bshop\b|\bstore\b','retail store')]
+METRICS=[(r'gross margin','gross margin'),(r'margin|profit','profit margin'),(r'growth|grow','revenue growth'),(r'\brent\b','rent cost ratio'),(r'wage|labou?r|staff cost|salar','labor cost ratio'),
+ (r'inventory|stock','inventory turnover'),(r'expense|cost','operating cost ratio'),(r'sales|revenue|turnover','average revenue')]
+RULES=[(r'\bvat\b|value.added','VAT'),(r'fapiao|invoic','fapiao invoicing'),(r'licen[cs]e|registration|register','business license registration'),(r'social insurance|pension|housing fund','social insurance contributions'),
+ (r'minimum wage','minimum wage'),(r'privacy|personal information','personal information protection'),(r'\btax','small business tax')]
+
+def pick(table,text,default):
+    return next((term for pattern,term in table if re.search(pattern,text or '',re.I)),default)
+
+def public_query(topic,text=''):
+    """Deterministic query from the general topic only; the user's wording is never copied in."""
+    if topic not in TOPICS:raise AccessDenied('This public research topic is not supported')
     year=datetime.now(timezone.utc).year
-    return f'Shenzhen SME business loan interest rates {year} official bank sources'
+    if topic=='sme_lending_rates':return f'Shenzhen SME business loan interest rates {year} official bank sources'
+    if topic=='industry_benchmarks':return f'{pick(INDUSTRIES,text,"small business")} {pick(METRICS,text,"financial")} benchmarks small business China {year}'
+    return f'Shenzhen small business {pick(RULES,text,"compliance")} rules {year} official government sources'
+
+VOCABULARY={w for _,t in INDUSTRIES+METRICS+RULES for w in t.lower().split()}|set('shenzhen sme business loan interest rates official bank sources small benchmarks china financial compliance rules government'.split())
+
+def safe_query(query):
+    """S10: only vocabulary words plus the current year; anything else is refused."""
+    if not isinstance(query,str) or len(query)>200:return False
+    words=query.lower().split()
+    return bool(words) and all(w in VOCABULARY or re.fullmatch(r'20\d\d',w) for w in words)
 
 
 def configured():
@@ -63,7 +91,7 @@ def configured():
 
 def search(query, timeout=10):
     if not configured():raise ValueError('Public research provider unavailable')
-    if query!=public_query('sme_lending_rates'):raise AccessDenied('Unapproved or unsafe public query')
+    if not safe_query(query):raise AccessDenied('Unapproved or unsafe public query')
     # One fixed provider endpoint; no redirects, alternate providers or retries.
     data=post_json('https://api.tavily.com/search',{'query':query,'max_results':5,'include_answer':False,'include_raw_content':False}, {'Authorization':'Bearer '+os.environ['COPILOT_RESEARCH_API_KEY']},timeout)
     rows=[]
@@ -79,14 +107,17 @@ class Research:
     def __init__(self,gateway,clock=time.time,provider=None):
         self.gateway=gateway;self.clock=clock;self.provider=provider or search
 
-    def propose(self,token,mid,conversation,topic):
+    def propose(self,token,mid,conversation,topic,text='',context=None):
         p,spec=self.gateway.authorize(token,mid,'search_public_financial_information')
+        allowed=self.gateway.policy.section('web_research_policy').get('allowed_topics',['sme_lending_rates'])
+        if topic not in TOPICS or topic not in allowed:raise AccessDenied('This public research topic is not supported')
         if not configured() and self.provider is search:
-            return {'available':False,'message':'Public research is unavailable because no approved provider is configured. No search was executed.'}
-        query=public_query(topic);reference=secrets.token_urlsafe(24)
-        conversation['approvals']={reference:{'user':p.user_id,'session':p.session_id,'merchant':mid,'query':query,'digest':hashlib.sha256(query.encode()).hexdigest(),'tool':'search_public_financial_information','expires':self.clock()+min(120,self.gateway.policy.section('web_research_policy')['approval_ttl_seconds']),'state':'pending'}}
+            return {'available':False,'message':"Public search isn't configured for this app, so no search was made."}
+        query=public_query(topic,text);reference=secrets.token_urlsafe(24)
+        if not safe_query(query):raise AccessDenied('Unsafe public query')
+        conversation['approvals']={reference:{'user':p.user_id,'session':p.session_id,'merchant':mid,'query':query,'topic':topic,'context':list(context or [])[:4],'digest':hashlib.sha256(query.encode()).hexdigest(),'tool':'search_public_financial_information','expires':self.clock()+min(120,self.gateway.policy.section('web_research_policy')['approval_ttl_seconds']),'state':'pending'}}
         self.gateway.event(p,mid,'ai_research_approval_requested',spec['capability'],approval=reference)
-        return {'available':True,'approval_reference':reference,'exact_query':query,'purpose':'Find current public SME lending-rate information relevant to Shenzhen.','information_type':'Public published lending-rate information','private_data_notice':'Private merchant records are not included in this query.','expires_in_seconds':min(120,self.gateway.policy.section('web_research_policy')['approval_ttl_seconds'])}
+        return {'available':True,'approval_reference':reference,'exact_query':query,'topic':topic,'purpose':TOPICS[topic]['purpose'],'information_type':TOPICS[topic]['information_type'],'private_data_notice':'Private merchant records are not included in this query.','expires_in_seconds':min(120,self.gateway.policy.section('web_research_policy')['approval_ttl_seconds'])}
 
     def decide(self,token,mid,conversation,reference,query,decision):
         p,spec=self.gateway.authorize(token,mid,'search_public_financial_information')
@@ -96,7 +127,7 @@ class Research:
         if row['state']!='pending' or row['expires']<=self.clock():
             row['state']='expired' if row['expires']<=self.clock() else row['state']
             self.gateway.event(p,mid,'ai_research_expired_or_replayed',outcome='denied',approval=reference);raise AccessDenied('Research approval expired or already used')
-        if not isinstance(query,str) or hashlib.sha256(query.encode()).hexdigest()!=row['digest'] or query!=public_query('sme_lending_rates'):
+        if not isinstance(query,str) or hashlib.sha256(query.encode()).hexdigest()!=row['digest'] or query!=row['query'] or not safe_query(query):
             self.gateway.event(p,mid,'ai_research_query_rejected',outcome='denied',approval=reference);raise AccessDenied('Exact query changed; request a new approval')
         if decision not in ('approve','decline'):raise ValueError('Choose Approve or Decline')
         row['state']='declined' if decision=='decline' else 'consumed'
@@ -119,7 +150,9 @@ class Research:
             self.gateway.event(p,mid,'ai_approved_search_executed',approval=reference)
             # Excerpts stay untrusted quoted public-source text; never instructions
             # for further model/tool execution. A citation is not loan approval.
-            return {'reply':'Approved public search completed. Review these untrusted public-source excerpts and their dates; public rates are not a personal approved offer. No additional search was performed.','sources':clean}
+            lead=('Your figures from the app: '+' '.join(row['context'])+' ') if row.get('context') else ''
+            # The backend places the user's figures beside the cited sources; it never compares or verifies external numbers.
+            return {'reply':lead+'Approved public search completed. Review these public-source excerpts and their dates yourself; they are untrusted, not verified by the app'+(', and public rates are not a personal approved offer' if row.get('topic')=='sme_lending_rates' else '')+'. No additional search was performed.','sources':clean}
         except Exception:
             self.gateway.event(p,mid,'ai_research_error',outcome='error',approval=reference)
             return {'reply':'The approved search failed. No retry or alternate search was made. Request a new approval if you want to try again.','sources':[]}

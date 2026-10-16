@@ -27,7 +27,7 @@ class BankDelivery(unittest.TestCase):
   self.assertEqual([m['id'] for m in self.w.merchants(token)],['M002'])
   repeat=self.invite(merchant='M003',username='ignored',display_name='Changed')
   self.assertFalse(repeat['created']);self.assertIsNone(repeat['invitation_token']);self.assertEqual(repeat['recipient']['display_name'],'New Bank')
-  self.auth.grant_consent(self.tokens['owner'],dict(merchant='M003',recipient_id=uid,purpose='Second review',categories=['reports'],expires_at=self.auth.clock()+3600))
+  self.auth.grant_consent(self.tokens['owner'],dict(merchant='M003',recipient_id=uid,purpose='Second review',allow_download=True,categories=['reports'],expires_at=self.auth.clock()+3600))
   self.assertEqual({m['id'] for m in self.w.merchants(token)},{'M002','M003'})
   self.assertEqual(self.w.review(token,'M002')['merchant_id'],'M002');self.assertEqual(self.w.review(token,'M003')['merchant_id'],'M003')
   self.auth.revoke_consent(self.tokens['owner'],first['consent_id'])
@@ -91,3 +91,27 @@ class BankDelivery(unittest.TestCase):
   restored=Copilot();restored.identity_store=self.auth;TransactionStore(restored,str(self.store.path))
   self.assertEqual(restored.payments.payments[p.ref].refunded_amount,2);self.assertEqual(restored.payments.payments[failed.ref].status,'FAILED')
   self.assertEqual(restored.financial_data.aggregate('M002')['net_sales'],before['net_sales'])
+ def test_bank_overview_and_cashflow_follow_owner_grants(self):
+  bank=self.tokens['lender_analyst']
+  for fn in (lambda:self.w.dashboard(bank,'M002'),lambda:self.w.cashflow(bank,'M002')):
+   with self.assertRaises(AccessDenied):fn()
+  grant=self.consent(['reports'])
+  owner=self.c.financial_data.dashboard('M002',granularity='weekly');d=self.w.dashboard(bank,'M002',granularity='weekly')
+  self.assertEqual((d['trend'],d['mix'],d['financial_metrics']['net_sales']),(owner['trend'],owner['mix'],owner['financial_metrics']['net_sales']))
+  self.assertEqual(d['merchant']['id'],'M002');self.assertIn('channel_performance',d);self.assertNotIn('survival',json.dumps(sorted(d)))
+  with self.assertRaises(AccessDenied):self.w.cashflow(bank,'M002')
+  for args in (('2026-09-30','2026-07-01','monthly'),('bad',None,'monthly'),(None,None,'yearly')):
+   with self.assertRaises(InputError):self.w.dashboard(bank,'M002',*args)
+  self.consent(['forecasts']);self.assertIn('path',self.w.cashflow(bank,'M002')['forecast'])
+  for role in ('owner','staff'):
+   with self.assertRaises(AccessDenied):self.w.dashboard(self.tokens[role],'M002')
+  self.auth.revoke_consent(self.tokens['owner'],grant['consent_id'])
+  with self.assertRaises(AccessDenied):self.w.dashboard(bank,'M002')
+ def test_reports_and_applications_grant_can_download_csv(self):
+  bank=self.tokens['lender_analyst'];grant=self.consent(['reports','applications'])
+  data=self.w.review(bank,'M002');self.assertTrue(data['download_available']);self.assertEqual(data['download_categories'],['reports','applications'])
+  csv=self.w.review(bank,'M002',export=True).decode('utf-8-sig');self.assertIn('recorded_metrics',csv);self.assertNotIn(',forecast,',csv)
+  self.auth.revoke_consent(self.tokens['owner'],grant['consent_id'])
+  self.auth.grant_consent(self.tokens['owner'],{'merchant':'M002','recipient_id':self.ids['lender_analyst'],'purpose':'View only','allow_download':False,'categories':['reports','applications'],'expires_at':self.auth.clock()+3600})
+  self.assertFalse(self.w.review(bank,'M002')['download_available'])
+  with self.assertRaises(AccessDenied):self.w.review(bank,'M002',export=True)

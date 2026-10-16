@@ -136,3 +136,23 @@ Final machine-recorded comparison (counts only; no credentials or financial reco
   "previously_failing_now_passing": []
 }
 ```
+
+## Financial reasoning and verification follow-up (uncommitted)
+
+Root causes confirmed from code and local audit reason codes, then reproduced by mocked regressions in `tests/test_ai_reasoning_regression.py`:
+
+| Observed failure | Confirmed cause | Change |
+|---|---|---|
+| "What should I focus on improving?" fallback | Planning stage: an irrelevant proposed tool raised `tool_not_relevant_to_intent` and aborted the turn | Irrelevant proposals are skipped and noted; analysis follow-ups re-retrieve the previous turn's evidence (never reuse old results); backend recommendation records give the model supportable advice |
+| Repeated questions / "can't reach a verified live answer" | `repeated_resolved_question` aborted the turn; every failure type used the same fallback text | An already-answered question is dropped; fallback text depends on `failure_category` and keeps saved answers |
+| "20k" became ¥20.00 | Span extraction and money parsing ignored magnitude suffixes | `k`, `thousand`, `m`, `million` are scaled by the backend; sub-cent results are rejected |
+| Warehouse scenario never ran | `expansion_cost` was never bound; a dated cost with no stated funding needed `payment_method` | `expansion_cost` maps to `one_time_cost`; a dated cost without funding is modeled as a labeled cash outflow; financing remains unsupported |
+| "30k" replaced "20k"; no comparison | Corrections overwrote the only scenario | Up to three option sets per conversation; comparison questions recalculate every option through `run_cash_impact_scenario` |
+| Month names rejected | Blanket month-name rule in narration text | Month names are allowed only when present in verified records, the user's own entities or the question |
+| Scenario forecast skipped days | Scenario forecast started at the business date while the synthetic balance is dated `c.as_of` | Scenario forecast starts at the opening-balance date; Cash Flow discloses when its start differs from that date |
+
+Response contract: records carry a backend-rendered `brief` for inline replies and a full `display` for Sources & Tools (`response.evidence`). Material qualifications are listed in `requires` (incomplete coverage, unequal non-calendar-month periods, synthetic balance, hypothetical scenario); citing a claim without them is rejected. Default replies are at most two sentences plus one pending question; explanation, breakdown and comparison requests may be longer. Presentation-only rejections (length, missing qualification, question format) are retried once with the reason; if still unverified, the backend composes a concise answer from verified records (`connection_status: composed`). Invented numbers, unsupported causes, performance verdicts and unsupported conclusions fail closed without retry.
+
+Diagnostics: responses and audit events share one `request_id` and record `failure_stage`, `failure_category` (provider_unavailable, provider_timeout, tool_timeout, backend_tool_failure, financial_verification, unsupported_financial_assessment, model_interpretation, tool_planning, internal_error), `provider_status` category, the failing tool, and for qualification failures the rejected claim ID. No prompts, keys or model text are logged.
+
+Live acceptance: `tests/test_ai_live_gemini.py` runs both observed conversations against the configured provider only when `COPILOT_LIVE_LLM_TESTS=1`; it writes per-turn diagnostics to `COPILOT_LIVE_REPORT` when set.

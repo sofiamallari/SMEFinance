@@ -36,11 +36,16 @@ def _weekday_profile(rows: list, as_of: date, days: int, cats: set | None = None
     return [s / c if c else 0 for s, c in zip(sums, counts)]
 
 
-def forecast(merchant, as_of: date, days: int | None = None, include_overdue: bool = False, extra_outflows: list | None = None) -> dict:
+def forecast(merchant, as_of: date, days: int | None = None, include_overdue: bool = False, extra_outflows: list | None = None,
+             inflow_factor: float = 1.0, outflow_factor: float = 1.0) -> dict:
     days = days or C["forecast_days"]
     inflow_prof = _weekday_profile(merchant.transactions, as_of, C["lookback_days"])
     out_prof = _weekday_profile(merchant.expenses, as_of, C["lookback_days"],
                                 {"supplies", "operating", "household_draw"})
+    # Optional hypothetical what-if factors on the recent sales/expense pattern only (scheduled items unchanged);
+    # the defaults keep the exact original path.
+    if inflow_factor != 1.0: inflow_prof = [v * inflow_factor for v in inflow_prof]
+    if outflow_factor != 1.0: out_prof = [v * outflow_factor for v in out_prof]
     sched_out, sched_in = defaultdict(float), defaultdict(float)
     for p in merchant.payables:
         sched_out[date.fromisoformat(p["due"])] += p["amount"]
