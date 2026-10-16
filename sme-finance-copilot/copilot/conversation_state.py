@@ -8,6 +8,7 @@ from copilot.governed_claims import ClaimError,money,day,verify_response
 ENTITIES={
  'business_subject':('subject','Business subject'),
  'start_date':('date','Intended start'),
+ 'purchase_date':('date','Intended one-time outflow date'),
  'comparison_period':('period','Comparison period'),
  'annual_interest_rate':('percent','Interest rate you supplied'),
  'one_time_cost':('money','One-time cost'),
@@ -78,7 +79,7 @@ def scalar(key,quote,*,currency,today,previous=None,question=''):
   if low in ('next month','starting next month'):
    start=(today.replace(day=28)+timedelta(days=4)).replace(day=1)
    return {'value':start.isoformat(),'precision':'month'}
-  if low=='today':return {'value':today.isoformat()}
+  if low in ('today','tomorrow'):return {'value':(today+timedelta(days=1 if low=='tomorrow' else 0)).isoformat()}
   try:return {'value':date.fromisoformat(text).isoformat()}
   except ValueError:raise ClaimError('invalid_entity_value')
  if kind=='period':
@@ -87,9 +88,22 @@ def scalar(key,quote,*,currency,today,previous=None,question=''):
    days=int(rolling[1])
    if not 1<=days<=366:raise ClaimError('invalid_entity_value')
    end=today;start=end-timedelta(days=days-1)
+  elif low=='previous comparable period' and previous and isinstance(previous.get('value'),dict):
+   prior=previous['value'];end=date.fromisoformat(prior['start'])-timedelta(days=1);start=end-timedelta(days=(date.fromisoformat(prior['end'])-date.fromisoformat(prior['start'])).days)
   elif low in ('last month','previous month'):
    end=today.replace(day=1)-timedelta(days=1);start=end.replace(day=1)
   elif low in ('this month','current month'):start=today.replace(day=1);end=today
+  elif re.fullmatch(r'(?:q[1-4](?:\s+\d{4})?|last quarter)',low):
+   if low=='last quarter':
+    q=(today.month-1)//3-1;year=today.year
+    if q<0:q=3;year-=1
+   else:
+    q=int(low[1])-1;year=int(low.split()[-1]) if len(low.split())>1 else today.year
+   start=date(year,q*3+1,1);end=date(year,q*3+3,calendar.monthrange(year,q*3+3)[1])
+  elif re.fullmatch(r'(?:'+ '|'.join(calendar.month_name[1:])+r')(?:\s+\d{4})?',text,re.I):
+   parts=text.split();month=next(i for i,n in enumerate(calendar.month_name) if n.lower()==parts[0].lower())
+   year=int(parts[1]) if len(parts)>1 else today.year
+   start=date(year,month,1);end=date(year,month,calendar.monthrange(year,month)[1])
   else:
    dates=re.findall(r'\d{4}-\d{2}-\d{2}',text)
    if len(dates)!=2:raise ClaimError('ambiguous_entity_value')
@@ -129,10 +143,15 @@ def apply_proposal(state,proposal,text,*,currency,today):
  Draft202012Validator(CONTEXT_SCHEMA).validate(proposal)
  new=copy.deepcopy(state)
  if proposal['topic_change'] and state.get('pending') and len(text.split())<=3:raise ClaimError('ambiguous_topic_change')
+ restore=bool(re.search(r'\b(?:return|back|resume|revisit)\b',text,re.I))
+ candidates=[t for t in new['topics'] if t['intent']==proposal['intent']]
+ restored=copy.deepcopy(candidates[-1]) if restore and candidates else None
  if proposal['topic_change']:
   new['topics']=(new['topics']+[{'intent':new['intent'],'entities':new['entities'],'pending':new['pending'],'resolved':new['resolved']}])[-3:]
   new.update(entities={},pending=None,resolved=[],facts={})
   new.pop('research_scope',None)
+ if restored:
+  new.update(entities=restored['entities'],pending=None,resolved=restored['resolved'])
  new['intent']=proposal['intent']
  for update in proposal['updates']:
   key,quote=update['entity'],update['quote']
@@ -154,7 +173,7 @@ def apply_proposal(state,proposal,text,*,currency,today):
    anchor=date.fromisoformat(new['entities']['reporting_period']['value']['start'])
   meaning=(state.get('pending') or {}).get('text','')
   if ENTITIES[key][0]=='percent':meaning+=' '+text[:offset+len(quote)]
-  value=scalar(key,quote,currency=currency,today=anchor,previous=old,question=meaning)
+  value=scalar(key,quote,currency=currency,today=anchor,previous=(new['entities'].get('reporting_period') if key=='comparison_period' and quote.lower()=='previous comparable period' else old),question=meaning)
   put(new,key,value,quote)
  if any(u['entity']=='reporting_period' for u in proposal['updates']) and not any(u['entity']=='comparison_period' for u in proposal['updates']):
   new['entities'].pop('comparison_period',None)

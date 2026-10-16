@@ -15,8 +15,8 @@ NUM = {'type':'integer','minimum':0}
 NULLABLE = {'type':['string','null'],'maxLength':500}
 FLOW = {'type':'array','maxItems':100,'items':{'type':'object','properties':{'date':TEXT,'amount':TEXT},'required':['date','amount'],'additionalProperties':False}}
 OUTPUTS = {
- 'get_financial_summary':dict(period=PERIOD,currency=TEXT,recorded_net_sales=TEXT,transaction_count=NUM,source_timestamp=TEXT),
- 'get_transaction_trends':dict(period=TEXT,granularity=TEXT,transaction_count=NUM,recorded_net_sales=TEXT,source_timestamp=TEXT),
+ 'get_financial_summary':dict(coverage={'type':['object','null'],'properties':{'start':TEXT,'end':TEXT},'required':['start','end'],'additionalProperties':False},period=PERIOD,currency=TEXT,recorded_net_sales=TEXT,transaction_count=NUM,source_timestamp=TEXT),
+ 'get_transaction_trends':dict(coverage={'type':['object','null'],'properties':{'start':TEXT,'end':TEXT},'required':['start','end'],'additionalProperties':False},period=TEXT,granularity=TEXT,transaction_count=NUM,recorded_net_sales=TEXT,source_timestamp=TEXT),
  'get_payment_channel_mix':dict(period=PERIOD,channel=TEXT,transaction_count=NUM,share_percent={'type':'number','minimum':0,'maximum':100}),
  'get_cash_flow':dict(period=PERIOD,currency=TEXT,cash_inflows=FLOW,cash_outflows=FLOW,net_cash_flow={'type':'null'},available_cash_if_verified={'type':'null'}),
  'get_business_highlights':dict(period=PERIOD,highlight_type=TEXT,summary=TEXT,source_metric={'type':'string','enum':['receivable_behaviour','incentive_status']}),
@@ -32,9 +32,24 @@ for name in ['get_financing_status','get_financing_details']:
 INPUTS['run_survival_simulation']={'type':'object','properties':{'sales_change_percent':{'type':'number','minimum':-80,'maximum':50,'multipleOf':5},'expense_change_percent':{'type':'number','minimum':-30,'maximum':80,'multipleOf':5},'months':{'enum':[1,3,6]}},'required':['sales_change_percent','expense_change_percent','months'],'additionalProperties':False}
 INPUTS['search_public_financial_information']={'type':'object','properties':{'topic':{'enum':['sme_lending_rates']}},'required':['topic'],'additionalProperties':False}
 INPUTS['get_cash_flow']={'type':'object','properties':{},'additionalProperties':False}
-PERMISSIONS = dict(get_financial_summary='view_dashboard',get_transaction_trends='view_dashboard',get_payment_channel_mix='view_dashboard',get_cash_flow='view_forecasts',get_business_highlights='view_dashboard',get_financing_status='view_applications',get_financing_details='view_applications',run_survival_simulation='view_reports',search_public_financial_information='use_copilot')
-INTERNAL = dict(get_financial_summary='get_dashboard',get_transaction_trends='get_dashboard',get_payment_channel_mix='get_dashboard',get_business_highlights='get_dashboard',get_cash_flow='cashflow_forecast')
+PERMISSIONS = dict(run_cash_impact_scenario='view_forecasts',get_financial_summary='view_dashboard',get_transaction_trends='view_dashboard',get_payment_channel_mix='view_dashboard',get_cash_flow='view_forecasts',get_business_highlights='view_dashboard',get_financing_status='view_applications',get_financing_details='view_applications',run_survival_simulation='view_reports',search_public_financial_information='use_copilot')
+INTERNAL = dict(get_financial_summary='get_dashboard',get_transaction_trends='get_dashboard',get_payment_channel_mix='get_dashboard',get_business_highlights='get_dashboard',get_cash_flow='cashflow_forecast',run_cash_impact_scenario='cashflow_forecast')
 
+
+# Explicit bounded, read-only scenario contract. The model cannot supply merchant IDs.
+AMOUNT={'type':'number','minimum':0,'maximum':1000000000,'multipleOf':0.01}
+INPUTS['run_cash_impact_scenario']={'type':'object','properties':{
+ 'assessment_date':{'type':'string','format':'date'},'horizon_days':{'type':'integer','minimum':1,'maximum':180},
+ 'one_time_cost':AMOUNT,'purchase_date':{'type':'string','format':'date'},
+ 'monthly_cost':AMOUNT,'start_date':{'type':'string','format':'date'},'user_cash':AMOUNT},
+ 'required':['assessment_date','horizon_days'],'additionalProperties':False}
+LIMITATIONS={'type':'array','maxItems':20,'items':TEXT}
+for key in ['opening_balance','closing_balance','min_balance']:OUTPUTS['get_cash_flow'][key]=TEXT
+for key in ['opening_balance_date','latest_data_date']:OUTPUTS['get_cash_flow'][key]=TEXT
+for key in ['runway_days','buffer_days']:OUTPUTS['get_cash_flow'][key]={'type':['number','null']}
+OUTPUTS['get_cash_flow']['limitations']=LIMITATIONS
+METRICS={'type':'object','properties':{'closing_balance':TEXT,'min_balance':TEXT,'runway_days':{'type':['integer','null']},'buffer_days':{'type':['number','null']}},'required':['closing_balance','min_balance','runway_days','buffer_days'],'additionalProperties':False}
+OUTPUTS['run_cash_impact_scenario']=dict(currency=TEXT,assessment_date=TEXT,opening_balance_date=TEXT,latest_data_date=TEXT,synthetic_opening_balance=TEXT,horizon_days=NUM,baseline=METRICS,adjusted=METRICS,user_cash_baseline={'anyOf':[METRICS,{'type':'null'}]},user_cash_adjusted={'anyOf':[METRICS,{'type':'null'}]},schedule=FLOW,limitations=LIMITATIONS)
 
 class Gateway:
     def __init__(self, c, auth, pos, policy):
@@ -86,7 +101,7 @@ class Gateway:
             Draft202012Validator(INPUTS[name],format_checker=Draft202012Validator.FORMAT_CHECKER).validate(args)
             if name=='search_public_financial_information':
                 raise AccessDenied('Search execution requires the exact-query approval gateway')
-            if name=='run_survival_simulation' and not simulation_requested:
+            if name in ('run_survival_simulation','run_cash_impact_scenario') and not simulation_requested:
                 raise AccessDenied('A user-requested simulation is required')
             self.event(p,mid,'ai_authorization_allowed',name)
             started=time.monotonic()
@@ -104,13 +119,16 @@ class Gateway:
             schema={'type':'object','properties':{k:OUTPUTS[name][k] for k in fields},'additionalProperties':False}
             for row in clean:Draft202012Validator(schema).validate(row)
             if len(json.dumps(clean))>64000:raise ValueError('Tool result too large')
-            self.event(p,mid,'ai_simulation_executed' if name=='run_survival_simulation' else 'ai_tool_completed',name)
+            self.event(p,mid,'ai_simulation_executed' if name in ('run_survival_simulation','run_cash_impact_scenario') else 'ai_tool_completed',name)
             return clean if isinstance(result,list) else clean[0]
         except Exception:
             self.event(p,mid,'ai_tool_denied_or_error',name,'denied')
             raise
 
     def _read(self,token,p,mid,name,args):
+        if name=='run_cash_impact_scenario':
+            from copilot.cash_impact import run
+            return run(self.c,mid,args)
         if name=='run_survival_simulation':
             from copilot.survival_simulation import SurvivalSimulation
             value=SurvivalSimulation(self.pos).run(token,mid,{'merchant':mid,'confirmed':True,**args},narrate=False)
@@ -133,11 +151,14 @@ class Gateway:
             if args:raise ValueError('The existing Cash Flow forecast uses its own fixed horizon, not custom reporting filters')
             t=self.c.tools['cashflow_forecast']
             f=self.c.financial_result('cashflow_forecast',mid,{},t,p)
-            return {'period':{'start':f['path'][0]['date'],'end':f['path'][-1]['date']},'currency':f['currency'],'cash_inflows':[{'date':r['date'],'amount':format(Decimal(str(r['inflow'])),'.2f')} for r in f['path']],'cash_outflows':[{'date':r['date'],'amount':format(Decimal(str(r['outflow'])),'.2f')} for r in f['path']],'net_cash_flow':None,'available_cash_if_verified':None}
+            return {'period':{'start':f['path'][0]['date'],'end':f['path'][-1]['date']},'currency':f['currency'],'cash_inflows':[{'date':r['date'],'amount':format(Decimal(str(r['inflow'])),'.2f')} for r in f['path']],'cash_outflows':[{'date':r['date'],'amount':format(Decimal(str(r['outflow'])),'.2f')} for r in f['path']],'net_cash_flow':None,'available_cash_if_verified':None,**{k:(format(Decimal(str(f[k])),'.2f') if k in ('opening_balance','closing_balance','min_balance') else f[k]) for k in ('opening_balance','closing_balance','min_balance','runway_days','buffer_days')},'opening_balance_date':self.c.as_of.isoformat(),'latest_data_date':asof.isoformat(),'limitations':__import__('copilot.cash_impact',fromlist=['LIMITATIONS']).LIMITATIONS}
         d=self.c.financial_result('get_dashboard',mid,{'start':period['start'],'end':period['end'],'granularity':args.get('granularity','monthly')},self.c.tools['get_dashboard'],p)
         now=datetime.now(timezone.utc).isoformat()
-        if name=='get_financial_summary':return {'period':period,'currency':d['merchant']['currency'],'recorded_net_sales':d['financial_metrics']['net_sales'],'transaction_count':d['mix']['total_transactions'],'source_timestamp':now}
-        if name=='get_transaction_trends':return [{'period':r['period'],'granularity':d['period']['granularity'],'transaction_count':r['transactions'],'recorded_net_sales':format(Decimal(str(r['revenue'])),'.2f'),'source_timestamp':now} for r in d['trend']]
+        projected=self.c.financial_data.project(mid)
+        dates=[r['date'] for r in projected.transactions if period['start']<=r['date']<=period['end']]
+        coverage={'start':min(dates),'end':max(dates)} if dates else None
+        if name=='get_financial_summary':return {'coverage':coverage,'period':period,'currency':d['merchant']['currency'],'recorded_net_sales':d['financial_metrics']['net_sales'],'transaction_count':d['mix']['total_transactions'],'source_timestamp':now}
+        if name=='get_transaction_trends':return [{'coverage':coverage,'period':r['period'],'granularity':d['period']['granularity'],'transaction_count':r['transactions'],'recorded_net_sales':format(Decimal(str(r['revenue'])),'.2f'),'source_timestamp':now} for r in d['trend']]
         if name=='get_payment_channel_mix':return [{'period':period,'channel':c['label'],'transaction_count':c['transactions'],'share_percent':c['volume_share']*100} for c in d['mix']['by_channel'].values()]
         if name=='get_business_highlights':return [{'period':period,'highlight_type':'Receivables insight','summary':d['receivables']['explanation'],'source_metric':'receivable_behaviour'},{'period':period,'highlight_type':'Incentive milestone','summary':d['incentive']['tier_name'] or 'No milestone yet','source_metric':'incentive_status'}]
         raise AccessDenied('Unsupported tool')

@@ -1,6 +1,6 @@
 # AI Financial Partner 2.0 — local governance implementation
 
-Local feature: `feature/ai-governance-chatbot-v2`. Reviewed policy: **0.5.0**, schema **1.0.0**. The supplied policy's `proposed` metadata is preserved; user approval covers local implementation/testing, not production readiness. No `saif` directory was found by a case-insensitive repository search.
+Local feature: `feature/ai-governance-chatbot-v2`. Local policy: **0.6.0**, schema **1.0.0**. The supplied policy's `proposed` metadata is preserved; user approval covers local implementation/testing, not production readiness. No `saif` directory was found by a case-insensitive repository search.
 
 ## Boundaries and discovery
 
@@ -12,8 +12,8 @@ Existing integration: `ai_agent.py` uses OpenAI-compatible function calls, inclu
 |---|---|---|
 | Business Overview | Net sales, sales/payment counts, period and currency | Expenses/net income are not in the approved summary allowlist |
 | Transactions/POS | Existing canonical projection feeds summary/trends | No raw ledger, descriptions, customer identities or import writes |
-| Digital Payments | Eligible completed sandbox payments in existing reporting | No QR/payment creation or execution tool |
-| Cash Flow | Existing forecast daily inflows/outflows | Estimates; no inferred verified cash or new aggregate net-cash figure |
+| Digital Payments | Separate sandbox payment state; excluded from canonical financial reporting | No QR/payment creation or execution tool |
+| Cash Flow | Forecast inflows/outflows, synthetic opening, closing/minimum, runway and expense-coverage estimate | Synthetic/unreconciled opening; incomplete expense coverage; no verified current cash |
 | Business highlights | Existing receivables explanation and incentive label | No new maturity/eligibility engine or full assessment tool |
 | Financing | Specific submitted application reference, submission status/requested amount | Approved amounts/terms/decisions are unavailable in this adapter, returned null; no inferred company-wide financing total |
 | Survival Simulation | Existing operating-result engine, explicit requested assumptions | No property amortization, credit approval, verified liquidity or actual cash runway |
@@ -44,7 +44,8 @@ Field classification is explicit in `FIELD_CLASSES`: period/count/channel metada
 | `get_financial_summary` | Optional ISO `start`, `end`, supported `granularity` | Approved period, CNY, recorded net sales, count, retrieval timestamp |
 | `get_transaction_trends` | Same; ordered range no longer than 366 days | Existing dashboard buckets, sales/payment count and recorded sales; shorter range required over record limit |
 | `get_payment_channel_mix` | Same | Period/channel/count/share of transaction volume, not revenue share |
-| `get_cash_flow` | Empty object | Existing forecast dates/inflows/outflows; `net_cash_flow` and `available_cash_if_verified` null |
+| `get_cash_flow` | Empty object | Forecast metrics, opening/latest-data dates and limitations; `net_cash_flow` and `available_cash_if_verified` remain null |
+| `run_cash_impact_scenario` | Bounded dates/horizon, one-time or incremental monthly costs, optional separate user cash | Hypothetical baseline/adjusted summaries, explicit schedule and limitations; see [calculation contract](ai-stabilization.md#scenario-calculation-contract) |
 | `get_business_highlights` | Optional reporting fields | Existing receivables/incentive information; reporting filters do not redefine assessment dates |
 | `get_financing_status` | Required `application_reference` (`APP-…`) | Authorized submitted application reference, submission status/as-of |
 | `get_financing_details` | Same | Requested amount; unsupported approved amount, repayment terms, decision and decision date null |
@@ -143,3 +144,6 @@ The supplied policy/schema, `.env`, Railway lifecycle/configuration and financia
 Gemini HTTP requests and model workers now allow 30 seconds. The complete chat processing budget is 60 seconds, including tool rounds and fallback retrieval; it is not an unlimited wait. Financial tools retain their policy-defined 10-second maximum and may receive less when the turn budget is nearly exhausted. The drawer shows “Still analyzing…” after 10 seconds, retains failed/fallback questions in the composer, and offers a Retry question control that prepares the question without automatically resending. Timeout, response-validation rejection and other provider failures have distinct safe UI labels. Restart the local server to activate the change.
 
 Timing follow-up verification: 53 focused governance tests passed; 24 isolated browser checks passed, including delayed loading, preserved question, nonautomatic retry and accurate timeout labeling. Focused role HTTP checks passed. Active CNY file hashes remained unchanged. Python/JavaScript syntax and git diff --check passed. No live-provider success is claimed by these synthetic checks.
+
+
+Current incremental behavior and acceptance status: [AI stabilization](ai-stabilization.md). This includes the governed cash-impact tool, expanded forecast evidence and current live-provider blocker.

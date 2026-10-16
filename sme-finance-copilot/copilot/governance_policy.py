@@ -6,11 +6,11 @@ from copilot.security import AccessDenied
 
 ROOT = Path(__file__).resolve().parents[1] / 'config'
 ROLES = {'SME_OWNER', 'SME_STAFF', 'BANK', 'SYSTEM_ADMIN'}
-CAPABILITIES = {'financial_education','sales_summary_read','transaction_trends_read','payment_channel_mix_read','cash_flow_read','business_highlights_read','financing_status_read','financing_details_read','survival_simulation_run','expansion_assessment','public_research','financial_execution'}
-TOOL_CAPABILITIES = dict(get_financial_summary='sales_summary_read',get_transaction_trends='transaction_trends_read',get_payment_channel_mix='payment_channel_mix_read',get_cash_flow='cash_flow_read',get_business_highlights='business_highlights_read',get_financing_status='financing_status_read',get_financing_details='financing_details_read',run_survival_simulation='survival_simulation_run',search_public_financial_information='public_research')
+CAPABILITIES = {'financial_education','sales_summary_read','transaction_trends_read','payment_channel_mix_read','cash_flow_read','business_highlights_read','financing_status_read','financing_details_read','survival_simulation_run','expansion_assessment','public_research','financial_execution','cash_impact_scenario_run'}
+TOOL_CAPABILITIES = dict(run_cash_impact_scenario='cash_impact_scenario_run',get_financial_summary='sales_summary_read',get_transaction_trends='transaction_trends_read',get_payment_channel_mix='payment_channel_mix_read',get_cash_flow='cash_flow_read',get_business_highlights='business_highlights_read',get_financing_status='financing_status_read',get_financing_details='financing_details_read',run_survival_simulation='survival_simulation_run',search_public_financial_information='public_research')
 FIELD_CLASSES = {
- 'get_financial_summary':dict(period='D1',currency='D1',recorded_net_sales='D2',transaction_count='D1',source_timestamp='D1'),
- 'get_transaction_trends':dict(period='D1',granularity='D1',transaction_count='D1',recorded_net_sales='D2',source_timestamp='D1'),
+ 'get_financial_summary':dict(coverage='D2',period='D1',currency='D1',recorded_net_sales='D2',transaction_count='D1',source_timestamp='D1'),
+ 'get_transaction_trends':dict(coverage='D2',period='D1',granularity='D1',transaction_count='D1',recorded_net_sales='D2',source_timestamp='D1'),
  'get_payment_channel_mix':dict(period='D1',channel='D1',transaction_count='D1',share_percent='D1'),
  'get_cash_flow':dict(period='D2',currency='D2',cash_inflows='D2',cash_outflows='D2',net_cash_flow='D2',available_cash_if_verified='D2'),
  'get_business_highlights':dict(period='D1',highlight_type='D1',summary='D2',source_metric='D2'),
@@ -19,7 +19,8 @@ FIELD_CLASSES = {
  'run_survival_simulation':dict(scenario='D1',assumptions='D1',baseline_period='D1',simulation_results='D2',limitations='D1'),
  'search_public_financial_information':dict(source_title='D0',source_url='D0',publication_date='D0',retrieved_at='D0',excerpt='D0'),
 }
-
+FIELD_CLASSES['get_cash_flow'].update({k:'D2' for k in ['opening_balance', 'opening_balance_date', 'latest_data_date', 'closing_balance', 'min_balance', 'runway_days', 'buffer_days', 'limitations']})
+FIELD_CLASSES['run_cash_impact_scenario']={k:'D2' for k in ['currency', 'assessment_date', 'opening_balance_date', 'latest_data_date', 'synthetic_opening_balance', 'horizon_days', 'baseline', 'adjusted', 'user_cash_baseline', 'user_cash_adjusted', 'schedule', 'limitations']}
 
 class Policy:
     def __init__(self):
@@ -40,7 +41,7 @@ class Policy:
         from jsonschema import Draft202012Validator
         Draft202012Validator.check_schema(schema)
         Draft202012Validator(schema).validate(data)
-        if data['metadata']['version'] != '0.5.0' or data['metadata']['schema_version'] != '1.0.0':
+        if data['metadata']['version'] != '0.6.0' or data['metadata']['schema_version'] != '1.0.0':
             raise ValueError('Unreviewed policy version')
         if set(data['roles']) != ROLES or set(data['capabilities']) != CAPABILITIES or set(data['tools']) != set(TOOL_CAPABILITIES):
             raise ValueError('Unknown role, capability or tool')

@@ -44,7 +44,7 @@ class GovernanceTests(unittest.TestCase):
  def decide(self,a,decision='approve',**kw):
   return self.partner.decide(self.token,'M002',self.ref,{'approval_reference':a['approval_reference'],'exact_query':a['exact_query'],'decision':decision,**kw})
  def test_valid_policy_and_read_only_copy(self):
-  p=Policy();self.assertTrue(p.available);self.assertEqual(p.version,'0.5.0');d=p.section('tools');d.clear();self.assertTrue(p.section('tools'))
+  p=Policy();self.assertTrue(p.available);self.assertEqual(p.version,'0.6.0');d=p.section('tools');d.clear();self.assertTrue(p.section('tools'))
  def test_missing_and_invalid_files_fail_closed(self):
   with tempfile.TemporaryDirectory() as directory,patch('copilot.governance_policy.ROOT',Path(directory)):
    self.assertFalse(Policy().available)
@@ -200,7 +200,7 @@ class GovernanceTests(unittest.TestCase):
  def test_authorization_audit_contains_no_prompt_or_result(self):
   self.ask('Show sales MY_PRIVATE_PROMPT_CANARY')
   with self.auth.db() as db:rows=[json.loads(r[0]) for r in db.execute("SELECT record FROM audit_events")];rows=[r for r in rows if r["action"].startswith("ai_")]
-  self.assertTrue(rows);encoded=json.dumps(rows);self.assertNotIn('MY_PRIVATE_PROMPT_CANARY',encoded);self.assertNotIn('1234.50',encoded);self.assertIn('0.5.0',encoded)
+  self.assertTrue(rows);encoded=json.dumps(rows);self.assertNotIn('MY_PRIVATE_PROMPT_CANARY',encoded);self.assertNotIn('1234.50',encoded);self.assertIn('0.6.0',encoded)
  def test_mcp_registry_and_legacy_bypass_denied(self):
   from copilot.mcp_server import MCPHandler
   m=MCPHandler(self.c,self.auth.principal(self.token),partner=self.partner,token=self.token)

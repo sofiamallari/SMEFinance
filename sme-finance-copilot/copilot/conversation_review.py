@@ -5,7 +5,8 @@ import copy,json,re,time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from copilot import conversation_state as cs
-from copilot.governed_claims import RESPONSE_SCHEMA,ClaimError,verify_response,tool_claims,public_records
+from copilot import conversation_evidence as evidence
+from copilot.governed_claims import RESPONSE_SCHEMA,ClaimError,verify_response,tool_claims,public_records,analytical_claims
 from copilot.governed_research import bounded_call
 from copilot.security import AccessDenied
 
@@ -17,7 +18,7 @@ def sources(text):
  """Server-owned exact substrings. The model references IDs, never retypes values."""
  values=[text]
  patterns=[r'(?:RMB|CNY|USD|PHP|[\u00a5\uffe5])?\s*[+-]?\d[\d,]*(?:\.\d+)?\s*%?',
-           r'\b\d+\s+(?:months?|years?)\b',r'\b(?:today|last month|previous month|this month|current month|next month|last \d+ days)\b',
+           r'\b\d+\s+(?:months?|years?)\b',r'\b(?:Q[1-4](?:\s+\d{4})?|last quarter|previous comparable period)\b',r'\b(?:today|last month|previous month|this month|current month|next month|last \d+ days)\b',
            r'\b(?:cash|in cash|financing|finance|mixed|yes|no|true|false|all|none|unchanged|same|no change)\b']
  for pattern in patterns:values.extend(m.group().strip() for m in re.finditer(pattern,text,re.I))
  words=list(re.finditer(r"[A-Za-z][A-Za-z'-]*",text))[:60]
@@ -27,7 +28,7 @@ def sources(text):
  values.extend(part.strip() for part in re.split(r'[!?;\n]|\.(?=\s|$)',text) if part.strip())
  return {'s'+str(i):value for i,value in enumerate(dict.fromkeys(v for v in values if v))}
 
-def plan_schema(spans,state=None,*,text=None,currency='CNY',today=None):
+def plan_schema(spans,state=None,*,text=None,currency='CNY',today=None,definitions=None):
  schema=copy.deepcopy(cs.CONTEXT_SCHEMA)
  options=[]
  for entity in cs.ENTITIES:
@@ -43,6 +44,10 @@ def plan_schema(spans,state=None,*,text=None,currency='CNY',today=None):
  else:
   schema['properties']['updates']['maxItems']=0
   schema['properties']['updates']['items']={'type':'object','properties':{},'additionalProperties':False}
+ if definitions is not None:
+  options=[{'type':'object','properties':{'name':{'type':'string','enum':[d['function']['name']]},'arguments':d['function']['parameters']},'required':['name','arguments'],'additionalProperties':False} for d in definitions]
+  schema['properties']['tool_requests']={'type':'array','maxItems':3,'items':{'anyOf':options} if options else {'type':'object','properties':{},'additionalProperties':False}}
+  if not options:schema['properties']['tool_requests']['maxItems']=0
  return schema
 
 def narration_schema(records):
@@ -85,6 +90,17 @@ class Conversation:
    self.partner.context(token,mid,reference)
    if len(row['messages'])>=self.partner.policy.section('conversation_policy')['max_messages']:return self.partner.response('Start a new conversation to continue.',classification='LIMIT',engine='generalized')
    if not self.partner.c.limiter.allow('governed:'+p.user_id):return self.partner.response('Please wait before sending another question.',classification='LIMIT',engine='generalized')
+   definitions=self.partner.gateway.definitions(token,mid)
+   if re.fullmatch(r"\s*(?:hi|hello|hey|what can you (?:do|help(?: me)? with)(?: as a business owner)?|how can you help(?: me)?(?: with this chatbot)?)\s*[.!?]*\s*",text,re.I):
+    result=self.partner.response(evidence.capability_answer(definitions),classification='CAPABILITIES',engine='generalized')
+    row['messages'].extend([{'role':'user','content':text},{'role':'assistant','content':result['reply']}])
+    return result
+   if re.search(r'where did you get|sources? (?:of|for)|where (?:are|do) (?:those|these|the) (?:numbers|figures)',text,re.I) and row['conversation_state']['facts']:
+    facts=row['conversation_state']['facts']
+    for name in {v['source'] for v in facts.values() if v.get('source') in evidence.LABELS}:self.partner.gateway.authorize(token,mid,name)
+    result=self.partner.response('Sources for the previous answer (not a new retrieval):\n'+'\n'.join(dict.fromkeys(v.get('source','Backend conversation context')+': '+v['display'] for v in list(facts.values())[:8])),classification='SOURCES',engine='generalized')
+    row['messages'].extend([{'role':'user','content':text},{'role':'assistant','content':result['reply']}])
+    return result
    from copilot.partner_help import answer as help_answer
    try:help_result=help_answer(p,mid,text)
    except AccessDenied:return self.partner.response('That application workflow is restricted for your account.',classification='DENIED',engine='generalized')
@@ -121,12 +137,22 @@ class Conversation:
      "For percentages select a source containing the direction if supplied. For durations select the exact duration span. "
      "Use topic_change only for a different financial topic, not an answer or correction. Never change identity, permissions or backend facts. "
      "All financial values remain user assumptions. The backend owns relative dates and types. A recurring cost is distinct from a one-time cost. Preserve start_date when supplied. comparison_period is distinct from reporting_period. Do not ask for missing period if a clear relative period was provided. Returning to a prior topic may reuse only user assumptions, never stale financial facts.")
-    plan=self.call([{'role':'system','content':instruction},{'role':'user','content':json.dumps({'message':text,'source_spans':spans,'validated_state':{k:state[k] for k in ('intent','entities','pending','resolved')},'business_date':today.isoformat(),'entity_types':cs.ENTITIES})}],plan_schema(spans,state,text=text,currency=settings['base_currency'],today=today),deadline)
+    instruction+=(" Propose tool_requests (at most three), only from authorized_tools. Use exact backend period arguments or empty arguments for backend defaults. "
+     "Sales comparisons need two summary calls, current then comparison; trends support best month. Never invent result values. "
+     "For cash-impact scenarios propose run_cash_impact_scenario with assessment_date and horizon_days matching scenario_defaults; the backend binds costs from validated entities. "
+     "A purchase cost and a monthly salary are separate scenarios unless the user explicitly combines them. Set topic_change for an unrelated decision. "
+     "A short cash answer supplies payment_method, never available_cash. Do not repeat answered questions. "
+     "For recurring salary request start_date only if missing. Once cash method is resolved, a purchase can be modeled; no current-cash claim is established. "
+     "Month names and quarters are reporting_period/comparison_period spans. Use previous comparable period for equal-day comparisons. "
+     "Do not ask about already available reporting periods; default latest complete month is supplied. For best-month trends use empty arguments. "
+     "Do not select financial tools for general education. Never request unrelated applications or reporting periods.")
+    plan=self.call([{'role':'system','content':instruction},{'role':'user','content':json.dumps({'message':text,'source_spans':spans,'validated_state':{k:state[k] for k in ('intent','entities','pending','resolved')},'business_date':today.isoformat(),'latest_data_date':(__import__('copilot.cash_impact',fromlist=['latest_data']).latest_data(self.partner.c,mid) if any(d['function']['name']=='get_financial_summary' for d in definitions) else None),'default_reporting_period':(evidence.default_period(self.partner.c,mid,today) if any(d['function']['name']=='get_financial_summary' for d in definitions) else None),'scenario_defaults':{'assessment_date':today.isoformat(),'horizon_days':90},'authorized_tools':definitions,'prior_topics':state['topics'],'entity_types':cs.ENTITIES})}],plan_schema(spans,state,text=text,currency=settings['base_currency'],today=today,definitions=definitions),deadline)
     # Validate the ID-based envelope before resolving server-owned literal spans.
-    validate_contract(plan_schema(spans,state,text=text,currency=settings['base_currency'],today=today),plan)
+    validate_contract(plan_schema(spans,state,text=text,currency=settings['base_currency'],today=today,definitions=definitions),plan)
     if len({u['entity'] for u in plan['updates']})!=len(plan['updates']):raise ClaimError('duplicate_entity_update')
-    proposal={**plan,'updates':[{'entity':u['entity'],'quote':spans[u['source']]} for u in plan['updates']]}
+    proposal={**{k:v for k,v in plan.items() if k!='tool_requests'},'updates':[{'entity':u['entity'],'quote':spans[u['source']]} for u in plan['updates']]}
     updated=cs.apply_proposal(state,proposal,text,currency=settings['base_currency'],today=today)
+    updated=evidence.prepare_state(state,updated,text)
     intent=updated['intent']
     if intent=='financing' and p.role=='staff':raise AccessDenied('Financing restricted')
     if intent=='decision_support':self.partner.policy.capability(p,'expansion_assessment');self.partner.auth.authorize(token,'view_reports',mid)
@@ -135,30 +161,15 @@ class Conversation:
     records=cs.claim_records(state);stage='tools'
     if intent=='out_of_scope':
      return self.partner.response('I can help with finance, authorized business information and application guidance.',classification='OUT_OF_SCOPE',engine='generalized')
-    name=TOOLS.get(intent)
-    if name:
-     args={};entities=state['entities']
-     if name in ('get_financial_summary','get_payment_channel_mix'):
-      args=entities.get('reporting_period',{}).get('value',{})
-     if intent=='financing':
-      refs=re.findall(r'\bAPP-[A-Za-z0-9-]{1,80}\b',text)
-      if len(refs)==1:args={'application_reference':refs[0]}
-      else:name=None
-     if intent=='simulation':
-      requested=bool(re.search(r'simulat|scenario|what if|what happens',text,re.I)) or state.get('simulation_requested',False)
-      state['simulation_requested']=requested
-      required=('sales_change_percent','expense_change_percent','simulation_duration')
-      if requested and all(k in entities for k in required):
-       args={'sales_change_percent':float(entities['sales_change_percent']['value']),'expense_change_percent':float(entities['expense_change_percent']['value']),'months':int(entities['simulation_duration']['value'])}
-       state['simulation_requested']=False
-      else:name=None
-     if name:
-      result=self.partner.gateway.execute(token,mid,name,args,simulation_requested=name=='run_survival_simulation',deadline=deadline)
-      used.append(name);records.update(tool_claims(name,result,prefix='fact0'))
-      compare=entities.get('comparison_period',{}).get('value')
-      if name=='get_financial_summary' and compare:
-       comparison=self.partner.gateway.execute(token,mid,name,compare,deadline=deadline)
-       records.update(tool_claims(name,comparison,prefix='fact1'))
+    results=[]
+    for index,(name,args) in enumerate(evidence.requests(plan,state,self.partner.c,mid,today,definitions,text)):
+     result=self.partner.gateway.execute(token,mid,name,args,simulation_requested=name in ('run_survival_simulation','run_cash_impact_scenario'),deadline=deadline)
+     used.append(name);prefix='fact'+str(index)
+     results.append((prefix,name,result));records.update(tool_claims(name,result,prefix=prefix))
+    records.update(analytical_claims(results))
+    state['reporting_context']={'business_date':today.isoformat(),'retrieved_periods':[value['period'] for prefix,name,value in results if isinstance(value,dict) and name=='get_financial_summary'],'requested_period':state['entities'].get('reporting_period',{}).get('value')}
+    for prefix,name,value in results:
+     if name=='run_cash_impact_scenario':state['pending']=None
     if intent=='public_research':
      research=self.partner.research.propose(token,mid,row,'sme_lending_rates')
      result=self.partner.response(research.get('message') or 'Review the exact public query before approving research.',research=research,engine='generalized')
@@ -171,8 +182,8 @@ class Conversation:
      "Choose only supplied claim IDs, with their exact kinds. Never retype amounts, counts, dates, month names or percentages in text. Calendar and reporting-period statements must be typed source references too. "
      "Each typed claim is rendered as a complete sentence by the backend. Use brief complete sentences in text segments, not fragments around claims. "
      "Use only material figures. Do not repeat every entity or transaction count. Never invent balances, profit, financing details, ratios or formulas. "
-     "User-reported cash is unconfirmed. Sales are not available cash, and no purchase-affordability calculation or approval is established. "
-     "You cannot update any business record or account. Never announce that records have been updated, changed, saved or modified. Cite corrected assumptions without claiming an action. In explanatory text avoid the words afford, affordability and guaranteed, even in negative statements. Every text sentence referring to a financial position must express missing information or uncertainty explicitly, rather than making procedural claims about the user; instead explain what information is missing or uncertain. This wording restriction does not establish any financial conclusion. Do not ask any question in segments; the already validated pending question is appended separately. "
+     "User-reported cash is unconfirmed. Sales are not available cash. Cash-impact projections are hypothetical, never a guarantee or approval. Cite the scenario opening, adjusted result and limitations when supplied. "
+     "You cannot update any business record or account. Never announce that records have been updated, changed, saved or modified. Cite corrected assumptions without claiming an action. In explanatory text avoid the words afford, affordability and guaranteed, even in negative statements. Financial conclusions require supplied typed calculation records; do not put qualitative remaining-cash verdicts in prose. Do not claim missing historical data merely because it was not retrieved. Do not ask any question in segments; the already validated pending question is appended separately. "
      "Do not claim a simulation, search or action ran unless an authorized result is supplied. Do not repeat internal verification terms. Do not request information or suggest another question in text segments; only the separately supplied pending question asks the user for information. "
      "Explain limitations naturally without stating a positive financial conclusion. Education needs no fictitious merchant facts. For educational definitions use impersonal language with 'means' or 'refers to', without the personal financial-position patterns 'profit is', 'your profit', or 'your cash'.")
     payload=self.call([{'role':'system','content':system},{'role':'user','content':json.dumps({'question':text,'validated_context':{k:state[k] for k in ('intent','entities','pending','resolved')},'available_typed_claims':public_records(records),'tools_used':used})}],narration_schema(records),deadline)
@@ -188,6 +199,8 @@ class Conversation:
      question=state['pending']['text'];verify_response(json.dumps({'segments':[{'text':question}]}),{})
      reply+='\n\n'+question
     if not reply.strip():raise ClaimError('empty_response')
+    from copilot.governed_partner import remaining
+    remaining(deadline,1)
     self.partner.context(token,mid,reference)
     self.partner.auth.audit('ai_review_response_verified',p,mid,metadata={'policy_version':self.partner.policy.version})
     result=self.partner.response(reply,connection_status='live' if self.live else 'test_double',mode='governed_generalized_live' if self.live else 'governed_generalized_test_double',tools_used=used,claim_categories=sorted({records[k]['kind'] for k in keys}),engine='generalized',verification='passed')

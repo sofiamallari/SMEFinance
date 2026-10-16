@@ -45,7 +45,7 @@ def purchase_context(text,previous=None):
     if re.search(r'\b(?:state|pretend|fabricate|invent|assume|imagine)\b.{0,90}\b(?:cash|balance)\b',text,re.I):return result
     item=re.search(r'\b(oven|equipment|inventory|warehouse(?: lot)?|property|shop|branch|investment|machinery|vehicle)\b',text,re.I)
     if item:result['item']=item.group(0).lower()
-    amounts=list(re.finditer(r'(RMB|CNY|USD|PHP|¥|￥)\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)',text,re.I))
+    amounts=list(re.finditer(r'(RMB|CNY|USD|PHP|ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥|ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥)\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)',text,re.I))
     if amounts:
         first=amounts[0];currency=first.group(1).upper()
         clause=re.split(r'[.!?;\n]',text[:first.start()])[-1]
@@ -53,7 +53,7 @@ def purchase_context(text,previous=None):
         extra=bool(result.get('price') and re.search(r'installation|delivery|setup|additional',text[max(0,first.start()-35):first.start()],re.I))
         if cash_statement and not re.search(r'\b(?:state|pretend|fabricate|invent|assume|imagine|hypothetical)\b',clause,re.I):
             result['reported_cash']=format(Decimal(first.group(2).replace(',','')),'.2f')
-            result['reported_cash_currency']='CNY' if currency in ('RMB','CNY','¥','￥') else currency
+            result['reported_cash_currency']='CNY' if currency in ('RMB','CNY','ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥','ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥') else currency
         elif extra:
             result['extra_costs']='additional costs stated by user; not verified or summed'
             result['additional_cost']=format(Decimal(first.group(2).replace(',','')),'.2f')
@@ -62,13 +62,13 @@ def purchase_context(text,previous=None):
             scale=re.match(r'\s*(thousand|million|billion)\b',text[first.end():],re.I)
             if scale:amount*=Decimal({'thousand':1000,'million':1000000,'billion':1000000000}[scale.group(1).lower()])
             result['price']=format(amount,'.2f')
-            result['currency']='CNY' if currency in ('RMB','CNY','¥','￥') else currency
+            result['currency']='CNY' if currency in ('RMB','CNY','ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥','ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥') else currency
     for amount in amounts:
         before=text[max(0,amount.start()-35):amount.start()]
         label='down_payment' if re.search(r'down[- ]?payment',before,re.I) else 'additional_cost' if re.search(r'installation|delivery|setup|additional|acquisition',before,re.I) else None
         if label:
             result[label]=format(Decimal(amount.group(2).replace(',','')),'.2f')
-            code=amount.group(1).upper();result[label+'_currency']='CNY' if code in ('RMB','CNY','¥','￥') else code
+            code=amount.group(1).upper();result[label+'_currency']='CNY' if code in ('RMB','CNY','ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥','ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¿ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥') else code
             if label=='additional_cost':result['extra_costs']='additional costs stated by user; not verified or summed'
     dates=re.findall(r'\b\d{4}-\d{2}-\d{2}\b|\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b',text,re.I)
     if dates:
@@ -87,7 +87,7 @@ def purchase_context(text,previous=None):
     if re.search(r'\b(?:pay|paid|paying|fund(?:ed)?)\s+(?:in |with |by )?cash\b|cash[- ]funded|pay upfront|buy outright',text,re.I):result['funding']='cash'
     elif re.search(r'\bfinanced?\b|use financing|with financing|bank loan|borrow',text,re.I):result['funding']='financing'
     if re.search(r'(?:no|without) (?:additional|extra|installation|delivery|setup) costs|includes? (?:installation|delivery|all costs)|all[- ]in',text,re.I):result['extra_costs']='included or none, as stated by the user'
-    elif re.search(r'(installation|delivery|setup|additional|acquisition).{0,30}(?:RMB|CNY|¥|\d)',text,re.I):result['extra_costs']='additional costs stated by user; not verified or summed'
+    elif re.search(r'(installation|delivery|setup|additional|acquisition).{0,30}(?:RMB|CNY|ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥|\d)',text,re.I):result['extra_costs']='additional costs stated by user; not verified or summed'
     term=re.search(r'\b\d+\s+(?:months?|years?)\b',text,re.I)
     if term:result['repayment_term']=term.group(0)
     return result
@@ -117,14 +117,25 @@ def tool_claims(name,value,currency='CNY',prefix='fact'):
         span=value['period'];currency=value['currency']
         add('net_sales','recorded_net_sales',value['recorded_net_sales'],'Recorded net sales: '+money(value['recorded_net_sales'],currency)+', for '+period(span)+'. Revenue is not profit or available cash.',currency=currency,period=span)
         add('transaction_count','sales_payment_transaction_count',value['transaction_count'],'Sales/payment transaction count: '+format(value['transaction_count'],',')+', for '+period(span)+'. Transaction volume is not cash balance.',period=span)
+        if 'coverage' in value:
+            coverage=value['coverage']
+            display=('Available sales/payment record dates within the requested period: '+period(coverage)+'. This is record coverage, not proof of complete business activity.' if coverage else 'No sales/payment records were returned within this requested period; other periods may contain records.')
+            add('coverage','sales_record_coverage','coverage',display,period=span)
     elif name=='run_survival_simulation':
         r=value['simulation_results'];span=value['baseline_period'];currency=r['currency']
         for metric,label in [('baseline_monthly_operating_result','Baseline monthly operating result'),('simulated_monthly_operating_result','Simulated monthly operating result'),('cumulative_operating_result','Cumulative simulated operating result')]:
             kind='deterministic_result' if metric.startswith('baseline') else 'simulation_output'
             add(metric,metric,r[metric],label+': '+money(r[metric],currency)+'. Baseline period: '+period(span)+'. Hypothetical operating-result calculation; not verified cash or purchase affordability.',kind,currency=currency,period=span)
+    elif name=='run_cash_impact_scenario':
+        records.update(scenario_claims(value,prefix))
     elif name=='get_cash_flow':
+        for metric,label in [('opening_balance','Synthetic demo opening balance as of '+day(value['opening_balance_date'])),('closing_balance','Projected closing balance'),('min_balance','Minimum projected balance')]:
+            add(metric,metric,value[metric],label+': '+money(value[metric],value['currency'])+'. Synthetic forecast, not current spendable cash.','derived_calculation' if metric!='opening_balance' else 'backend_fact',currency=value['currency'],period=value['period'])
+        if value.get('buffer_days') is not None:add('buffer_days','buffer_days',value['buffer_days'],'Synthetic-opening expense-coverage estimate: '+str(value['buffer_days'])+' days. Uses historical included variable expenses and averaged debt service; not a verified liquidity buffer.','derived_calculation',period=value['period'])
+        if value.get('runway_days') is not None:add('runway_days','runway_days',value['runway_days'],'First projected negative balance on day '+str(value['runway_days'])+'.','derived_calculation',period=value['period'])
+        add('limitations','forecast_limitations','limitations',' '.join(value['limitations']),period=value['period'])
         for field,label in [('cash_inflows','Estimated inflow'),('cash_outflows','Estimated outflow')]:
-            for index,row in enumerate(value[field]):
+            for index,row in enumerate(value[field][:3]):
                 add(field+str(index),field,row['amount'],label+' on '+day(row['date'])+': '+money(row['amount'],value['currency'])+'. Forecast result, not actual available cash.', 'deterministic_result',currency=value['currency'],period=value['period'])
     elif name=='get_transaction_trends':
         for index,row in enumerate(value):
@@ -181,6 +192,8 @@ def verify_response(content,records):
             # typed records, not a numeric allowlist that launders assumptions.
             text=re.sub(r'(?m)^\s*\d{1,2}[.)]\s+','',text)
             if re.search(r'\d|\b(?:million|billion|thousand|hundred)\b',text,re.I):raise ClaimError('untyped_numeric_claim')
+            # Qualitative liquidity verdicts also require a server-rendered calculation.
+            if re.search(r'(?:still|remaining|left over|leftover).{0,30}(?:cash|balance)|(?:cash|balance).{0,25}(?:left|remaining|positive)|(?:no|without) (?:cash )?shortfall',text,re.I) and not re.search(r"cannot|can't|not established|unknown",text,re.I):raise ClaimError('unsupported_financial_conclusion')
             conclusion_text=re.sub(r"(?:I |we )?(?:cannot|can't|do not|don't) (?:yet )?(?:determine|establish|confirm|know) (?:whether|if) (?:your business|you) (?:can|could|will) afford",'',text,flags=re.I)
             if re.search(r'https?://|(?:you|your business)\s+(?:can|could|will)\s+afford|(?:purchase|oven|investment)\s+is\s+affordable|definitely afford|guaranteed|credit (?:is )?approved|loan (?:is )?approved|I (?:submitted|paid|purchased|transferred)',conclusion_text,re.I):raise ClaimError('unsupported_financial_conclusion')
             for clause in re.split(r'[.;\n]',text):
@@ -188,6 +201,8 @@ def verify_response(content,records):
                     'affordability assessments require a comprehensive review of your current cash flow and outstanding liabilities',
                     'no approved one-time purchase affordability calculation is available'
                 }:continue
+                if re.fullmatch(r'I can explain how (?:your |the )?(?:cash.flow forecast|sales report|payment.channel mix) works',clause.strip(),re.I):continue
+                if re.search(r'(?:historical|financial|sales) data (?:is|are) missing',clause,re.I):raise ClaimError('unsupported_data_coverage_claim')
                 uncertain=bool(re.search(r"cannot|can't|not|unverified|unavailable|missing|unknown|uncertain|whether|depends|need|verify|verification|assuming|hypothetical|\bif\b|could|\?",clause,re.I))
                 risky=re.search(r'(?:your|our|recorded|the business).{0,35}(?:profitable|healthy|strong|cash|balance|profit|reserves|grew|increased|decreased)|you have (?:enough|sufficient)|you (?:have|hold|possess).{0,20}(?:cash|balance)|available cash is|bank balance is|profit is|\bverified (?:available )?cash|sales (?:are|is|equals?|means?) (?:your )?(?:available )?cash|spend (?:your |the )?(?:net )?sales|sales.{0,20}spendable|(?:our|your).{0,25}(?:loan|financing application)|afford(?:able|ability)?',clause,re.I)
                 if risky and not uncertain:raise ClaimError('unsupported_business_fact')
@@ -266,3 +281,45 @@ def render_purchase(context, records, followup=False):
     else:question='How much cash do you currently have available for business expenses?'
     parts.append(question)
     return '\n\n'.join(parts)
+
+def analytical_claims(results):
+    """Approved Decimal comparisons from authorized tool results, never model inputs."""
+    records={}
+    summaries=[(key,v) for key,name,v in results if name=='get_financial_summary']
+    if len(summaries)>=2:
+        (left,a),(right,b)=summaries[:2]
+        if a['currency']!=b['currency']:raise ClaimError('comparison_currency_mismatch')
+        current,prior=Decimal(a['recorded_net_sales']),Decimal(b['recorded_net_sales'])
+        delta=current-prior;percent_value=(delta/prior*100).quantize(Decimal('.01')) if prior else None
+        display='Recorded net sales comparison: '+period(a['period'])+' versus '+period(b['period'])+'. Difference: '+money(delta,a['currency'])+'.'
+        display+=(' Change: '+str(percent_value)+'%.' if percent_value is not None else ' Percentage change is undefined because prior recorded sales are zero.')
+        a_days=(date.fromisoformat(a['period']['end'])-date.fromisoformat(a['period']['start'])).days+1
+        b_days=(date.fromisoformat(b['period']['end'])-date.fromisoformat(b['period']['start'])).days+1
+        display+=' Period lengths: '+str(a_days)+' versus '+str(b_days)+' days; totals are not day-normalized.'
+        display+=' Transaction-count difference: '+str(a['transaction_count']-b['transaction_count'])+'. Requested periods may have unequal calendar days; inspect coverage before interpreting.'
+        records['analysis.comparison']={'kind':'derived_calculation','metric':'sales_comparison','value':str(delta),'currency':a['currency'],'source':'get_financial_summary','inputs':[left+'.net_sales',right+'.net_sales'],'formula':'current_minus_prior; percent=delta/prior*100 when prior != 0','display':display}
+    for prefix,name,rows in results:
+        if name!='get_transaction_trends' or not rows:continue
+        top=max(Decimal(r['recorded_net_sales']) for r in rows)
+        winners=[r['period'] for r in rows if Decimal(r['recorded_net_sales'])==top]
+        records['analysis.best_period']={'kind':'derived_calculation','metric':'best_recorded_period','value':str(top),'source':name,'inputs':[prefix+'.sales'+str(i) for i in range(len(rows))],'formula':'max(recorded_net_sales); retain all ties','display':'Highest recorded net-sales bucket'+('s' if len(winners)>1 else '')+': '+', '.join(winners)+' at '+money(top,rows[0].get('currency','CNY'))+'. Basis: available returned '+rows[0]['granularity']+' buckets, including partial buckets where present; not profit or available cash.'}
+    return records
+
+def scenario_claims(value,prefix):
+    records={};currency=value['currency']
+    def add(key,display,number='',kind='simulation_result',**source):
+        records[prefix+'.'+key]={'kind':kind,'metric':key,'value':str(number),'source':'run_cash_impact_scenario','currency':currency,'display':display,**source}
+    add('opening','Synthetic demo opening balance as of '+day(value['opening_balance_date'])+': '+money(value['synthetic_opening_balance'],currency)+'. This is not current spendable cash; imports do not reconcile this balance.',value['synthetic_opening_balance'],'backend_fact')
+    add('period','Hypothetical assessment date: '+day(value['assessment_date'])+'; forecast horizon: '+str(value['horizon_days'])+' days. Latest financial-data date: '+day(value['latest_data_date'])+'.')
+    for key,label in [('baseline','Synthetic-opening baseline'),('adjusted','Hypothetical cost-adjusted forecast'),('user_cash_baseline','Separate user-reported cash baseline (unverified)'),('user_cash_adjusted','Separate cost-adjusted user-cash forecast (unverified)')]:
+        row=value.get(key)
+        if row is None:continue
+        display=label+': projected closing balance '+money(row['closing_balance'],currency)+'; minimum projected balance '+money(row['min_balance'],currency)+'. '
+        display+=('First projected negative balance: day '+str(row['runway_days'])+'.' if row['runway_days'] is not None else 'No negative balance projected within this horizon.')
+        if row['buffer_days'] is not None:display+=' Synthetic-opening expense-coverage estimate: '+str(row['buffer_days'])+' days.'
+        display+=' This does not establish actual affordability.'
+        add(key,display,row['closing_balance'],inputs=['authorized forecast', 'explicit hypothetical schedule'],formula='existing weekday forecast plus incremental scheduled outflows')
+    schedule=value['schedule']
+    add('schedule','Incremental hypothetical outflow schedule: '+'; '.join(day(r['date'])+': '+money(r['amount'],currency) for r in schedule)+'. Existing scheduled obligations are included once by the baseline.')
+    add('limitations',' '.join(value['limitations']))
+    return records
