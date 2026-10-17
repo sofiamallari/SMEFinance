@@ -24,4 +24,6 @@ cd sme-finance-copilot
 python -m unittest discover -s tests -v
 ```
 
+Deployment options (local, Docker, Railway): [deployment instructions](sme-finance-copilot/docs/operations/deployment.md). Test cases per role: [test cases](sme-finance-copilot/docs/hackathon/test-cases.md).
+
 Financial data is synthetic (CNY) and payments are sandbox-only. No real payments, credit decisions or production certification are implied.
