@@ -342,6 +342,10 @@ class Handler(BaseHTTPRequestHandler):
             # Reject unauthenticated/CSRF-invalid transaction uploads before allocating
             # their larger body. Merchant and stage binding are rechecked after parsing.
             transaction_request=path.startswith(('/api/pos-import','/api/merchant-transactions','/api/data-quality','/api/cashflow-book'))
+            # Live validation counts are answered before the session lookup, which would wait for the running validation.
+            if transaction_request and method=='GET' and path.startswith('/api/pos-import/') and path.endswith('/progress') and len(path.split('/'))==5:
+                from copilot.pos_import import validation_progress
+                return self._send(200,validation_progress(session_token(self.headers),q.get('merchant'),path.split('/')[3]))
             if transaction_request:
                 token=session_token(self.headers);p=AUTH.principal(token)
                 if p.role not in ('owner','staff'):raise AccessDenied('Administrative/financing accounts have no merchant transaction access')

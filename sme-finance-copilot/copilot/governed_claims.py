@@ -147,6 +147,10 @@ def tool_claims(name,value,currency='CNY',prefix='fact'):
             brief='Recorded net sales for '+span_text(requested)+' are '+cash(value['recorded_net_sales'],currency)+'.',requires=requires)
         add('transaction_count','sales_payment_transaction_count',value['transaction_count'],'Sales/payment transaction count: '+format(value['transaction_count'],',')+', for '+period(requested)+'. Transaction volume is not cash balance.',period=requested,
             brief=format(value['transaction_count'],',')+' sales transaction'+('' if value['transaction_count']==1 else 's')+' were recorded for '+span_text(requested)+'.',requires=requires)
+        if value.get('digital_capture_percent') is not None:
+            share=format(value['digital_capture_percent'],'.1f')
+            add('digital_capture','digital_capture_share',share,'Digital Capture for '+period(requested)+': '+share+'% of recorded net sales were paid digitally (card, QR, tap-to-pay, e-wallet or pay link); the rest was cash.','deterministic_result',period=requested,
+                brief='Digital Capture for '+span_text(requested)+' is '+share+'%: that share of your sales was paid digitally rather than in cash.',requires=requires)
         if 'coverage' in value:
             coverage=value['coverage']
             display=('Available sales/payment record dates within the requested period: '+period(coverage)+'. This is record coverage, not proof of complete business activity.' if coverage else 'No sales/payment records were returned within this requested period; other periods may contain records.')
@@ -196,10 +200,16 @@ def tool_claims(name,value,currency='CNY',prefix='fact'):
                 brief='Recorded net sales for '+row['period']+' were '+cash(row['recorded_net_sales'],currency)+'.')
             add('count'+str(index),'sales_payment_transaction_count',row['transaction_count'],'Sales/payment count for '+row['period']+': '+format(row['transaction_count'],',')+'.',period=row['period'],
                 brief=format(row['transaction_count'],',')+' sales transactions were recorded for '+row['period']+'.')
+            if row.get('recorded_expenses') is not None:
+                add('expenses'+str(index),'recorded_expenses',row['recorded_expenses'],'Recorded expenses for '+row['period']+': '+money(row['recorded_expenses'],currency)+'.',currency=currency,period=row['period'],
+                    brief='Recorded expenses for '+row['period']+' were '+cash(row['recorded_expenses'],currency)+'.')
     elif name=='get_payment_channel_mix':
         for index,row in enumerate(value):
             add('share'+str(index),'transaction_volume_share',str(row['share_percent']),row['channel']+': '+format(row['share_percent'],'.2f')+'% of transaction volume, not revenue share.','deterministic_result',period=row['period'],
                 brief=row['channel']+' made up '+format(row['share_percent'],'.2f')+'% of transactions (by count, not revenue).')
+            if row.get('revenue_share_percent') is not None:
+                add('revenue_share'+str(index),'revenue_share',str(row['revenue_share_percent']),row['channel']+': '+format(row['revenue_share_percent'],'.2f')+'% of recorded revenue.','deterministic_result',period=row['period'],
+                    brief=row['channel']+' brought in '+format(row['revenue_share_percent'],'.2f')+'% of your revenue.')
     elif name in ('get_financing_status','get_financing_details'):
         reference=value['application_reference']
         if name=='get_financing_status':add('status','submitted_application_status',value['status'],'Application '+reference+': '+value['status']+' (submission status; not credit approval).',application_reference=reference,
@@ -345,6 +355,32 @@ def _book_item(i,c):
     when=('overdue '+str(-i['days'])+' day'+('' if i['days']==-1 else 's')) if i['days']<0 else 'due today' if i['days']==0 else 'due tomorrow' if i['days']==1 else 'due '+day(i['due'])
     return i['party']+' '+cash(i['amount'],c)+' ('+when+')'
 
+def _import_summary(value,add,prefix):
+    """Bulk POS Import and manual entries. Each upload replaces the earlier imported data; manual entries are kept."""
+    count=lambda n,word:format(n,',')+' '+word+('' if n==1 else 's')
+    last=value.get('latest_import')
+    if last:
+        files=', '.join(f for f in last['files'] if f) or count(last['file_count'],'file')
+        when=day(str(last['imported_at'])[:10]);extra=[]
+        if last['duplicates_excluded']:extra.append(count(last['duplicates_excluded'],'row')+' excluded as duplicates')
+        if last['rejected_rows']:extra.append(count(last['rejected_rows'],'row')+' rejected')
+        replaced=' It replaced the earlier imported data; manual entries were kept.' if last['replaced_imports'] else ''
+        add('latest_import','latest_import',last['imported_rows'],'Latest Bulk POS Import: '+when+' ('+files+'); '+count(last['imported_rows'],'transaction')+' imported'+('; '+'; '.join(extra) if extra else '')+'.'+replaced,
+            brief='Yes. Your latest Bulk POS Import was saved on '+when+' ('+files+'), with '+count(last['imported_rows'],'transaction')+' imported'+(' and '+' and '.join(extra) if extra else '')+'.'+replaced)
+    else:
+        add('latest_import','latest_import','none','No Bulk POS Import has been completed for this business yet.',brief='No Bulk POS Import has been completed for this business yet.')
+    dates=value.get('imported_dates');n=value['imported_rows_current']
+    split=format(value['imported_revenue_rows'],',')+' revenue and '+format(value['imported_expense_rows'],',')+' expense'
+    add('imports_current','imported_rows_current',n,'Imported transactions in the records now: '+format(n,',')+' ('+split+')'+(', dated '+period(dates) if dates else '')+'. Only the latest import is kept.',
+        brief='Your records now hold '+count(n,'imported transaction')+' ('+split+')'+(' dated '+span_text(dates) if dates else '')+'.')
+    m=value['manual_entries'];latest=value.get('latest_manual_entry_date')
+    add('manual_entries','manual_entries',m,'Manual Single Transaction entries: '+format(m,',')+(', latest dated '+day(latest) if latest else '')+'. They are kept when a new import replaces imported data.',
+        brief='You have '+(count(m,'manual Single Transaction entry').replace('entrys','entries'))+(', the latest dated '+day(latest) if latest else '')+'.')
+    if value['unfinished_uploads']:
+        u=value['unfinished_uploads']
+        add('unfinished_uploads','unfinished_uploads',u,'Unfinished uploads (staged or validated, never imported): '+format(u,',')+'. They are not in the records.',
+            brief='You also have '+count(u,'unfinished upload')+' that '+('was' if u==1 else 'were')+' never imported, so '+('it is' if u==1 else 'they are')+' not in your records.')
+
 def _cashflow_book(value,add,prefix):
     """Cash Flow tab figures from the uploaded workbook; every figure is qualified by its upload and reference dates."""
     if not value.get('available'):
@@ -395,7 +431,7 @@ def _income_extra(value,add,prefix):
         else:add('expense_split','expense_split','0','No recorded expenses in '+period(requested)+'.','backend_fact',period=requested,brief='No expenses were recorded for '+span_text(requested)+'.',requires=gap)
 
 MODULE_CLAIMS={'calculate_loan_repayment':_loan,'get_transaction_details':_transaction_details,'get_recent_transactions':_recent_transactions,'get_data_quality':_data_quality,'get_income_summary':_income,
- 'get_cash_flow_alerts':_alerts,'get_financing_matches':_matches,'get_rbf_quote':_rbf,'get_business_maturity':_maturity,'get_cashflow_book':_cashflow_book}
+ 'get_cash_flow_alerts':_alerts,'get_financing_matches':_matches,'get_rbf_quote':_rbf,'get_business_maturity':_maturity,'get_cashflow_book':_cashflow_book,'get_import_summary':_import_summary}
 
 
 def verify_response(content,records,*,inline=False):
@@ -603,6 +639,13 @@ def analytical_claims(results):
             'inputs':[prefix+'.sales'+str(i) for i in range(len(rows))],'formula':'returned buckets, oldest first',
             'display':'Recorded sales and transaction volume by period: '+'; '.join(bucket(r) for r in rows)+'. The latest period may be partial; sales are not profit or cash.',
             'brief':'Recorded sales and transaction volume by period: '+'; '.join(bucket(r) for r in shown)+'.'+(' The latest period may be partial.' if len(shown)>1 else '')}
+        if all(r.get('recorded_expenses') is not None for r in rows):
+            # Dashboard Revenue vs Expense trend: each period's recorded sales and expenses, oldest first.
+            pair=lambda r:label(r['period'])+' sales '+cash(r['recorded_net_sales'],currency)+', expenses '+cash(r['recorded_expenses'],currency)
+            records['analysis.revenue_expense_trend']={'kind':'derived_calculation','metric':'revenue_expense_trend','value':str(Decimal(shown[-1]['recorded_net_sales'])-Decimal(shown[-1]['recorded_expenses'])),'currency':currency,'source':name,
+                'inputs':[prefix+k+str(i) for i in range(len(rows)) for k in ('.sales','.expenses')],'formula':'returned buckets, oldest first',
+                'display':'Recorded sales and expenses by period: '+'; '.join(pair(r) for r in rows)+'. The latest period may be partial; sales minus expenses is not cash.',
+                'brief':'Recorded sales and expenses by period: '+'; '.join(pair(r) for r in shown)+'.'+(' The latest period may be partial.' if len(shown)>1 else '')}
         top=max(Decimal(r['recorded_net_sales']) for r in rows)
         winners=[r['period'] for r in rows if Decimal(r['recorded_net_sales'])==top]
         records['analysis.best_period']={'kind':'derived_calculation','metric':'best_recorded_period','value':str(top),'source':name,'inputs':[prefix+'.sales'+str(i) for i in range(len(rows))],'formula':'max(recorded_net_sales); retain all ties','display':'Highest recorded net-sales bucket'+('s' if len(winners)>1 else '')+': '+', '.join(winners)+' at '+money(top,rows[0].get('currency','CNY'))+'. Basis: available returned '+rows[0]['granularity']+' buckets, including partial buckets where present; not profit or available cash.',

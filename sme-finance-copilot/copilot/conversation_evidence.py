@@ -13,7 +13,8 @@ LABELS={'get_financial_summary':'recorded sales summaries and period comparisons
  'get_cashflow_book':'your uploaded cash-flow workbook: who owes you, overdue invoices, bills due and your 7-day runway',
  'get_transaction_details':'looking up a recorded transaction by its TX- reference',
  'get_recent_transactions':'your most recent recorded transactions',
- 'get_data_quality':'import status and data-quality alerts',
+ 'get_data_quality':'data-quality rates and alerts',
+ 'get_import_summary':'whether your latest upload was saved and how many imported and manual records you have',
  'get_financing_matches':'indicative financing matches',
  'get_rbf_quote':'indicative revenue-based financing quotes',
  'get_business_maturity':'your business maturity stage and next-stage gap',
@@ -110,8 +111,8 @@ RELEVANT={
  'financing':{'get_financing_status','get_financing_details','get_financing_matches','get_rbf_quote','get_business_maturity'},
  'payment_channels':{'get_payment_channel_mix','get_financial_summary'},
  'simulation':{'run_survival_simulation','get_financial_summary','get_cash_flow'},
- 'transactions':{'get_transaction_details','get_recent_transactions','get_data_quality'},
- 'data_quality':{'get_data_quality','get_recent_transactions'},
+ 'transactions':{'get_transaction_details','get_recent_transactions','get_data_quality','get_import_summary'},
+ 'data_quality':{'get_data_quality','get_recent_transactions','get_import_summary'},
  'business_growth':{'get_business_maturity','get_income_summary','get_financing_matches'},
  'loan_calculation':{'calculate_loan_repayment'},
  'past_what_if':{'get_income_summary'}}
@@ -120,6 +121,8 @@ KEYWORD_TOOLS=[(r'\balerts?\b|\bwarnings?\b','get_cash_flow_alerts'),(r'\bexpens
  (r'\bfinancing (?:options|matches)\b|\bwhich (?:loan|financing)\b','get_financing_matches'),(r'\brbf\b|\brevenue[- ]based\b','get_rbf_quote')]
 from copilot.conversation_routes import BOOK,OWN_AVERAGE
 KEYWORD_TOOLS.append((BOOK.pattern,'get_cashflow_book'))
+from copilot.conversation_routes import IMPORTS,QUALITY,DASHBOARD_DIFF
+KEYWORD_TOOLS.append((IMPORTS.pattern,'get_import_summary'))
 # A dependable default tool per intent when the model proposes none.
 DEFAULT_TOOL={'transactions':'get_recent_transactions','data_quality':'get_data_quality','business_growth':'get_business_maturity','loan_calculation':'calculate_loan_repayment','past_what_if':'get_income_summary'}
 # Values each backend calculation needs before it runs; a missing one becomes one question.
@@ -212,6 +215,13 @@ def requests(plan,state,c,mid,today,definitions,text,notes=None):
  for pattern,tool in KEYWORD_TOOLS:
   if re.search(pattern,text,re.I) and tool in allowed and tool in RELEVANT.get(intent,set()) and not any(p['name']==tool for p in proposals):
    notes.append('keyword_tool_added:'+tool);proposals=[{'name':tool,'arguments':{}},*proposals][:3]
+ if DASHBOARD_DIFF.search(text) and 'get_financial_summary' in allowed and intent=='sales_analysis':
+  # The Dashboard opens on the last 90 days of records; fetch that window next to the period the chat used.
+  end=c.financial_data.as_of(mid);dash={'start':(end-timedelta(days=89)).isoformat(),'end':end.isoformat()}
+  notes.append('dashboard_period_added_by_backend')
+  planned=[('get_financial_summary',dict(period)),('get_financial_summary',dash)]
+  if 'get_income_summary' in allowed:planned.append(('get_income_summary',dash))
+  return planned
  options=comparison_args(state,today,text) if intent=='decision_support' else []
  if options:
   # Every compared option is recalculated now; earlier projections are never reused.
@@ -225,6 +235,9 @@ def requests(plan,state,c,mid,today,definitions,text,notes=None):
    # An extra, irrelevant proposal is skipped (and recorded) instead of aborting the whole turn.
    notes.append('tool_not_relevant_to_intent:'+name);continue
   if name=='search_public_financial_information':raise ClaimError('research_approval_required')
+  if name=='get_data_quality' and IMPORTS.search(text) and not QUALITY.search(text) and any(p['name']=='get_import_summary' for p in proposals):
+   # "How many records were in my import" is answered from the import itself, not data-quality rates.
+   notes.append('data_quality_replaced_by_import_summary');continue
   if name=='run_cash_impact_scenario':
    if not scenario:continue
    if any(k not in scenario or v!=scenario[k] for k,v in args.items()):raise ClaimError('scenario_inputs_not_conversation_bound')
@@ -274,7 +287,7 @@ def requests(plan,state,c,mid,today,definitions,text,notes=None):
   elif name=='get_rbf_quote':
    amount=(entities.get('financing_amount') or {}).get('value')
    args={'advance':float(amount)} if amount else {}
-  elif name in ('get_data_quality','get_cash_flow_alerts','get_financing_matches','get_business_maturity'):args={}
+  elif name in ('get_data_quality','get_cash_flow_alerts','get_financing_matches','get_business_maturity','get_import_summary'):args={}
   elif name in ('get_financing_status','get_financing_details'):
    refs=re.findall(r'\bAPP-[A-Za-z0-9-]{1,80}\b',text)
    if len(refs)!=1:continue

@@ -113,6 +113,7 @@ class Conversation:
  def enrich(self,records,results,state,text):
   """Backend calculations on this turn's tool results and the user's validated values."""
   records.update(analytical_claims(results))
+  if routes.DASHBOARD_DIFF.search(text):records.update(dashboard_period_claim(results))
   if state.get('intent')=='past_what_if':records.update(past_what_if_claims(results,state['entities'],state.get('past_direction','remove')))
   if evidence.assumed_cash(state) and any(name=='run_cash_impact_scenario' for _,name,_ in results):
    records['assumption.cash_payment']={'kind':'user_assumption','metric':'assumed_payment_method','value':'cash','display':'Assumption: the one-time cost is paid in full from business cash on the stated date. Say "financing" if you plan to finance it.','brief':'This assumes you pay it from business cash.'}
@@ -496,7 +497,10 @@ INTERPRETATION=("Interpret the current financial conversation under the JSON sch
  "Natural dates such as on December 10th are purchase_date spans; select the span with the month and day. "
  "Intents: transactions for a specific TX- reference or recent/today's transactions; data_quality for imports and data-quality alerts; business_growth for maturity stage or growth readiness; financing also covers financing matches and RBF quotes; cash_flow also covers cash-flow alerts. "
  "Expenses, net income and profit questions use get_income_summary; it also carries average revenue and expense per month, week and day and the expense split. "
- "Receivables, who owes the business, overdue invoices, bills due, the 7-day runway and cash on hand from the uploaded workbook are cash_flow questions that use get_cashflow_book.")
+ "Receivables, who owes the business, overdue invoices, bills due, the 7-day runway and cash on hand from the uploaded workbook are cash_flow questions that use get_cashflow_book. "
+ "Whether an upload or batch import was saved, how many rows or records an import had, how many manual entries exist and unfinished uploads are data_quality questions that use get_import_summary; data-quality rates and alerts use get_data_quality. "
+ "Digital Capture uses get_financial_summary; revenue share by payment channel uses get_payment_channel_mix; expenses per month in a trend use get_transaction_trends. "
+ "Choose the tools whose descriptions match what the user is asking; a follow-up such as that import keeps the topic of the previous question.")
 INTERPRETATION+=(" Intents: loan_calculation for loan repayment, monthly loan payment or interest-rate-change questions (financing_amount, annual_interest_rate, financing_duration, interest_rate_change); "
  "past_what_if for what-if questions about a past period, such as leaving out a cost already spent (past_expense, reporting_period). "
  "A cost what-if that also changes sales or expenses by a percentage is one decision_support scenario (sales_change_percent or expense_change_percent plus the cost).")
@@ -555,10 +559,21 @@ def compose(records,text,intent=None,diagnose=False):
   keys=[k for k in keys if k];return list(dict.fromkeys([x for k in keys for x in (k,*records[k].get('requires',[]))]))
  advice=[k for k in ('advice.check_imports','advice.review_expense_timing','advice.confirm_cash','advice.verify_payroll') if k in records]
  if ADVICE.search(text) and advice:return advice[:2]
+ if 'analysis.dashboard_period' in records:return with_requires(['analysis.dashboard_period'])
  # Module answers (Transaction History, Data Quality, income, alerts, financing, maturity) lead when present.
  module={'transactions':['transaction_lookup','recent_transactions','data_quality_summary'],'data_quality':['data_quality_summary','data_quality_alert'],
   'business_growth':['business_maturity','maturity_constraint'],'financing':['financing_matches','rbf_quote','business_maturity'],
   'loan_calculation':['loan_repayment','loan_repayment_rate_change'],'past_what_if':['past_what_if']}.get(intent,[])
+ if routes.IMPORTS.search(text):
+  # Import questions lead with the import itself; "manual" questions lead with the manual entries.
+  module=(['manual_entries','imported_rows_current'] if re.search(r'\bmanual|\bsingle\b|\bentered\b',text,re.I) else ['latest_import','imported_rows_current','unfinished_uploads'])+module
+ if routes.DIGITAL.search(text):module=['digital_capture_share',*module]
+ if re.search(r'\btrends?\b|\bover time\b|\bmonth by month\b|\bmonthly\b',text,re.I) and re.search(r'\bexpenses?\b|\bcosts?\b|\bspend',text,re.I):module=['revenue_expense_trend',*module]
+ if intent=='payment_channels' or routes.CHANNELS.search(text):
+  # The channel the question is about: the largest share by revenue (or by count when the question is about volume).
+  metric='revenue_share' if re.search(r'revenue|sales|money|earn|bring',text,re.I) else 'transaction_volume_share'
+  ranked=sorted((k for k,r in records.items() if r.get('metric')==metric),key=lambda k:-float(records[k]['value']))
+  if ranked:return with_requires(ranked[:2])
  if diagnose:
   # E1: the comparison with its data caveat, the import/data-quality status and the check-imports step.
   picked=[k for k in (find('sales_comparison') or find('recorded_net_sales'),find('data_quality_summary'),'advice.check_imports' if 'advice.check_imports' in records else None) if k]
@@ -583,6 +598,26 @@ def compose(records,text,intent=None,diagnose=False):
  primary=next((k for k in ['analysis.comparison','fact0.net_sales',find('min_balance')] if k and k in records),None)
  if not primary:return advice[:1]
  return with_requires([primary])
+
+def dashboard_period_claim(results):
+ """Why a chat figure differs from the Dashboard: the same calculation over the chat period and over the Dashboard's
+ default window (the last 90 days of records). Both figures come from this turn's tool results."""
+ from copilot.governed_claims import span_text,cash
+ summaries=[(p,v) for p,n,v in results if n=='get_financial_summary']
+ if len(summaries)<2:return {}
+ (pa,a),(pb,b)=summaries[0],summaries[1];c=a['currency']
+ def figures(v):
+  parts=['recorded net sales '+cash(v['recorded_net_sales'],c),format(v['transaction_count'],',')+' sales transactions']
+  if v.get('digital_capture_percent') is not None:parts.insert(0,'Digital Capture '+format(v['digital_capture_percent'],'.1f')+'%')
+  return ', '.join(parts)
+ same=a['period']==b['period']
+ brief=('The chat figures were for '+span_text(a['period'])+': '+figures(a)+'. '+
+  ('The Dashboard uses the dates in its date filter. When it opens, that is the last 90 days of your records, '+span_text(b['period'])+': '+figures(b)+'. '
+   'It is the same calculation over different dates; set the Dashboard dates to '+span_text(a['period'])+' and the figures will match.' if not same else
+   'That is also the Dashboard default period, so the figures should match; check the Start and End dates set on the Dashboard.'))
+ return {'analysis.dashboard_period':{'kind':'derived_calculation','metric':'dashboard_period_difference','value':str(b.get('digital_capture_percent') if b.get('digital_capture_percent') is not None else b['recorded_net_sales']),
+  'currency':c,'source':'get_financial_summary','inputs':[pa+'.net_sales',pb+'.net_sales'],'formula':'same Dashboard calculation over the chat period and the Dashboard default window (last 90 days of records)',
+  'display':brief,'brief':brief}}
 
 def book_metrics(text):
  """Which Cash Flow tab workbook claims answer the question, most specific first."""

@@ -44,13 +44,27 @@ async function loadBusinessAlerts(){
   businessAlertState.page=1;businessAlertsLoaded=true;renderCompactBusinessAlerts();
  }catch(error){if(M.id===mid&&request===alertRequest)box.textContent='Notifications could not be loaded. Close and reopen to try again.'}
 }
+// Dashboard cache: the last result for each business and period is kept for this browser tab (sessionStorage, cleared
+// on sign-out or when the tab closes). It is shown at once, then refreshed quietly; imports and new entries clear it.
+const DASH_CACHE='dash-cache:';
+function dashboardCacheKey(mid,s,e,g){return DASH_CACHE+mid+'|'+s+'|'+e+'|'+g}
+function dashboardCacheGet(key){try{return JSON.parse(sessionStorage.getItem(key)||'null')}catch{return null}}
+function dashboardCachePut(key,d){try{sessionStorage.setItem(key,JSON.stringify(d))}catch{}}
+function invalidateDashboardCache(){dashboardSnapshot=null;try{Object.keys(sessionStorage).filter(k=>k.startsWith(DASH_CACHE)).forEach(k=>sessionStorage.removeItem(k))}catch{}}
 async function loadDashboard(){
- $('#export-overview').disabled=true;const mid=M.id,request=++dashboardRequest,s=$('#dstart').value,e=$('#dend').value;$('#derr').textContent='';
- if(dashboardSnapshot&&dashboardSnapshot.merchant.id===mid&&dashboardSnapshot.period.start===s&&dashboardSnapshot.period.end===e&&dashboardSnapshot.period.granularity===$('#dgran').value){$('#export-overview').disabled=false;return}
+ $('#export-overview').disabled=true;const mid=M.id,request=++dashboardRequest,s=$('#dstart').value,e=$('#dend').value,g=$('#dgran').value;$('#derr').textContent='';
+ if(dashboardSnapshot&&dashboardSnapshot.merchant.id===mid&&dashboardSnapshot.period.start===s&&dashboardSnapshot.period.end===e&&dashboardSnapshot.period.granularity===g){$('#export-overview').disabled=false;return}
  if(s&&e&&s>e){$('#derr').textContent='Start date must be on or before end date.';return}
- const d=await api('/api/dashboard'+q('&granularity='+$('#dgran').value+(s?'&start='+s:'')+(e?'&end='+e:'')));
+ const key=dashboardCacheKey(mid,s,e,g),cached=dashboardCacheGet(key);
+ if(cached?.merchant?.id===mid)renderDashboardData(cached,s);
+ const d=await api('/api/dashboard'+q('&granularity='+g+(s?'&start='+s:'')+(e?'&end='+e:'')),cached?{quiet:true}:{});
  if(M.id!==mid||request!==dashboardRequest)return;
- if(!s){$('#dstart').value=d.period.start;$('#dend').value=d.period.end}
+ dashboardCachePut(key,d);if(!s)dashboardCachePut(dashboardCacheKey(mid,d.period.start,d.period.end,g),d);
+ if(cached&&JSON.stringify(cached)===JSON.stringify(d)){dashboardSnapshot=d;return}
+ renderDashboardData(d,s);
+}
+function renderDashboardData(d,s){
+ if(!s&&!$('#dstart').value){$('#dstart').value=d.period.start;$('#dend').value=d.period.end}
  dashboardSnapshot=d;const f=d.financial_metrics,inc=d.incentive;
  $('#dashboard-empty').hidden=f?.record_count!==0;$('#dashboard-empty').textContent='No completed transaction records for this period. Actual business revenue is unknown.';
  $('#dkpis').innerHTML=averageCard('Average Revenue',f?.net_sales,d.period_length,'Recorded net sales ÷ months, weeks or days in the period')+averageCard('Average Expense',f?.expenses,d.period_length,'Recorded expenses ÷ months, weeks or days in the period')+[['Net Income',fmt(f?.net_income),'Authoritative canonical net income'],['Digital Capture',pct(d.capture.digital_share),'Own rails '+pct(d.capture.ecosystem_share)+' · cash '+pct(d.capture.cash_share)]].map(([name,value,note])=>'<div class="card"><div class="muted">'+name+'</div><div class="kpi">'+value+'</div><p class="muted">'+esc(note)+'</p></div>').join('');
