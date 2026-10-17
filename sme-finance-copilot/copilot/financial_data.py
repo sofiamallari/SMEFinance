@@ -26,6 +26,7 @@ class FinancialData:
             self.validate(row,m)
             if row['status']!='completed':continue
             amount=Decimal(row['amount']);kind=row['transaction_type']
+            if kind in ('cash_in','cash_out'):continue # loan proceeds, owner capital, VAT, loan principal: not sales or expense patterns
             target=m.expenses if kind=='expense' else m.transactions
             target.append({'id':row['transaction_id'],'date':row['business_date'],'amount':float(abs(amount) if kind=='expense' else amount),
                            'channel':row['payment_method'],'category':row.get('category','other'),'count':1,'source':row['source']})
@@ -36,7 +37,8 @@ class FinancialData:
             if row['merchant_id']!=m.merchant_id or row['currency']!=m.currency:raise ValueError()
             if not number.is_finite() or number!=number.quantize(Decimal('.01')):raise ValueError()
             date.fromisoformat(row['business_date'])
-            if row['payment_method'] not in config.CHANNELS or row['transaction_type'] not in ('sale','expense','refund','reversal'):raise ValueError()
+            spending=row['transaction_type'] in ('expense','cash_out')
+            if not (row['payment_method'] in config.CHANNELS or (spending and row['payment_method'] in ('bank_transfer','not_recorded'))) or row['transaction_type'] not in ('sale','expense','refund','reversal','cash_in','cash_out'):raise ValueError()
             if row['status'] not in ('completed','pending','failed','voided'):raise ValueError()
         except (ValueError,KeyError,ArithmeticError):raise EvidenceError('Invalid canonical financial record') from None
     def aggregate(self,mid,start=None,end=None):
@@ -45,7 +47,8 @@ class FinancialData:
         if start>end:raise EvidenceError('Reporting period starts after its end')
         currency=self.base[mid].currency
         gross_known=True;gross_total=Decimal(0)
-        totals={'positive_sales':Decimal(0),'refunds':Decimal(0),'net_sales':Decimal(0),'expenses':Decimal(0),'completed_transactions':0,'pending_transactions':0,'failed_transactions':0,'voided_transactions':0}
+        totals={'positive_sales':Decimal(0),'refunds':Decimal(0),'net_sales':Decimal(0),'expenses':Decimal(0),'completed_transactions':0,'pending_transactions':0,'failed_transactions':0,'voided_transactions':0,
+                'non_revenue_cash_in':Decimal(0),'non_expense_cash_out':Decimal(0)}
         provenance={};methods={};count=0
         def add(kind,amount,channel,source,n=1):
             nonlocal count
@@ -68,6 +71,9 @@ class FinancialData:
             if row['status']!='completed':
                 totals[row['status']+'_transactions']+=1;continue
             source='simulated_payment' if row['source']=='simulated_payment' else 'manual' if row['source'] in ('manual','legacy_manual') else 'historical_pos'
+            if row['transaction_type'] in ('cash_in','cash_out'):
+                # Kept visible but outside sales, expenses and net income (Copilot Category Guide).
+                totals['non_revenue_cash_in' if row['transaction_type']=='cash_in' else 'non_expense_cash_out']+=abs(Decimal(row['amount']));continue
             if row['transaction_type']=='sale':
                 if row.get('gross_amount') is None:gross_known=False
                 else:gross_total+=Decimal(row['gross_amount'])

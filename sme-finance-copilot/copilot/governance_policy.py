@@ -6,8 +6,9 @@ from copilot.security import AccessDenied
 
 ROOT = Path(__file__).resolve().parents[1] / 'config'
 ROLES = {'SME_OWNER', 'SME_STAFF', 'BANK', 'SYSTEM_ADMIN'}
-CAPABILITIES = {'financial_education','sales_summary_read','transaction_trends_read','payment_channel_mix_read','cash_flow_read','business_highlights_read','financing_status_read','financing_details_read','survival_simulation_run','expansion_assessment','public_research','financial_execution','cash_impact_scenario_run','business_maturity_read','cash_flow_alerts_read','data_quality_read','financing_matches_read','income_summary_read','rbf_quote_read','transaction_detail_read','loan_repayment_calculation'}
-TOOL_CAPABILITIES = dict(run_cash_impact_scenario='cash_impact_scenario_run',get_financial_summary='sales_summary_read',get_transaction_trends='transaction_trends_read',get_payment_channel_mix='payment_channel_mix_read',get_cash_flow='cash_flow_read',get_business_highlights='business_highlights_read',get_financing_status='financing_status_read',get_financing_details='financing_details_read',run_survival_simulation='survival_simulation_run',search_public_financial_information='public_research',get_transaction_details='transaction_detail_read',get_recent_transactions='transaction_detail_read',get_data_quality='data_quality_read',get_income_summary='income_summary_read',get_cash_flow_alerts='cash_flow_alerts_read',get_financing_matches='financing_matches_read',get_rbf_quote='rbf_quote_read',get_business_maturity='business_maturity_read',calculate_loan_repayment='loan_repayment_calculation')
+CAPABILITIES = {'financial_education','sales_summary_read','transaction_trends_read','payment_channel_mix_read','cash_flow_read','business_highlights_read','financing_status_read','financing_details_read','survival_simulation_run','expansion_assessment','public_research','financial_execution','cash_impact_scenario_run','business_maturity_read','cash_flow_alerts_read','data_quality_read','financing_matches_read','income_summary_read','rbf_quote_read','transaction_detail_read','loan_repayment_calculation','cashflow_book_read','import_summary_read'}
+TOOL_CAPABILITIES = dict(run_cash_impact_scenario='cash_impact_scenario_run',get_financial_summary='sales_summary_read',get_transaction_trends='transaction_trends_read',get_payment_channel_mix='payment_channel_mix_read',get_cash_flow='cash_flow_read',get_business_highlights='business_highlights_read',get_financing_status='financing_status_read',get_financing_details='financing_details_read',run_survival_simulation='survival_simulation_run',search_public_financial_information='public_research',get_transaction_details='transaction_detail_read',get_recent_transactions='transaction_detail_read',get_data_quality='data_quality_read',get_income_summary='income_summary_read',get_cash_flow_alerts='cash_flow_alerts_read',get_financing_matches='financing_matches_read',get_rbf_quote='rbf_quote_read',get_business_maturity='business_maturity_read',calculate_loan_repayment='loan_repayment_calculation',get_cashflow_book='cashflow_book_read')
+TOOL_CAPABILITIES['get_import_summary']='import_summary_read'
 FIELD_CLASSES = {
  'get_financial_summary':dict(coverage='D2',period='D1',currency='D1',recorded_net_sales='D2',transaction_count='D1',source_timestamp='D1'),
  'get_transaction_trends':dict(coverage='D2',period='D1',granularity='D1',transaction_count='D1',recorded_net_sales='D2',source_timestamp='D1'),
@@ -23,8 +24,8 @@ FIELD_CLASSES['get_cash_flow'].update({k:'D2' for k in ['opening_balance', 'open
 FIELD_CLASSES['run_cash_impact_scenario']={k:'D2' for k in ['currency', 'assessment_date', 'opening_balance_date', 'latest_data_date', 'synthetic_opening_balance', 'horizon_days', 'baseline', 'adjusted', 'user_cash_baseline', 'user_cash_adjusted', 'schedule', 'limitations', 'assumed_changes']}
 
 # Read-only tools mirroring existing Owner modules (transactions, data quality, income, alerts, financing, maturity).
-FIELD_CLASSES['get_transaction_details']={k:'D2' for k in ['found', 'transaction_id', 'reference', 'business_date', 'transaction_type', 'amount', 'currency', 'payment_method', 'status', 'description', 'category', 'source']}
-FIELD_CLASSES['get_recent_transactions']={k:'D2' for k in ['transaction_id', 'reference', 'business_date', 'transaction_type', 'amount', 'currency', 'payment_method', 'status', 'description', 'category', 'source']}
+FIELD_CLASSES['get_transaction_details']={k:'D2' for k in ['found', 'transaction_id', 'reference', 'source_values', 'classification', 'business_date', 'transaction_type', 'amount', 'currency', 'payment_method', 'status', 'description', 'category', 'source']}
+FIELD_CLASSES['get_recent_transactions']={k:'D2' for k in ['transaction_id', 'reference', 'source_values', 'classification', 'business_date', 'transaction_type', 'amount', 'currency', 'payment_method', 'status', 'description', 'category', 'source']}
 FIELD_CLASSES['get_data_quality']={k:'D1' for k in ['total_import_runs', 'successful_imports', 'failed_imports', 'parsed_rows', 'valid_row_rate', 'invalid_row_rate', 'open_alerts', 'last_successful_import', 'attention']}
 FIELD_CLASSES['get_income_summary']={k:'D2' for k in ['period', 'currency', 'net_sales', 'expenses', 'net_income', 'record_count', 'coverage']}
 FIELD_CLASSES['get_cash_flow_alerts']={k:'D2' for k in ['severity', 'code', 'message', 'recommended_action']}
@@ -33,6 +34,16 @@ FIELD_CLASSES['get_rbf_quote']={k:'D2' for k in ['currency', 'advance', 'fee', '
 # Pure arithmetic on amounts the user typed; no merchant records are read.
 FIELD_CLASSES['calculate_loan_repayment']={k:'D1' for k in ['currency', 'principal', 'annual_rate_percent', 'months', 'monthly_payment', 'total_paid', 'total_interest', 'schedule', 'alternative']}
 FIELD_CLASSES['get_business_maturity']={k:'D2' for k in ['as_of', 'stage', 'stage_name', 'composite_score', 'scores', 'next_stage_name', 'composite_gap', 'top_constraints', 'note']}
+# Cash Flow tab workbook (uploaded AR/AP ledgers and cash logs), summarized by cashflow_book.summarize.
+FIELD_CLASSES['get_cashflow_book']={k:'D2' for k in ['available', 'reference_date', 'uploaded_at', 'currency', 'cash_on_hand', 'cash_on_hand_recorded', 'total_receivables', 'receivables_count', 'overdue_receivables', 'overdue_receivables_count',
+ 'total_payables', 'payables_count', 'overdue_payables', 'overdue_payables_count', 'expected_collections_7d', 'collections_count', 'upcoming_payables_7d', 'payables_7d_count', 'net_runway_7d',
+ 'receivable_buckets', 'payable_buckets', 'top_receivables', 'top_payables', 'projected_months']}
+# Dashboard Average Revenue / Average Expense and Expense Split, added to the income summary.
+FIELD_CLASSES['get_income_summary'].update({k:'D2' for k in ['averages', 'expense_split']})
+FIELD_CLASSES['get_import_summary']={k:'D2' for k in ['currency','latest_import','imported_rows_current','imported_revenue_rows','imported_expense_rows','imported_dates','manual_entries','manual_dates','latest_manual_entry_date','completed_imports','unfinished_uploads','failed_uploads','upload_attempts']}
+FIELD_CLASSES['get_payment_channel_mix']['revenue_share_percent']='D1'
+FIELD_CLASSES['get_financial_summary']['digital_capture_percent']='D1'
+FIELD_CLASSES['get_transaction_trends']['recorded_expenses']='D2'
 
 class Policy:
     def __init__(self):

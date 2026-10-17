@@ -104,6 +104,8 @@ class BankWorkflow:
         if outcome in ('more_information_needed','rejected') and not note:raise InputError('Review notes are required when more information is needed')
         with self.a.db() as db:
             db.execute('BEGIN IMMEDIATE');actor,rows=self._routed(db,token,aid,'record_bank_review');row=rows[0];packet=json.loads(row['packet'])
+            # Bank users record review outcomes only; approval and rejection are disabled (checked after authorization).
+            if outcome in ('approved','rejected'):raise InputError('Approval and rejection are disabled. Record a review outcome instead.',403)
             if packet.get('status')!='SUBMITTED_FOR_LENDER_REVIEW':raise InputError('Application is not in a reviewable submitted state',409)
             stamp=self.a.clock()
             if outcome in ('approved','rejected'):

@@ -58,14 +58,39 @@ def channel_mix(txns: list) -> dict:
     }
 
 
-def trend(txns: list, granularity: str = "monthly") -> list:
-    agg = defaultdict(lambda: {"transactions": 0, "revenue": 0.0})
+def trend(txns: list, granularity: str = "monthly", expenses: list | None = None) -> list:
+    agg = defaultdict(lambda: {"transactions": 0, "revenue": 0.0, "expenses": 0.0})
     for t in txns:
         k = _bucket_key(_d(t["date"]), granularity)
         agg[k]["transactions"] += t["count"]
         agg[k]["revenue"] += t["amount"]
-    return [{"period": k, "transactions": v["transactions"], "revenue": round(v["revenue"], 2)}
+    for e in expenses or []:
+        agg[_bucket_key(_d(e["date"]), granularity)]["expenses"] += e["amount"]
+    return [{"period": k, "transactions": v["transactions"], "revenue": round(v["revenue"], 2), "expenses": round(v["expenses"], 2)}
             for k, v in sorted(agg.items())]
+
+
+def expense_split(expenses: list) -> list:
+    """Recorded expenses by category for the period, largest first."""
+    totals = defaultdict(float)
+    for e in expenses:
+        totals[e.get("category") or "other"] += e["amount"]
+    total = sum(totals.values())
+    return [{"category": k, "amount": round(v, 2), "share": round(v / total, 4) if total else 0.0}
+            for k, v in sorted(totals.items(), key=lambda kv: -kv[1])]
+
+
+def period_length(start: date, end: date) -> dict:
+    """Exact period length for averages: inclusive days, days / 7 weeks, and calendar months
+    where a partial month counts by the share of its days covered (Oct 1-16 = 16/31)."""
+    import calendar
+    days = (end - start).days + 1
+    months, cursor = 0.0, start
+    while cursor <= end:
+        last = date(cursor.year, cursor.month, calendar.monthrange(cursor.year, cursor.month)[1])
+        months += ((min(last, end) - cursor).days + 1) / last.day
+        cursor = last + timedelta(days=1)
+    return {"days": days, "weeks": round(days / 7, 4), "months": round(months, 4)}
 
 
 def capture_metrics(txns: list) -> dict:
@@ -161,6 +186,7 @@ def build_dashboard(merchant, as_of: date, start: date | None = None,
     end = end or as_of
     start = start or (end - timedelta(days=89))
     txns = filter_period(merchant.transactions, start, end)
+    spent = filter_period(merchant.expenses, start, end)
     return {
         "merchant": {"id": merchant.merchant_id, "name": merchant.name,
                      "currency": merchant.currency, "country": merchant.country},
@@ -169,7 +195,9 @@ def build_dashboard(merchant, as_of: date, start: date | None = None,
         "expenses": round(sum(e["amount"] for e in filter_period(merchant.expenses, start, end)), 2),
         "expense_transactions": len(filter_period(merchant.expenses, start, end)),
         "net_income": round(sum(t["amount"] for t in txns) - sum(e["amount"] for e in filter_period(merchant.expenses, start, end)), 2),
-        "trend": trend(txns, granularity),
+        "trend": trend(txns, granularity, spent),
+        "expense_split": expense_split(spent),
+        "period_length": period_length(start, end),
         "capture": capture_metrics(txns),
         "incentive": incentive_status(merchant.transactions, as_of),
         "receivables": receivable_behaviour(merchant, as_of),

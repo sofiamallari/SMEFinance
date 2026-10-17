@@ -55,6 +55,12 @@ OUTPUTS['run_cash_impact_scenario']=dict(currency=TEXT,assessment_date=TEXT,open
 NUMBER={'type':'number'};OPT_NUMBER={'type':['number','null']}
 TRANSACTION=dict(transaction_id=TEXT,reference=NULLABLE,business_date=TEXT,transaction_type=TEXT,amount=TEXT,currency=TEXT,payment_method=NULLABLE,status=TEXT,description=NULLABLE,category=NULLABLE,source=TEXT)
 OUTPUTS['get_transaction_details']={**{k:NULLABLE for k in TRANSACTION},'found':{'type':'boolean'}}
+# The original row from the uploaded file (column -> value), as kept with each imported transaction.
+SOURCE_VALUES={'type':['object','null'],'maxProperties':30,'additionalProperties':{'type':'string','maxLength':200}}
+TRANSACTION['source_values']=SOURCE_VALUES
+TRANSACTION['classification']=NULLABLE
+OUTPUTS['get_transaction_details']['classification']=NULLABLE
+OUTPUTS['get_transaction_details']['source_values']=SOURCE_VALUES
 OUTPUTS['get_recent_transactions']=dict(TRANSACTION)
 OUTPUTS['get_data_quality']=dict(total_import_runs=NUM,successful_imports=NUM,failed_imports=NUM,parsed_rows=NUM,valid_row_rate=OPT_NUMBER,invalid_row_rate=OPT_NUMBER,open_alerts=NUM,last_successful_import=NULLABLE,
  attention={'type':'array','maxItems':5,'items':{'type':'object','properties':{'severity':TEXT,'rule':TEXT,'description':TEXT,'state':TEXT,'affected_rows':NUM},'additionalProperties':False}})
@@ -66,7 +72,7 @@ OUTPUTS['get_business_maturity']=dict(as_of=TEXT,stage={'type':'integer'},stage_
  top_constraints={'type':'array','maxItems':3,'items':{'type':'object','properties':{'constraint':TEXT,'evidence':TEXT,'intervention':NULLABLE},'additionalProperties':False}},note=NULLABLE)
 INPUTS['get_transaction_details']={'type':'object','properties':{'reference':{'type':'string','pattern':'^TX-[A-Za-z0-9-]{4,120}$'}},'required':['reference'],'additionalProperties':False}
 INPUTS['get_recent_transactions']={'type':'object','properties':{'start':{'type':'string','format':'date'},'end':{'type':'string','format':'date'},'limit':{'type':'integer','minimum':1,'maximum':20},
- 'source':{'type':'string','pattern':'^[a-z_]{1,40}$'},'match':{'type':'string','pattern':'^[A-Za-z0-9 _.-]{2,40}$'}},'additionalProperties':False}
+ 'source':{'type':'string','pattern':'^[a-z_]{1,40}$'},'match':{'type':'string','pattern':'^[A-Za-z0-9 _.-]{2,40}$'},'file_columns':{'type':'boolean'}},'additionalProperties':False}
 INPUTS['get_income_summary']={'type':'object','properties':{'start':{'type':'string','format':'date'},'end':{'type':'string','format':'date'}},'additionalProperties':False}
 for _name in ('get_data_quality','get_cash_flow_alerts','get_financing_matches','get_business_maturity'):INPUTS[_name]={'type':'object','properties':{},'additionalProperties':False}
 INPUTS['get_rbf_quote']={'type':'object','properties':{'advance':AMOUNT},'additionalProperties':False}
@@ -87,6 +93,58 @@ INPUTS['calculate_loan_repayment']={'type':'object','properties':{'principal':{*
 OUTPUTS['calculate_loan_repayment']=dict(currency=TEXT,principal=TEXT,annual_rate_percent=NUMBER,months=NUM,monthly_payment=TEXT,total_paid=TEXT,total_interest=TEXT,schedule={'type':'array','maxItems':4,'items':LOAN_ROW},alternative={'anyOf':[LOAN_TOTALS,{'type':'null'}]})
 PERMISSIONS['calculate_loan_repayment']='view_financing'
 
+# Cash Flow tab workbook (uploaded AR/AP and cash logs): the tab's own summary for a reference date, top open items only.
+MONEY_COUNT={'type':'object','properties':{'amount':TEXT,'count':NUM},'required':['amount','count'],'additionalProperties':False}
+BUCKET_TOTALS={'type':['object','null'],'properties':{k:MONEY_COUNT for k in ('OVERDUE','DUE_TOMORROW','NEXT_7','NEXT_30','ALL')},'additionalProperties':False}
+BOOK_ITEM={'type':'object','properties':{'id':TEXT,'party':TEXT,'due':TEXT,'amount':TEXT,'bucket':TEXT,'days':{'type':'integer'},'label':TEXT},'required':['party','due','amount','bucket','days','label'],'additionalProperties':False}
+BOOK_ITEMS={'type':'array','maxItems':5,'items':BOOK_ITEM}
+OPT_TEXT={'type':['string','null'],'maxLength':200};OPT_NUM={'type':['integer','null'],'minimum':0}
+INPUTS['get_cashflow_book']={'type':'object','properties':{'reference_date':{'type':'string','format':'date'}},'additionalProperties':False}
+OUTPUTS['get_cashflow_book']=dict(available={'type':'boolean'},reference_date=OPT_TEXT,uploaded_at=OPT_TEXT,currency=TEXT,cash_on_hand=OPT_TEXT,cash_on_hand_recorded={'type':['boolean','null']},
+ **{k:OPT_TEXT for k in ('total_receivables','overdue_receivables','total_payables','overdue_payables','expected_collections_7d','upcoming_payables_7d','net_runway_7d')},
+ **{k:OPT_NUM for k in ('receivables_count','overdue_receivables_count','payables_count','overdue_payables_count','collections_count','payables_7d_count')},
+ receivable_buckets=BUCKET_TOTALS,payable_buckets=BUCKET_TOTALS,top_receivables=BOOK_ITEMS,top_payables=BOOK_ITEMS,
+ projected_months={'type':'array','maxItems':3,'items':{'type':'object','properties':{'month':TEXT,'inflow':TEXT,'outflow':TEXT,'ending':TEXT},'required':['month','inflow','outflow','ending'],'additionalProperties':False}})
+PERMISSIONS['get_cashflow_book']='view_forecasts'
+
+# Bulk POS Import and manual entries: the latest completed import, what is in the records now and unfinished uploads.
+SPAN={'type':['object','null'],'properties':{'start':TEXT,'end':TEXT},'required':['start','end'],'additionalProperties':False}
+LATEST_IMPORT={'type':['object','null'],'properties':{'imported_at':TEXT,'files':{'type':'array','maxItems':6,'items':{'type':'string','maxLength':120}},
+ **{k:{'type':'integer','minimum':0} for k in ('file_count','worksheet_count','imported_rows','duplicates_excluded','rejected_rows','replaced_imports')},'imported_total':TEXT,'is_current':{'type':'boolean'}},'additionalProperties':False}
+INPUTS['get_import_summary']={'type':'object','properties':{},'additionalProperties':False}
+OUTPUTS['get_import_summary']=dict(currency=TEXT,latest_import=LATEST_IMPORT,imported_dates=SPAN,manual_dates=SPAN,latest_manual_entry_date={'type':['string','null'],'maxLength':40},
+ **{k:{'type':'integer','minimum':0} for k in ('imported_rows_current','imported_revenue_rows','imported_expense_rows','manual_entries','completed_imports','unfinished_uploads','failed_uploads','upload_attempts')})
+PERMISSIONS['get_import_summary']='view_transactions'
+
+# Dashboard cards the chat can quote: revenue share per channel, Digital Capture, and expenses per trend period.
+OUTPUTS['get_payment_channel_mix']['revenue_share_percent']={'type':'number','minimum':0,'maximum':100}
+OUTPUTS['get_financial_summary']['digital_capture_percent']={'type':['number','null'],'minimum':0,'maximum':100}
+OUTPUTS['get_transaction_trends']['recorded_expenses']=TEXT
+
+# One line per tool on which user questions it answers; the interpretation step chooses tools from these.
+TOOL_GUIDE={
+ 'get_financial_summary':'Dashboard sales for a period: recorded net sales, number of sales transactions and the Digital Capture share (digital payments as a percent of sales). Use for how much was sold, sales totals and period comparisons.',
+ 'get_transaction_trends':'Dashboard Revenue vs Expense and Transaction Volume trends: net sales, expenses and transaction counts per day, week, month or quarter. Use for trends, best or worst months and month-by-month questions.',
+ 'get_payment_channel_mix':'Dashboard Transaction Volume Mix and Revenue Mix: each payment channel share of transactions and of revenue. Use for how customers pay, card vs cash vs QR.',
+ 'get_income_summary':'Dashboard Average Revenue, Average Expense, Net Income and Expense Split: recorded net sales, expenses and net income for a period, averages per month, week and day, and expenses by category.',
+ 'get_recent_transactions':'Transaction History rows: the latest transactions, the transactions on a given day, manual Single Transaction entries, a payment method or a named item, with the uploaded file column values.',
+ 'get_transaction_details':'One transaction by its TX- reference.',
+ 'get_import_summary':'Bulk POS Import and Single Transaction status: whether the latest upload was saved, when, which files, how many rows were imported, excluded or rejected, how many imported and manual records are in the books now, and unfinished uploads. Use for: did you record my upload, how many records were in my import, how many manual entries do I have.',
+ 'get_data_quality':'Data Quality tab: import run counts, valid and invalid row rates and open data-quality alerts. Use for data quality, import errors and alerts, not for how many rows an upload had.',
+ 'get_cash_flow_alerts':'Rule-based cash-flow alerts and recommended actions.',
+ 'get_financing_matches':'Indicative financing products matched to the business.',
+ 'get_rbf_quote':'Indicative revenue-based financing quote for an advance amount.',
+ 'get_business_maturity':'Business maturity stage, scores and the gap to the next stage.',
+ 'get_business_highlights':'Recorded incentive status and receivables behaviour highlights.',
+ 'get_financing_status':'Status of one financing application by its APP- reference.',
+ 'run_cash_impact_scenario':'What-if cash impact of a purchase or a new monthly cost against the cash-flow forecast.'}
+BOOK_TOP=5
+
+# Dashboard Average Revenue / Average Expense (per month, week, day of the period) and Expense Split, with the income summary.
+AVERAGE={'type':'object','properties':{'net_sales':TEXT,'expenses':TEXT},'required':['net_sales','expenses'],'additionalProperties':False}
+OUTPUTS['get_income_summary']['averages']={'type':['object','null'],'properties':{'monthly':AVERAGE,'weekly':AVERAGE,'daily':AVERAGE,'months':NUMBER,'weeks':NUMBER,'days':NUM},'additionalProperties':False}
+OUTPUTS['get_income_summary']['expense_split']={'type':'array','maxItems':6,'items':{'type':'object','properties':{'category':TEXT,'amount':TEXT,'share_percent':NUMBER},'required':['category','amount','share_percent'],'additionalProperties':False}}
+
 def amortize(principal,annual_rate,months):
     """Equal monthly payments (standard annuity); the last payment absorbs rounding."""
     from decimal import ROUND_HALF_UP
@@ -102,7 +160,8 @@ def amortize(principal,annual_rate,months):
 
 def public_transaction(row):
     return {'transaction_id':row['transaction_id'],'reference':(row.get('external_reference') or None) and str(row['external_reference'])[:80],'business_date':row['business_date'],'transaction_type':row['transaction_type'],'amount':str(row['amount']),'currency':row.get('currency') or 'CNY',
-            'payment_method':row.get('payment_method'),'status':row['status'],'description':(row.get('description') or None) and str(row['description'])[:200],'category':row.get('category'),'source':row.get('source') or 'unknown'}
+            'payment_method':row.get('payment_method'),'status':row['status'],'description':(row.get('description') or None) and str(row['description'])[:200],'category':row.get('category'),'source':row.get('source') or 'unknown','classification':row.get('classification'),
+            'source_values':{str(k)[:80]:str(v)[:200] for k,v in list(row['source_values'].items())[:30]} if isinstance(row.get('source_values'),dict) and row['source_values'] else None}
 
 class Gateway:
     def __init__(self, c, auth, pos, policy):
@@ -141,10 +200,12 @@ class Gateway:
 
     @staticmethod
     def description(name):
-        return {'get_cash_flow':'Existing estimated forecast daily inflows/outflows. No verified available cash or new aggregate is inferred.',
+        return {**TOOL_GUIDE,'get_cash_flow':'Existing estimated forecast daily inflows/outflows. No verified available cash or new aggregate is inferred.',
                 'run_survival_simulation':'Requested hypothetical constant-assumption operating-result simulation only, not property amortization or cash runway.',
                 'search_public_financial_information':'Propose an exact public query for separate human approval; this invocation never performs a search.',
                 'get_financing_details':'Specific authorized submitted application only. No actual approved amount or underwriting decision is available.',
+                'get_cashflow_book':'Cash Flow tab summary from the uploaded AR/AP workbook: who owes the business, overdue invoices, bills due, 7-day runway, workbook cash on hand and 3 projected months. Says when no workbook is uploaded. The backend binds the reference date.',
+                'get_income_summary':'Recorded net sales, expenses and net income for a period, with Dashboard average revenue and expense per month, week and day, and the expense split by category.',
                 'calculate_loan_repayment':'Standard equal-payment loan estimate from the amount, annual rate and term the user stated; not a lender quote. The backend binds every argument.'}.get(name,'Authorized minimized '+name.replace('_',' ')+'. Reporting dates and existing definitions are preserved; monetary values are in the merchant currency (CNY).')
 
     def execute(self,token,mid,name,args,*,simulation_requested=False,deadline=None):
@@ -191,6 +252,16 @@ class Gateway:
                 if offset>=page['total']:return {**{k:None for k in TRANSACTION},'transaction_id':args['reference'],'found':False}
         if name=='get_recent_transactions':
             filters={'limit':args.get('limit',10),**{k:args[k] for k in ('start','end','source') if args.get(k)}}
+            if args.get('file_columns'):
+                # One example row per uploaded-file layout (distinct set of columns), newest first, so the chat can explain columns.
+                layouts={};offset=0
+                while offset<2000 and len(layouts)<filters['limit']:
+                    page=self.pos.history(token,mid,{'offset':offset,'limit':100})
+                    for r in page['transactions']:
+                        if isinstance(r.get('source_values'),dict) and r['source_values']:layouts.setdefault(tuple(r['source_values']),r)
+                    offset+=100
+                    if offset>=page['total']:break
+                return [public_transaction(r) for r in list(layouts.values())[:filters['limit']]]
             if not args.get('match'):return [public_transaction(r) for r in self.pos.history(token,mid,filters)['transactions']]
             # A transaction named by the user's own reference or description ("my test3 transaction"), newest first.
             term=args['match'].lower();found=[];offset=0
@@ -216,6 +287,23 @@ class Gateway:
             return {'as_of':str(value['as_of']),'stage':value['stage'],'stage_name':value['stage_name'],'composite_score':value['composite_score'],'scores':value['scores'],
                     'next_stage_name':gap.get('target_name'),'composite_gap':gap.get('composite_gap'),
                     'top_constraints':[{'constraint':c['constraint'],'evidence':c['evidence'],'intervention':c.get('intervention')} for c in (value.get('constraints') or [])[:3]],'note':value.get('note')}
+        if name=='get_import_summary':return self.pos.import_summary(token,mid)
+        if name=='get_cashflow_book':
+            # The Cash Flow tab's own service (view_forecasts guard, per-merchant workbook, its formulas).
+            from copilot.cashflow_book import CashflowBook
+            value=CashflowBook(self.auth,self.c).view(token,mid,args.get('reference_date'))
+            currency=self.c.merchants[mid].currency
+            if not value.get('available'):return {'available':False,'currency':currency}
+            ar,ap,k=value['receivables'],value['payables'],value['kpis']
+            top=lambda side:[{f:i[f] for f in ('id','party','due','amount','bucket','days','label')} for i in side['items'][:BOOK_TOP]]
+            buckets=lambda side:{b:side['buckets'][b] for b in ('OVERDUE','DUE_TOMORROW','NEXT_7','NEXT_30','ALL')}
+            uploaded=datetime.fromtimestamp(float(value['uploaded_at']),timezone.utc).date().isoformat() if value.get('uploaded_at') is not None else None
+            return {'available':True,'reference_date':value['reference_date'],'uploaded_at':uploaded,'currency':currency,'cash_on_hand':value['cash_on_hand'],'cash_on_hand_recorded':value.get('cash_on_hand_recorded') is not None,
+                    'total_receivables':ar['buckets']['ALL']['amount'],'receivables_count':ar['buckets']['ALL']['count'],'overdue_receivables':k['overdue_receivables'],'overdue_receivables_count':k['overdue_receivables_count'],
+                    'total_payables':ap['buckets']['ALL']['amount'],'payables_count':ap['buckets']['ALL']['count'],'overdue_payables':k['overdue_payables'],'overdue_payables_count':k['overdue_payables_count'],
+                    'expected_collections_7d':k['expected_collections_7d'],'collections_count':k['collections_count'],'upcoming_payables_7d':k['upcoming_payables_7d'],'payables_7d_count':k['payables_count'],'net_runway_7d':k['net_runway_7d'],
+                    'receivable_buckets':buckets(ar),'payable_buckets':buckets(ap),'top_receivables':top(ar),'top_payables':top(ap),
+                    'projected_months':[{f:m[f] for f in ('month','inflow','outflow','ending')} for m in value['trend'] if m.get('projected')][:3]}
         if name=='calculate_loan_repayment':
             base=amortize(args['principal'],args['annual_rate_percent'],args['months']);alternative=None
             if args.get('rate_change_percent'):
@@ -257,10 +345,17 @@ class Gateway:
         coverage={'start':min(dates),'end':max(dates)} if dates else None
         if name=='get_income_summary':
             f=d['financial_metrics'];expense_dates=[r['date'] for r in projected.expenses if period['start']<=r['date']<=period['end']];both=dates+expense_dates
+            # Dashboard averages: the period total divided by its exact length (partial months by days covered).
+            length=d.get('period_length') or {}
+            per=lambda n:{'net_sales':format((Decimal(f['net_sales'])/Decimal(str(n))).quantize(Decimal('.01')),'.2f'),'expenses':format((Decimal(f['expenses'])/Decimal(str(n))).quantize(Decimal('.01')),'.2f')}
+            averages={'monthly':per(length['months']),'weekly':per(length['weeks']),'daily':per(length['days']),'months':length['months'],'weeks':length['weeks'],'days':length['days']} if all(length.get(k) for k in ('months','weeks','days')) else None
+            split=[{'category':str(r['category'])[:80],'amount':format(Decimal(str(r['amount'])).quantize(Decimal('.01')),'.2f'),'share_percent':round(float(r['share'])*100,1)} for r in (d.get('expense_split') or []) if r['amount']>0]
+            if len(split)>6:split=split[:5]+[{'category':'other ('+str(len(split)-5)+' categories)','amount':format(sum(Decimal(r['amount']) for r in split[5:]),'.2f'),'share_percent':round(sum(r['share_percent'] for r in split[5:]),1)}]
             return {'period':period,'currency':d['merchant']['currency'],'net_sales':f['net_sales'],'expenses':f['expenses'],'net_income':f['net_income'],'record_count':f['record_count'],
-                    'coverage':{'start':min(both),'end':max(both)} if both else None}
-        if name=='get_financial_summary':return {'coverage':coverage,'period':period,'currency':d['merchant']['currency'],'recorded_net_sales':d['financial_metrics']['net_sales'],'transaction_count':d['mix']['total_transactions'],'source_timestamp':now}
-        if name=='get_transaction_trends':return [{'coverage':coverage,'period':r['period'],'granularity':d['period']['granularity'],'transaction_count':r['transactions'],'recorded_net_sales':format(Decimal(str(r['revenue'])),'.2f'),'source_timestamp':now} for r in d['trend']]
-        if name=='get_payment_channel_mix':return [{'period':period,'channel':c['label'],'transaction_count':c['transactions'],'share_percent':c['volume_share']*100} for c in d['mix']['by_channel'].values()]
+                    'coverage':{'start':min(both),'end':max(both)} if both else None,'averages':averages,'expense_split':split}
+        if name=='get_financial_summary':return {'coverage':coverage,'period':period,'currency':d['merchant']['currency'],'recorded_net_sales':d['financial_metrics']['net_sales'],'transaction_count':d['mix']['total_transactions'],'source_timestamp':now,
+            'digital_capture_percent':round(d['capture']['digital_share']*100,1) if d['mix']['total_transactions'] else None}
+        if name=='get_transaction_trends':return [{'coverage':coverage,'period':r['period'],'granularity':d['period']['granularity'],'transaction_count':r['transactions'],'recorded_net_sales':format(Decimal(str(r['revenue'])),'.2f'),'recorded_expenses':format(Decimal(str(r.get('expenses',0))).quantize(Decimal('.01')),'.2f'),'source_timestamp':now} for r in d['trend']]
+        if name=='get_payment_channel_mix':return [{'period':period,'channel':c['label'],'transaction_count':c['transactions'],'share_percent':c['volume_share']*100,'revenue_share_percent':round(c['revenue_share']*100,2)} for c in d['mix']['by_channel'].values()]
         if name=='get_business_highlights':return [{'period':period,'highlight_type':'Receivables insight','summary':d['receivables']['explanation'],'source_metric':'receivable_behaviour'},{'period':period,'highlight_type':'Incentive milestone','summary':d['incentive']['tier_name'] or 'No milestone yet','source_metric':'incentive_status'}]
         raise AccessDenied('Unsupported tool')

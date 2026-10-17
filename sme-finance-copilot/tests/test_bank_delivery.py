@@ -44,19 +44,18 @@ class BankDelivery(unittest.TestCase):
   for role in ('owner','staff','security_admin'):
    with self.assertRaises(AccessDenied):self.w.record_review(self.tokens[role],aid,{'outcome':'approved'})
   with self.assertRaises(InputError):self.w.record_review(self.tokens['lender_analyst'],aid,{'outcome':'approved','actor_id':'forged'})
-  self.w.record_review(self.tokens['lender_analyst'],aid,{'outcome':'approved','note':'Synthetic approval'})
-  result=self.auth.application_list(self.tokens['owner'],'M002')[0];self.assertEqual(result['status'],'APPROVED');self.assertTrue(result['simulated_decision']);self.assertEqual(result['decision_by'],self.ids['lender_analyst'])
-  for outcome in ('approved','rejected','reviewed'):
-   with self.assertRaises(InputError):self.w.record_review(self.tokens['lender_analyst'],aid,{'outcome':outcome,'note':'Repeat'})
-  other=self.submit();aid2=other['application_id']
-  with self.assertRaises(InputError):self.w.record_review(self.tokens['lender_analyst'],aid2,{'outcome':'rejected'})
-  self.w.record_review(self.tokens['lender_analyst'],aid2,{'outcome':'rejected','note':'Insufficient supplied evidence'})
-  rejected=next(a for a in self.auth.application_list(self.tokens['owner'],'M002') if a['application_id']==aid2)
-  self.assertEqual(rejected['status'],'REJECTED');self.assertEqual(rejected['reviews'][-1]['note'],'Insufficient supplied evidence')
+  # Approval and rejection are disabled for bank users; review outcomes still work.
+  for outcome in ('approved','rejected'):
+   with self.assertRaises(InputError) as ctx:self.w.record_review(self.tokens['lender_analyst'],aid,{'outcome':outcome,'note':'Synthetic decision'})
+   self.assertEqual(ctx.exception.status,403)
+  result=self.auth.application_list(self.tokens['owner'],'M002')[0];self.assertEqual(result['status'],'SUBMITTED_FOR_LENDER_REVIEW');self.assertFalse(result.get('simulated_decision'))
+  self.w.record_review(self.tokens['lender_analyst'],aid,{'outcome':'more_information_needed','note':'Insufficient supplied evidence'})
+  result=self.auth.application_list(self.tokens['owner'],'M002')[0];self.assertEqual(result['status'],'SUBMITTED_FOR_LENDER_REVIEW');self.assertEqual(result['reviews'][-1]['note'],'Insufficient supplied evidence')
   self.assertEqual(self.metrics(),before);self.assertEqual(self.store.journal.read(),ledger);self.assertFalse(self.c.payments.payments)
   with self.auth.db() as db:
    events=[json.loads(r[0]) for r in db.execute('SELECT record FROM audit_events')]
-  event=next(e for e in events if e['action']=='financing_simulated_approved');self.assertEqual(event['actor'],self.ids['lender_analyst']);self.assertEqual(event['merchant_id'],'M002');self.assertEqual(event['target'],aid);self.assertIn('ts',event)
+  self.assertFalse(any(e['action'] in ('financing_simulated_approved','financing_simulated_rejected') for e in events))
+  event=next(e for e in events if e['action']=='financing_review_recorded');self.assertEqual(event['actor'],self.ids['lender_analyst']);self.assertEqual(event['merchant_id'],'M002');self.assertEqual(event['target'],aid);self.assertIn('ts',event)
  def test_routing_requires_live_applications_consent(self):
   aid=self.submit()['application_id'];bank=self.tokens['lender_analyst']
   self.assertEqual(len(self.w.applications(bank)),1)
@@ -69,15 +68,16 @@ class BankDelivery(unittest.TestCase):
   with self.auth.db() as db:db.execute('UPDATE consents SET expires_at=?',(self.auth.clock()-1,))
   self.assertEqual(self.w.applications(bank),[])
  def test_concurrent_decisions_one_final_state(self):
+  # With approval and rejection disabled, concurrent decision attempts both fail and leave no review or status change.
   aid=self.submit()['application_id'];gate=threading.Barrier(2)
   def decide(outcome):
    gate.wait()
    try:self.w.record_review(self.tokens['lender_analyst'],aid,{'outcome':outcome,'note':'Concurrent synthetic decision'});return 'ok'
    except InputError as e:return e.status
   with ThreadPoolExecutor(2) as pool:result=list(pool.map(decide,['approved','rejected']))
-  self.assertEqual(result.count('ok'),1);self.assertEqual(result.count(409),1)
-  self.assertIn(self.auth.application_list(self.tokens['owner'],'M002')[0]['status'],('APPROVED','REJECTED'))
-  with self.auth.db() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM application_reviews WHERE application_id=?',(aid,)).fetchone()[0],1)
+  self.assertEqual(result,[403,403])
+  self.assertEqual(self.auth.application_list(self.tokens['owner'],'M002')[0]['status'],'SUBMITTED_FOR_LENDER_REVIEW')
+  with self.auth.db() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM application_reviews WHERE application_id=?',(aid,)).fetchone()[0],0)
  def metrics(self):
   result=self.c.financial_data.aggregate('M002');result.pop('as_of',None);return result
  def test_simulator_isolated_success_failure_refund_and_restart(self):

@@ -4,7 +4,7 @@ let dashboardPane='overview',businessAlertsLoaded=false;
 const maturityStages=['Survival Borrower','Striving Amateur','Steady Upgrader','Opportunity Seizer','Expanding Proprietor','Heir Seeker'];
 const dimensionLabel=name=>name.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 function resetDashboardContext(){
- dashboardSnapshot=null;$('#export-overview').disabled=true;$('#export-status').textContent='';$('#dashboard-partial-period').hidden=true;$('#dashboard-partial-period').textContent='';closeBusinessNotifications();$('#cfkpis').replaceChildren();$('#cfchart').replaceChildren();$('#cfalerts').replaceChildren();cashflowLoadedFor=null;dashboardRequest++;growthRequest++;alertRequest++;dashboardAssessment=null;dashboardAssessmentPromise=null;businessAlertsLoaded=false;businessAlertRows=[];dismissedBusinessAlerts.clear();businessAlertsRetrieved=null;businessAlertState={page:1,size:3,severity:'all'};revenueTableState={page:1,size:10,context:''};
+ dashboardSnapshot=null;$('#export-overview').disabled=true;$('#export-status').textContent='';$('#dashboard-partial-period').hidden=true;$('#dashboard-partial-period').textContent='';closeBusinessNotifications();['cf-kpis','cf-chart','cf-ar-buckets','cf-ar-table','cf-ap-buckets','cf-ap-table'].forEach(id=>$('#'+id)?.replaceChildren());if($('#cf-status'))$('#cf-status').textContent='';cashflowLoadedFor=null;dashboardRequest++;growthRequest++;alertRequest++;dashboardAssessment=null;dashboardAssessmentPromise=null;businessAlertsLoaded=false;businessAlertRows=[];dismissedBusinessAlerts.clear();businessAlertsRetrieved=null;businessAlertState={page:1,size:3,severity:'all'};revenueTableState={page:1,size:10,context:''};
  for(const id of ['dkpis','dvol','drev','overview-volume','overview-revenue','dvoltrend','drevtrend','business-growth','business-alerts','financing-readiness','channel-performance','dashboard-provenance','dashboard-limitations','matches','rbfelig','rbfsummary','rbfdays','rbfcmp'])$('#'+id)?.replaceChildren();
  $('#business-growth').textContent='Open Business Growth to load the current assessment.';$('#business-alerts').textContent='Open Alerts to load the available business alerts.';
 }
@@ -44,20 +44,34 @@ async function loadBusinessAlerts(){
   businessAlertState.page=1;businessAlertsLoaded=true;renderCompactBusinessAlerts();
  }catch(error){if(M.id===mid&&request===alertRequest)box.textContent='Notifications could not be loaded. Close and reopen to try again.'}
 }
+// Dashboard cache: the last result for each business and period is kept for this browser tab (sessionStorage, cleared
+// on sign-out or when the tab closes). It is shown at once, then refreshed quietly; imports and new entries clear it.
+const DASH_CACHE='dash-cache:';
+function dashboardCacheKey(mid,s,e,g){return DASH_CACHE+mid+'|'+s+'|'+e+'|'+g}
+function dashboardCacheGet(key){try{return JSON.parse(sessionStorage.getItem(key)||'null')}catch{return null}}
+function dashboardCachePut(key,d){try{sessionStorage.setItem(key,JSON.stringify(d))}catch{}}
+function invalidateDashboardCache(){dashboardSnapshot=null;try{Object.keys(sessionStorage).filter(k=>k.startsWith(DASH_CACHE)).forEach(k=>sessionStorage.removeItem(k))}catch{}}
 async function loadDashboard(){
- $('#export-overview').disabled=true;const mid=M.id,request=++dashboardRequest,s=$('#dstart').value,e=$('#dend').value;$('#derr').textContent='';
- if(dashboardSnapshot&&dashboardSnapshot.merchant.id===mid&&dashboardSnapshot.period.start===s&&dashboardSnapshot.period.end===e&&dashboardSnapshot.period.granularity===$('#dgran').value){$('#export-overview').disabled=false;return}
+ $('#export-overview').disabled=true;const mid=M.id,request=++dashboardRequest,s=$('#dstart').value,e=$('#dend').value,g=$('#dgran').value;$('#derr').textContent='';
+ if(dashboardSnapshot&&dashboardSnapshot.merchant.id===mid&&dashboardSnapshot.period.start===s&&dashboardSnapshot.period.end===e&&dashboardSnapshot.period.granularity===g){$('#export-overview').disabled=false;return}
  if(s&&e&&s>e){$('#derr').textContent='Start date must be on or before end date.';return}
- const d=await api('/api/dashboard'+q('&granularity='+$('#dgran').value+(s?'&start='+s:'')+(e?'&end='+e:'')));
+ const key=dashboardCacheKey(mid,s,e,g),cached=dashboardCacheGet(key);
+ if(cached?.merchant?.id===mid)renderDashboardData(cached,s);
+ const d=await api('/api/dashboard'+q('&granularity='+g+(s?'&start='+s:'')+(e?'&end='+e:'')),cached?{quiet:true}:{});
  if(M.id!==mid||request!==dashboardRequest)return;
- if(!s){$('#dstart').value=d.period.start;$('#dend').value=d.period.end}
+ dashboardCachePut(key,d);if(!s)dashboardCachePut(dashboardCacheKey(mid,d.period.start,d.period.end,g),d);
+ if(cached&&JSON.stringify(cached)===JSON.stringify(d)){dashboardSnapshot=d;return}
+ renderDashboardData(d,s);
+}
+function renderDashboardData(d,s){
+ if(!s&&!$('#dstart').value){$('#dstart').value=d.period.start;$('#dend').value=d.period.end}
  dashboardSnapshot=d;const f=d.financial_metrics,inc=d.incentive;
  $('#dashboard-empty').hidden=f?.record_count!==0;$('#dashboard-empty').textContent='No completed transaction records for this period. Actual business revenue is unknown.';
- $('#dkpis').innerHTML=[['Recorded Net Sales',fmt(f?.net_sales),'Canonical sales net of recorded refunds'],['Expenses',fmt(f?.expenses),'Recorded expenses in this reporting period'],['Net Income',fmt(f?.net_income),'Authoritative canonical net income'],['Digital Capture',pct(d.capture.digital_share),'Own rails '+pct(d.capture.ecosystem_share)+' · cash '+pct(d.capture.cash_share)]].map(([name,value,note])=>'<div class="card"><div class="muted">'+name+'</div><div class="kpi">'+value+'</div><p class="muted">'+esc(note)+'</p></div>').join('');
+ $('#dkpis').innerHTML=averageCard('Average Revenue',f?.net_sales,d.period_length,'Recorded net sales ÷ months, weeks or days in the period')+averageCard('Average Expense',f?.expenses,d.period_length,'Recorded expenses ÷ months, weeks or days in the period')+[['Net Income',fmt(f?.net_income),'Authoritative canonical net income'],['Digital Capture',pct(d.capture.digital_share),'Own rails '+pct(d.capture.ecosystem_share)+' · cash '+pct(d.capture.cash_share)]].map(([name,value,note])=>'<div class="card"><div class="muted">'+name+'</div><div class="kpi">'+value+'</div><p class="muted">'+esc(note)+'</p></div>').join('');
  const channels=Object.values(d.mix.by_channel),volume=donut(channels.map(c=>c.volume_share),channels.map(c=>c.label),d.mix.total_transactions.toLocaleString()+'<br><small>txns</small>'),revenue=donut(channels.map(c=>c.revenue_share),channels.map(c=>c.label),short(d.mix.gross_revenue)+'<br><small>net</small>');
  for(const id of ['overview-volume'])$('#'+id).innerHTML=volume;for(const id of ['overview-revenue'])$('#'+id).innerHTML=revenue;
  $('#channel-performance').innerHTML=ChannelPerformance.render(d.channel_performance);
- const trendOpen=$('#dashboard-trend-values')?.open;$('#dvoltrend').innerHTML=bars(d.trend.map(t=>t.period),d.trend.map(t=>t.transactions),'vol');$('#drevtrend').innerHTML=financialTrend(d.trend,d.merchant.currency);renderRevenueValues(d,trendOpen);
+ const trendOpen=$('#dashboard-trend-values')?.open;$('#dvoltrend').innerHTML=bars(d.trend.map(t=>t.period),d.trend.map(t=>t.transactions),'vol');$('#drevtrend').innerHTML=financialTrend(d.trend,d.merchant.currency,trendAverages(d));renderExpenseSplit(d);renderRevenueValues(d,trendOpen);
  $('#dashboard-trend-period').textContent=d.period.start+' to '+d.period.end+' · '+d.period.granularity+' · '+d.merchant.currency;
  const periodNote=overviewPartialPeriod(d.period);$('#dashboard-partial-period').textContent=periodNote;$('#dashboard-partial-period').hidden=!periodNote;
  $('#export-overview').disabled=false;
@@ -79,10 +93,28 @@ function nextMaturityCard(a){
  return '<section class="growth-next-card"><h3>Next Maturity Stage</h3><p class="growth-stage-transition">Stage '+esc(a.stage)+' → Stage '+esc(gap.target_stage)+'</p><strong>'+esc(gap.target_name)+'</strong><div class="growth-target-grid"><div><small>Composite threshold</small><b>'+esc(gap.composite_needed)+'/100</b></div><div><small>Composite gap</small><b>'+esc(gap.composite_gap)+' points needed</b></div></div>'+(gate?'<div class="growth-gate"><small>Largest unmet dimension gate</small><strong>'+esc(dimensionLabel(gate[0]))+'</strong><span>Current: '+esc(a.scores[gate[0]])+'/100 · '+esc(gate[1])+' points below the required gate</span></div>':'<p class="muted">No unmet dimension gate returned.</p>')+'<small class="muted">Composite threshold and all required gates apply together; threshold alone does not guarantee advancement.</small></section>';
 }
 function growthPriorityCard(a){const priorities=a.constraints||[],primary=priorities[0];const item=c=>'<strong>'+esc(dimensionLabel(c.constraint))+'</strong><p>'+esc(c.evidence)+'</p>'+(c.intervention?'<p><b>Explore:</b> '+esc(c.intervention)+'</p>':'');return '<section class="growth-priority"><h3>Recommended Next Step</h3>'+(primary?item(primary):'<p class="muted">No actionable priority returned by the available assessment.</p>')+(priorities.length>1?'<details><summary>View Other Priorities</summary>'+priorities.slice(1).map(c=>'<div class="growth-other-priority">'+item(c)+'</div>').join('')+'</details>':'')+'<small class="muted">Existing assessment recommendation; indicative, not a guaranteed financing offer.</small></section>'}
+// Averages use the exact period length: days, days ÷ 7 weeks, and calendar months (a partial month counts by its days).
+function averageCard(name,total,length,note){
+ const value=Number(total),per=n=>Number.isFinite(value)&&n>0?fmt(value/n):'—';
+ return '<div class="card average-card"><div class="muted">'+esc(name)+'</div><div class="kpi">'+per(length?.months)+' <small class="muted">/ month</small></div><div class="average-rows"><div><span>Weekly</span><b>'+per(length?.weeks)+'</b></div><div><span>Daily</span><b>'+per(length?.days)+'</b></div><div><span>Total</span><b>'+(Number.isFinite(value)?fmt(value):'—')+'</b></div></div><p class="muted">'+esc(note)+'</p></div>';
+}
+function trendAverages(d){
+ const L=d.period_length||{},n={monthly:L.months,weekly:L.weeks,daily:L.days,quarterly:L.months/3}[d.period.granularity],m=d.financial_metrics||{};
+ return n>0?{revenue:Number(m.net_sales)/n,expenses:Number(m.expenses)/n,label:{monthly:'month',weekly:'week',daily:'day',quarterly:'quarter'}[d.period.granularity]}:null;
+}
+const EXPENSE_COLORS=['#993C1D','#D85A30','#F0997B','#BA7517','#888780'];
+function expenseLabel(c){return /[A-Z ]/.test(c)?c:String(c).replace(/_/g,' ').replace(/\b\w/g,x=>x.toUpperCase())}
+function renderExpenseSplit(d){
+ const target=$('#overview-expense');if(!target)return;const split=(d.expense_split||[]).filter(c=>c.amount>0);
+ if(!split.length){target.innerHTML='<p class="muted">No recorded expenses in this reporting period.</p>';return}
+ const top=split.slice(0,4),rest=split.slice(4),other=rest.reduce((a,c)=>a+c.share,0),shares=[...top.map(c=>c.share),...(other>0?[other]:[])],labels=[...top.map(c=>expenseLabel(c.category)),...(other>0?['Other ('+rest.length+')']:[])];
+ let deg=0;const parts=shares.map((s,i)=>{const a=deg,b=deg+s*360;deg=b;return EXPENSE_COLORS[i]+' '+a+'deg '+b+'deg'});
+ target.innerHTML='<div class="donutwrap"><div class="donut" style="background:conic-gradient('+parts.join(',')+')"><div class="hole">'+short(d.financial_metrics?.expenses??d.expenses)+'<br><small>expenses</small></div></div><div class="legend">'+labels.map((l,i)=>'<div><span class="sw" style="background:'+EXPENSE_COLORS[i]+'"></span><span style="flex:1">'+esc(l)+'</span><b>'+(shares[i]*100).toFixed(1)+'%</b></div>').join('')+'</div></div>';
+}
 function renderRevenueValues(d,open){
  const context=[M.id,d.period.start,d.period.end,d.period.granularity].join('|');if(revenueTableState.context!==context){revenueTableState.context=context;revenueTableState.page=1;open=false}
  const target=$('#dashboard-trend-table');if(!target)return;
- ownerPagedTable(target,d.trend,[['Period',row=>esc(row.period)],['Recorded Net Sales ('+d.merchant.currency+')',row=>esc(fmt(row.revenue,d.merchant.currency))]],revenueTableState,'records');
+ ownerPagedTable(target,d.trend,[['Period',row=>esc(row.period)],['Recorded Net Sales ('+d.merchant.currency+')',row=>esc(fmt(row.revenue,d.merchant.currency))],['Recorded Expenses ('+d.merchant.currency+')',row=>esc(fmt(row.expenses||0,d.merchant.currency))]],revenueTableState,'records');
  target.closest('details').open=Boolean(open);
 }
 const businessAlertTitles={BUFFER_THIN:'Low Cash Buffer',RECEIVABLES_OVERDUE:'Overdue Customer Invoices',RUNWAY_CRITICAL:'Critical Cash Runway',RUNWAY_LOW:'Low Cash Runway',RUNWAY_WATCH:'Cash Runway Watch',SALES_DROP:'Recorded Sales Decrease',OBLIGATIONS_DUE:'Upcoming Supplier Bills',FUNDS_MIXING:'Business and Household Funds',CASH_DEPENDENCE:'Cash Dependence'};
