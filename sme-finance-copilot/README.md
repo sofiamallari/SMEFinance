@@ -48,8 +48,8 @@ The tests use temporary databases, synthetic data and provider doubles; they nev
 
 | Topic | Document |
 |---|---|
-| System architecture (Word) | [docs/deliverables/System_Architecture.docx](docs/deliverables/System_Architecture.docx) |
-| Core algorithm (Word) | [docs/deliverables/Core_Algorithm_Description.docx](docs/deliverables/Core_Algorithm_Description.docx) |
+| Architecture notes | [docs/technical/architecture.md](docs/technical/architecture.md) |
+| Financial algorithms | [docs/technical/financial-algorithms.md](docs/technical/financial-algorithms.md) |
 | AI orchestrator design | [docs/technical/ai-orchestrator-design.md](docs/technical/ai-orchestrator-design.md) |
 | AI governance and tool contracts | [docs/technical/ai-governance.md](docs/technical/ai-governance.md) |
 | Roles, delegation and bank consent | [docs/technical/security-permissions.md](docs/technical/security-permissions.md) |

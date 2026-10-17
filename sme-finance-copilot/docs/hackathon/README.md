@@ -3,8 +3,8 @@
 Current working implementation is the source of truth; an older GitHub branch/ZIP or historical pass count is not a substitute. This consolidation did not implement features or verify a live provider.
 
 - [Solution overview](solution-overview.md)
-- [System architecture (Word)](../deliverables/System_Architecture.docx) · [architecture notes](../technical/architecture.md)
-- [Core algorithm description (Word)](../deliverables/Core_Algorithm_Description.docx) · [financial algorithms](../technical/financial-algorithms.md)
+- [System architecture](../technical/architecture.md)
+- [Core algorithms and provisional formulas](../technical/financial-algorithms.md)
 - [Canonical security design](../technical/security-permissions.md)
 - [Security self-assessment and remaining risks](security-self-assessment.md)
 - [Test cases: happy and unhappy paths per role](test-cases.md)
