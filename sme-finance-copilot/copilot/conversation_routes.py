@@ -287,12 +287,24 @@ def updates(text,spans,intent,state):
             if intent=='loan_calculation':add('financing_amount',value)
             elif intent=='past_what_if':add('past_expense',value)
             elif intent in ('decision_support','simulation'):add('recurring_expense' if MONTHLY.search(before[-20:]+after[:15]) else 'one_time_cost',value)
+    if intent=='decision_support':
+        # A count of what is bought or hired ("two", "3 machines"): costs stay per unit and the backend multiplies.
+        for value in spans.values():
+            if len(value.split())>2 or SMALL_COUNT.fullmatch(value) and re.search(r'(?:RMB|CNY|[¥￥])\s*$',text[:max(0,text.find(value))]):continue
+            try:cs.scalar('quantity',value,currency='CNY',today=None)
+            except Exception:continue
+            after=text[text.find(value)+len(value):][:20]
+            # "a", "an", "another" mean one, which is already the default.
+            if re.match(r'\s*(?:%|k\b|thousand|months?|years?|days?|weeks?|rmb|cny|yuan)',after,re.I) or value.lower().split()[0] in ('a','an','another','single'):continue
+            add('quantity',value);break
     if intent in ('decision_support','simulation'):
         dates=dates+[v for v in spans.values() if re.fullmatch(r'next week|tomorrow|today|in a week|next month',v,re.I)]
         # A bare month ("in December", "starting January") is the planned start or payment month.
         if not dates:dates=[v for v in spans.values() if re.fullmatch(r'(?:in|from|starting)\s+(?:jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*',v,re.I)]
     if intent in ('decision_support','simulation') and dates:
-        one_time=any(u['entity']=='one_time_cost' for u in out) or 'one_time_cost' in state['entities']
+        # The date belongs to the cost described in this message: a hiring or salary start is never a purchase payment date.
+        recurring=any(u['entity']=='recurring_expense' for u in out) or bool(MONTHLY.search(text))
+        one_time=any(u['entity']=='one_time_cost' for u in out) or ('one_time_cost' in state['entities'] and not recurring)
         add('purchase_date' if one_time else 'start_date',dates[0])
     if intent in ('sales_analysis','past_what_if','data_quality','transactions','payment_channels') and periods:
         add('reporting_period',periods[0])

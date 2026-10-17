@@ -249,4 +249,226 @@ class Orchestrator(unittest.TestCase):
   spans=sources(text);values={u['entity']:cs.scalar(u['entity'],spans[u['source']],currency='CNY',today=date(2026,10,17))['value'] for u in routes.updates(text,spans,'decision_support',{'entities':{}})}
   self.assertEqual(values.get('recurring_expense'),'10000.00');self.assertEqual(values.get('start_date'),'2026-12-01')
 
+ # --- Dynamic scenarios: quantity, versions, forecast anchor, comparisons, semantic checks ---
+ def entity(self,key,quote,turn=1):
+  from datetime import date
+  from copilot import conversation_state as cs
+  return {**cs.scalar(key,quote,currency='CNY',today=date(2026,10,17)),'kind':'user_assumption','quote':quote,'turn':turn}
+
+ def test_quantity_multiplies_unit_cost_in_scenario_args(self):
+  from datetime import date
+  state={'entities':{'recurring_expense':self.entity('recurring_expense','10,000'),'start_date':self.entity('start_date','December'),'quantity':self.entity('quantity','two')}}
+  args=ev.scenario_args(state,date(2026,10,17))
+  self.assertEqual(args['monthly_cost'],20000.0);self.assertEqual(args['start_date'],'2026-12-01')
+
+ def test_material_change_keeps_previous_scenario_version(self):
+  from copilot import conversation_state as cs
+  previous={**cs.fresh(),'intent':'decision_support','turn':3,'entities':{'recurring_expense':self.entity('recurring_expense','10,000',2),'start_date':self.entity('start_date','December',3)}}
+  updated=copy.deepcopy(previous);updated['turn']=4;updated['entities']['quantity']=self.entity('quantity','two',4)
+  updated=ev.prepare_state(previous,updated,'What if I hire two instead?')
+  self.assertEqual(len(updated['scenarios']),1);self.assertNotIn('quantity',updated['scenarios'][0])
+  self.assertEqual(updated['entities']['quantity']['value'],'2')
+
+ def test_hypothetical_changes_never_touch_past_days(self):
+  from copilot.cash_impact import run
+  value=run(self.c,'M002',{'assessment_date':'2026-10-16','horizon_days':90,'monthly_cost':20000.0,'start_date':'2026-12-01','sales_change_percent':-20.0})
+  for row in (value['baseline'],value['adjusted']):
+   if row['first_negative_date']:self.assertGreaterEqual(row['first_negative_date'],'2026-10-16')
+  self.assertIn('min_after_change',value['adjusted'])
+
+ def test_comparison_describes_each_option_and_labels_baseline(self):
+  from copilot.cash_impact import run
+  from copilot.governed_claims import analytical_claims
+  base={'assessment_date':'2026-10-16','horizon_days':90,'start_date':'2026-12-01'}
+  results=[('fact'+str(i),'run_cash_impact_scenario',run(self.c,'M002',{**base,**a})) for i,a in enumerate(({'monthly_cost':10000.0},{'monthly_cost':20000.0}))]
+  brief=analytical_claims(results)['analysis.scenario_comparison']['brief']
+  self.assertIn('without the new cost',brief);self.assertIn('per month',brief);self.assertNotIn('payment leaves',brief)
+
+ def test_semantic_checks_reject_wrong_count_label_and_advice(self):
+  from copilot.conversation_review import semantic_checks
+  records={'fact0.adjusted':{'kind':'simulation_result','metric':'adjusted','source':'run_cash_impact_scenario','brief':'With the new cost, the projection ends positive.'}}
+  state={'entities':{'quantity':self.entity('quantity','one')},'turn':1,'reporting_context':{'business_date':'2026-10-17'}}
+  for text,code in (('Hiring two employees keeps the balance positive.','quantity_mismatch'),('Without these changes the balance stays positive.','scenario_label_mismatch'),('You should delay the hire.','unsupported_recommendation')):
+   with self.assertRaises(ClaimError) as error:semantic_checks({'segments':[{'text':text},{'claim':'fact0.adjusted','kind':'simulation_result'}]},records,['fact0.adjusted'],state)
+   self.assertEqual(error.exception.code,code)
+  past={'fact0.adjusted':{**records['fact0.adjusted'],'brief':'With the new cost, the balance first goes negative on October 8, 2026.'}}
+  with self.assertRaises(ClaimError) as error:semantic_checks({'segments':[{'claim':'fact0.adjusted','kind':'simulation_result'}]},past,['fact0.adjusted'],state)
+  self.assertEqual(error.exception.code,'past_projected_outcome')
+
+ def test_forecast_basis_disclaimer_is_carried_on_the_same_topic_only(self):
+  from copilot.conversation_review import carry_qualifications,remember_qualifications
+  basis={'kind':'data_limitation','metric':'scenario_basis','display':'Hypothetical projection from the opening balance dated September 30, 2026.'}
+  state={'intent':'decision_support','entities':{'business_subject':{'value':'staff'}}}
+  remember_qualifications({'fact0.scenario_basis':basis},['fact0.scenario_basis'],state)
+  records={'fact0.scenario_basis':dict(basis),'fact0.adjusted':{'requires':['fact0.scenario_basis'],'metric':'adjusted'}}
+  self.assertEqual(carry_qualifications(records,state),['fact0.scenario_basis']);self.assertEqual(records['fact0.adjusted']['requires'],[])
+  state['entities']['business_subject']={'value':'warehouse'}
+  records={'fact0.scenario_basis':dict(basis),'fact0.adjusted':{'requires':['fact0.scenario_basis'],'metric':'adjusted'}}
+  self.assertEqual(carry_qualifications(records,state),[]);self.assertEqual(records['fact0.adjusted']['requires'],['fact0.scenario_basis'])
+
+ # --- Cross-decision reasoning: identities, options, date binding, alternatives, funding ---
+ def turn(self,state,text,updates,turn,intent='decision_support',topic_change=False):
+  from datetime import date
+  from copilot import conversation_state as cs
+  state=copy.deepcopy(state);state['turn']=turn
+  updated=cs.apply_proposal(state,{'intent':intent,'topic_change':topic_change,'updates':[{'entity':k,'quote':q} for k,q in updates],'question':None},text,currency='CNY',today=date(2026,10,17))
+  return ev.prepare_state(state,updated,text)
+
+ def expansion_then_hiring(self):
+  from copilot import conversation_state as cs
+  s=self.turn(cs.fresh(),'Can I afford a warehouse expansion?',[('business_subject','warehouse expansion')],1)
+  s=self.turn(s,'The expansion will cost around ¥150,000.',[('one_time_cost','¥150,000'),('business_subject','expansion')],2)
+  s=self.turn(s,'What if I only spend ¥80,000 instead?',[('one_time_cost','¥80,000')],3)
+  # The model (or keyword fallback) offering the hiring month as a payment date must not leak into the expansion.
+  s=self.turn(s,'I also want to hire two employees in December, each earning ¥10,000 monthly.',[('recurring_expense','¥10,000'),('quantity','two'),('purchase_date','in December')],4)
+  return s
+
+ def test_decision_keeps_identity_and_both_amounts(self):
+  s=self.expansion_then_hiring()
+  saved=next(t for t in s['topics'] if t['decision']['id']=='d1')
+  self.assertEqual(saved['decision']['subject'],'warehouse expansion');self.assertIn('expansion',saved['decision']['aliases'])
+  self.assertEqual([o['value'] for o in saved['options']],['150000.00','80000.00'])
+  self.assertEqual([o['label'] for o in saved['options']],['proposed','revised'])
+  self.assertEqual(s['decision']['id'],'d2');self.assertEqual(s['decision']['kind'],'recurring');self.assertIn(['d1','d2'],s['links'])
+
+ def test_hiring_date_never_becomes_expansion_payment_date(self):
+  from datetime import date
+  from copilot import conversation_routes as routes
+  from copilot.conversation_review import sources
+  s=self.expansion_then_hiring()
+  self.assertEqual(s['entities']['start_date']['value'],'2026-12-01');self.assertNotIn('purchase_date',s['entities'])
+  self.assertNotIn('purchase_date',next(t for t in s['topics'] if t['decision']['id']=='d1')['entities'])
+  self.assertEqual(ev.scenario_args(s,date(2026,10,17))['monthly_cost'],20000.0)
+  text='I also want to hire two employees in December, each earning ¥10,000 monthly.'
+  keys={u['entity'] for u in routes.updates(text,sources(text),'decision_support',{'entities':{'one_time_cost':{'value':'80000.00'}}})}
+  self.assertIn('start_date',keys);self.assertNotIn('purchase_date',keys)
+
+ def test_earlier_decision_restored_by_meaning_with_shared_assumption(self):
+  s=self.expansion_then_hiring()
+  s=self.turn(s,'What if our sales decrease by 20% for the next three months?',[('sales_change_percent','decrease by 20%')],5)
+  self.assertEqual(s['decision']['id'],'d2')
+  # The model may also offer "now" as a start date; the saved hiring keeps its own December start.
+  s=self.turn(s,'Which is financially safer: expanding now, reducing the expansion budget, or postponing it?',[('start_date','now')],6)
+  self.assertEqual(s['decision']['id'],'d1');self.assertEqual(s['entities']['sales_change_percent']['value'],'-20')
+  hiring=next(t for t in s['topics'] if t['decision']['id']=='d2')
+  self.assertEqual(hiring['entities']['recurring_expense']['value'],'10000.00');self.assertNotIn('business_subject',hiring['entities'])
+  self.assertEqual(hiring['entities']['start_date']['value'],'2026-12-01')
+
+ def test_alternatives_now_reduced_postponed_share_the_hiring_base(self):
+  from datetime import date
+  s=self.expansion_then_hiring()
+  s=self.turn(s,'What if our sales decrease by 20% for the next three months?',[('sales_change_percent','decrease by 20%')],5)
+  text='Which is financially safer: expanding now, reducing the expansion budget, or postponing it?'
+  s=self.turn(s,text,[],6);plan=ev.alternatives(s,text,date(2026,10,17))
+  now,reduced,postponed=plan['options']
+  self.assertEqual((now['args']['one_time_cost'],now['args']['purchase_date']),(150000.0,'2026-10-17'))
+  self.assertEqual((reduced['args']['one_time_cost'],reduced['args']['purchase_date']),(80000.0,'2026-10-17'))
+  self.assertNotIn('one_time_cost',postponed['args'])
+  for option in plan['options']:self.assertEqual((option['args']['monthly_cost'],option['args']['start_date'],option['args']['sales_change_percent']),(20000.0,'2026-12-01',-20.0))
+  self.assertTrue(plan['now_assumed'])
+  # Without "now" and without a stored date the timing is asked once; supplied amounts never are.
+  ask=ev.alternatives(s,'Which is safer: reducing the expansion budget or postponing it?',date(2026,10,17))
+  self.assertEqual(ask['ask']['entity'],'purchase_date')
+
+ def test_alternatives_claim_labels_options_and_defers_postponed_cost(self):
+  from datetime import date
+  from copilot.cash_impact import run
+  from copilot.governed_claims import alternatives_claims
+  s=self.expansion_then_hiring()
+  text='Which is financially safer: expanding now, reducing the expansion budget, or postponing it?'
+  s=self.turn(s,text,[],5);plan=ev.alternatives(s,text,date(2026,10,17))
+  results=[]
+  for i,option in enumerate(plan['options']):option['prefix']='fact'+str(i);results.append(('fact'+str(i),'run_cash_impact_scenario',run(self.c,'M002',option['args'])))
+  brief=alternatives_claims(results,plan)['analysis.scenario_comparison']['brief']
+  for label in ('Paying the full warehouse expansion cost now','Reducing the warehouse expansion budget','Postponing the warehouse expansion','2 × ¥10,000.00 per month','No sales or expense change is applied','does not cancel the cost'):self.assertIn(label,brief)
+  self.assertNotIn('?',brief)
+
+ def test_rbf_navigation_vs_funding_decision(self):
+  self.assertFalse(ev.funding_question('How do I open the RBF calculator?'))
+  self.assertTrue(ev.funding_question('Could revenue-based financing help fund my expansion?'))
+  self.assertTrue(ev.funding_question('If I postpone the expansion, could revenue-based financing help instead?'))
+  ref=self.p.create(self.tokens['owner'],'M002')['conversation']
+  with patch('copilot.conversation_review.provider',side_effect=AssertionError('No provider')):
+   r=self.p.reply(self.tokens['owner'],'M002',ref,'How do I open the RBF calculator?')
+  self.assertEqual(r['classification'],'APPLICATION_GUIDANCE')
+
+ def test_funding_question_uses_financing_tools_with_bound_advance(self):
+  ref=self.p.create(self.tokens['owner'],'M002')['conversation']
+  cite=lambda m,s:{'segments':[{'claim':'analysis.funding_gap','kind':'derived_calculation'}]+[{'claim':k,'kind':'data_limitation'} for k in json.loads(m[-1]['content'])['available_typed_claims']['analysis.funding_gap'].get('requires',[])]}
+  script(self.p,[{'intent':'decision_support','updates':[('business_subject','warehouse expansion')]},{'intent':'decision_support','updates':[('one_time_cost','¥150,000')]},
+   {'intent':'financing','tool_requests':[{'name':'get_financing_matches'}]}],[{'segments':[{'text':'Noted.'}]},{'segments':[{'text':'Noted.'}]},cite])
+  executed=[];original=self.g.execute
+  def spy(token,mid,name,args,**kw):executed.append((name,args));return original(token,mid,name,args,**kw)
+  with patch.object(self.g,'execute',spy):
+   for text in ('Can I afford a warehouse expansion?','The expansion will cost around ¥150,000.'):self.p.reply(self.tokens['owner'],'M002',ref,text)
+   r=self.p.reply(self.tokens['owner'],'M002',ref,'Could revenue-based financing help fund my expansion?')
+  self.assertNotEqual(r.get('classification'),'APPLICATION_GUIDANCE')
+  self.assertIn('get_rbf_quote',r['tools_used']);self.assertIn('get_financing_matches',r['tools_used']);self.assertIn('run_cash_impact_scenario',r['tools_used'])
+  quotes=[a for n,a in executed if n=='get_rbf_quote']
+  self.assertEqual(quotes[0],{});probe=original(self.tokens['owner'],'M002','get_rbf_quote',{})
+  self.assertEqual(quotes[1]['advance'],min(150000.0,probe['max_advance']))
+  self.assertIn('¥150,000.00',r['reply'])
+
+ def test_qualifications_follow_decision_identity_not_subject_wording(self):
+  from copilot.conversation_review import carry_qualifications,remember_qualifications
+  basis={'kind':'data_limitation','metric':'scenario_basis','display':'Hypothetical projection from the opening balance dated September 30, 2026.'}
+  state={'intent':'decision_support','decision':{'id':'d1'},'entities':{'business_subject':{'value':'warehouse expansion'}}}
+  remember_qualifications({'fact0.scenario_basis':basis},['fact0.scenario_basis'],state)
+  state['entities']['business_subject']={'value':'expansion budget'}
+  records={'fact0.scenario_basis':dict(basis),'fact0.adjusted':{'requires':['fact0.scenario_basis'],'metric':'adjusted'}}
+  self.assertEqual(carry_qualifications(records,state),['fact0.scenario_basis'])
+  state['decision']={'id':'d2'}
+  records={'fact0.scenario_basis':dict(basis),'fact0.adjusted':{'requires':['fact0.scenario_basis'],'metric':'adjusted'}}
+  self.assertEqual(carry_qualifications(records,state),[])
+
+ def test_combined_schedule_is_described_as_both_costs(self):
+  from copilot.governed_claims import describe_schedule
+  text=describe_schedule([{'date':'2026-10-17','amount':'150000.00'},{'date':'2026-12-01','amount':'20000.00'},{'date':'2027-01-01','amount':'20000.00'}],'CNY')
+  self.assertIn('one-time ¥150,000.00 payment on October 17, 2026 plus ¥20,000.00 per month from December 1, 2026',text)
+
+ def dated_expansion(self):
+  from copilot import conversation_state as cs
+  s=self.turn(cs.fresh(),"I'm planning to expand my warehouse in January 2027. The investment will cost ¥150,000.",[('business_subject','warehouse'),('one_time_cost','¥150,000'),('purchase_date','January 2027')],1)
+  s=self.turn(s,'What if I reduce the expansion budget to ¥80,000 instead?',[('one_time_cost','¥80,000')],2)
+  return self.turn(s,'What if my sales decrease by 20% starting November 2026?',[('sales_change_percent','decrease by 20%'),('assessment_date','November 2026')],3)
+
+ def test_change_start_is_not_the_assessment_date(self):
+  from datetime import date
+  s=self.dated_expansion()
+  self.assertNotIn('assessment_date',s['entities']);self.assertEqual(s['entities']['change_start_date']['value'],'2026-11-01')
+  args=ev.scenario_args(s,date(2026,10,17))
+  self.assertEqual((args['assessment_date'],args['horizon_days'],args['change_start_date'],args['purchase_date']),('2026-10-17',90,'2026-11-01','2027-01-01'))
+  from copilot.cash_impact import run
+  value=run(self.c,'M002',args);self.assertEqual(value['assumed_changes']['start_date'],'2026-11-01')
+
+ def test_postponement_date_belongs_to_the_postponed_option(self):
+  from datetime import date
+  from copilot.cash_impact import run
+  from copilot.governed_claims import alternatives_claims
+  text='Compare the original ¥150,000 expansion, the reduced ¥80,000 expansion, and postponing the investment until April 2027. Which option is safest for cash flow?'
+  s=self.turn(self.dated_expansion(),text,[('one_time_cost','¥150,000'),('purchase_date','April 2027')],4)
+  self.assertEqual(s['entities']['purchase_date']['value'],'2027-01-01');self.assertEqual(s['decision']['postponed_date'],'2027-04-01')
+  plan=ev.alternatives(s,text,date(2026,10,17))
+  self.assertEqual([o['name'] for o in plan['options']],['original','reduced','postponed'])
+  self.assertEqual([(o['args']['one_time_cost'],o['args']['purchase_date']) for o in plan['options']],[(150000.0,'2027-01-01'),(80000.0,'2027-01-01'),(150000.0,'2027-04-01')])
+  self.assertEqual({o['args']['horizon_days'] for o in plan['options']},{180})
+  results=[]
+  for i,option in enumerate(plan['options']):option['prefix']='fact'+str(i);results.append(('fact'+str(i),'run_cash_impact_scenario',run(self.c,'M002',option['args'])))
+  claims=alternatives_claims(results,plan)
+  self.assertIn('¥150,000.00 paid on April 1, 2027',claims['analysis.scenario_comparison']['brief']);self.assertNotIn('does not cancel',claims['analysis.scenario_comparison']['brief'])
+  self.assertIn('advice.alternatives',claims)
+  # "What would you recommend?" compares the same alternatives again.
+  again=ev.alternatives(s,'Based on everything we discussed, what would you recommend, and why?',date(2026,10,17))
+  self.assertEqual([o['name'] for o in again['options']],['original','reduced','postponed']);self.assertTrue(again['recommend'])
+
+ def test_funding_pays_on_the_planned_date(self):
+  from datetime import date
+  plan=ev.funding(self.dated_expansion(),'If I still want the ¥150,000 expansion, could revenue-based financing help cover the funding gap?',date(2026,10,17))
+  self.assertEqual((plan['need'],plan['args']['purchase_date'],plan['args']['change_start_date']),(150000.0,'2027-01-01','2026-11-01'))
+
+ def test_dates_beyond_the_longest_projection_do_not_fail_the_turn(self):
+  from datetime import date
+  s={'entities':{'one_time_cost':self.entity('one_time_cost','150,000'),'purchase_date':self.entity('purchase_date','2027-09-01')}}
+  self.assertIsNone(ev.scenario_args(s,date(2026,10,17)))
+
 if __name__=='__main__':unittest.main()

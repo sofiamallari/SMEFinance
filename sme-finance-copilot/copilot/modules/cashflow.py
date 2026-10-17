@@ -37,15 +37,16 @@ def _weekday_profile(rows: list, as_of: date, days: int, cats: set | None = None
 
 
 def forecast(merchant, as_of: date, days: int | None = None, include_overdue: bool = False, extra_outflows: list | None = None,
-             inflow_factor: float = 1.0, outflow_factor: float = 1.0) -> dict:
+             inflow_factor: float = 1.0, outflow_factor: float = 1.0, factor_from: date | None = None) -> dict:
     days = days or C["forecast_days"]
-    inflow_prof = _weekday_profile(merchant.transactions, as_of, C["lookback_days"])
-    out_prof = _weekday_profile(merchant.expenses, as_of, C["lookback_days"],
+    base_in = _weekday_profile(merchant.transactions, as_of, C["lookback_days"])
+    base_out = _weekday_profile(merchant.expenses, as_of, C["lookback_days"],
                                 {"supplies", "operating", "household_draw"})
     # Optional hypothetical what-if factors on the recent sales/expense pattern only (scheduled items unchanged);
-    # the defaults keep the exact original path.
-    if inflow_factor != 1.0: inflow_prof = [v * inflow_factor for v in inflow_prof]
-    if outflow_factor != 1.0: out_prof = [v * outflow_factor for v in out_prof]
+    # the defaults keep the exact original path. factor_from limits them to days on or after that date, so a
+    # forward-looking assumption never changes days that have already happened.
+    inflow_prof = [v * inflow_factor for v in base_in] if inflow_factor != 1.0 else base_in
+    out_prof = [v * outflow_factor for v in base_out] if outflow_factor != 1.0 else base_out
     sched_out, sched_in = defaultdict(float), defaultdict(float)
     for p in merchant.payables:
         sched_out[date.fromisoformat(p["due"])] += p["amount"]
@@ -80,8 +81,9 @@ def forecast(merchant, as_of: date, days: int | None = None, include_overdue: bo
     for i in range(1, days + 1):
         d = as_of + timedelta(days=i)
         loan = merchant.monthly_debt_service if d.day == 15 else 0
-        inflow = inflow_prof[d.weekday()] + sched_in[d]
-        outflow = out_prof[d.weekday()] + sched_out[d] + loan + extra[d]
+        changed = factor_from is None or d >= factor_from
+        inflow = (inflow_prof if changed else base_in)[d.weekday()] + sched_in[d]
+        outflow = (out_prof if changed else base_out)[d.weekday()] + sched_out[d] + loan + extra[d]
         bal += inflow - outflow
         path.append({"date": d.isoformat(), "inflow": round(inflow, 2),
                      "outflow": round(outflow, 2), "balance": round(bal, 2)})

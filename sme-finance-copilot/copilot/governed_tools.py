@@ -48,7 +48,7 @@ for key in ['opening_balance','closing_balance','min_balance']:OUTPUTS['get_cash
 for key in ['opening_balance_date','latest_data_date']:OUTPUTS['get_cash_flow'][key]=TEXT
 for key in ['runway_days','buffer_days']:OUTPUTS['get_cash_flow'][key]={'type':['number','null']}
 OUTPUTS['get_cash_flow']['limitations']=LIMITATIONS
-METRICS={'type':'object','properties':{'closing_balance':TEXT,'min_balance':TEXT,'runway_days':{'type':['integer','null']},'buffer_days':{'type':['number','null']},'first_negative_date':{'type':['string','null']}},'required':['closing_balance','min_balance','runway_days','buffer_days','first_negative_date'],'additionalProperties':False}
+METRICS={'type':'object','properties':{'closing_balance':TEXT,'min_balance':TEXT,'min_after_change':TEXT,'runway_days':{'type':['integer','null']},'buffer_days':{'type':['number','null']},'first_negative_date':{'type':['string','null']}},'required':['closing_balance','min_balance','min_after_change','runway_days','buffer_days','first_negative_date'],'additionalProperties':False}
 OUTPUTS['run_cash_impact_scenario']=dict(currency=TEXT,assessment_date=TEXT,opening_balance_date=TEXT,latest_data_date=TEXT,synthetic_opening_balance=TEXT,horizon_days=NUM,baseline=METRICS,adjusted=METRICS,user_cash_baseline={'anyOf':[METRICS,{'type':'null'}]},user_cash_adjusted={'anyOf':[METRICS,{'type':'null'}]},schedule=FLOW,limitations=LIMITATIONS)
 
 # Read-only tools mirroring existing Owner modules; each reuses that module's own service and permission.
@@ -81,8 +81,8 @@ PERMISSIONS.update(get_transaction_details='view_transactions',get_recent_transa
 INTERNAL.update(get_income_summary='get_dashboard',get_cash_flow_alerts='cashflow_alerts',get_financing_matches='match_financing',get_rbf_quote='rbf_quote',get_business_maturity='assess_business')
 
 # Combined scenario (C8): percentage changes to the forecast's recent sales/expense pattern, applied with the cost.
-INPUTS['run_cash_impact_scenario']['properties'].update(sales_change_percent={'type':'number','minimum':-80,'maximum':50},expense_change_percent={'type':'number','minimum':-30,'maximum':80})
-OUTPUTS['run_cash_impact_scenario']['assumed_changes']={'type':['object','null'],'properties':{'sales_change_percent':{'type':['number','null']},'expense_change_percent':{'type':['number','null']}},'additionalProperties':False}
+INPUTS['run_cash_impact_scenario']['properties'].update(sales_change_percent={'type':'number','minimum':-80,'maximum':50},expense_change_percent={'type':'number','minimum':-30,'maximum':80},change_start_date={'type':'string','format':'date'})
+OUTPUTS['run_cash_impact_scenario']['assumed_changes']={'type':['object','null'],'properties':{'sales_change_percent':{'type':['number','null']},'expense_change_percent':{'type':['number','null']},'start_date':{'type':['string','null']}},'additionalProperties':False}
 INPUTS['search_public_financial_information']['properties']['topic']['enum']=['sme_lending_rates','industry_benchmarks','regulations_tax']
 
 # Loan repayment schedule (C10): arithmetic on user-supplied terms only; it reads no merchant records.

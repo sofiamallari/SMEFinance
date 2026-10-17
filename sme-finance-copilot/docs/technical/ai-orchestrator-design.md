@@ -232,3 +232,41 @@ Implemented on `feature/ai-orchestrator` (2026-10-17):
 Already in place and reused: per-call authorization, strict argument schemas, per-user rate limit (`limiter`), whole-turn deadline, two model rounds with one verifier retry, no-digits free text, minimal audit events.
 
 Tests: `tests/test_ai_orchestrator.py`. The live replay of the test plan (owner and staff, local Gemini) passed on 2026-10-17.
+
+### Dynamic reasoning follow-up (uncommitted, 2026-10-17)
+
+| Item | Where |
+| --- | --- |
+| `quantity` assumption (costs are per unit; the backend multiplies in `scenario_args`); number words never become the business subject; `quantity × unit cost` claim attached to scenario results | `copilot/conversation_state.py`, `copilot/conversation_evidence.py`, `conversation_review.quantity_claims()` |
+| A new scenario version is kept whenever a material input changes (cost, quantity, dates, assumed sales/expense change), up to three | `conversation_evidence.prepare_state()` (`MATERIAL_KEYS`) |
+| Correction words ("instead", "actually") were never detected: a literal backspace replaced `\b` in the regex | `conversation_state.apply_proposal()` |
+| Forecast changes apply only from the assessment date; lowest balance and first negative date are reported from that date; `min_after_change` shows the effect of the change | `copilot/modules/cashflow.forecast(factor_from=…)`, `copilot/cash_impact.py`, `governed_tools.METRICS` |
+| Comparisons describe each option from its own inputs, list the no-new-cost baseline, rank on comparable measures over the same horizon; advice matches the scenario type | `governed_claims.analytical_claims()`, `recommendation_claims()`, `scenario_claims()` |
+| Forecast-window difference noted once per pair of windows | `conversation_review.window_claims()` |
+| Conversational limits (3 plain / 4 module / 5 decision sentences; comparisons unlimited), filler openers dropped, forecast-basis disclaimer carried within the same topic when identical | `conversation_review.check()`, `drop_filler()`, `carry_qualifications()` |
+| Semantic checks: quantity mismatch, baseline label mismatch, missing recalculated result, unsupported advice, past date presented as a projected outcome | `conversation_review.semantic_checks()` |
+| Provider schema: claim IDs sent as plain strings (claim-ID enums caused HTTP 400 on larger turns); the backend validates them | `conversation_review.narration_wire()` |
+
+### Cross-decision reasoning (uncommitted, 2026-10-18)
+
+| Item | Where |
+| --- | --- |
+| Each decision has a stable session id (`state['decision']`: id, kind one-time/recurring, first subject, paraphrase aliases) and an options history (`state['options']`: every proposed and revised cost, kept before all inputs are complete). Saved topics keep both | `conversation_evidence.prepare_state()`, `new_decision()`, `record_options()`, `stabilize_subject()`; `conversation_state.topic_entry()` |
+| A different cost type starts a separate decision; "also" links the two (`state['links']`), so the earlier cost is a shared base. A linked cost without a date is reported as not included, never dropped silently | `conversation_evidence.separate_costs()`, `base_costs()`; `conversation_review.linked_claims()` |
+| Earlier decisions are restored by meaning (subject stems, aliases, kind-of-cost words), not by exact subject or "back"/"return"; this turn's values (for example a quantity) go to the restored decision; assumed sales/expense changes carry across decisions as business-wide assumptions | `conversation_evidence.referenced()`, `maybe_restore()`, `restore()` |
+| Dates bind to the event described: a hiring/salary month is `start_date`, a purchase payment is `purchase_date`; recurring-only decisions lose one-time payment metadata | `conversation_evidence.bind_dates()`, `conversation_routes.updates()` |
+| Alternatives (now / reduced / postponed) of one decision, recalculated over the same 90-day horizon with the linked costs and any assumed change: "now" is the date of that message only (never stored), the reduced budget follows the same timing, postponing moves the payment beyond the projection and is stated as deferred, not cancelled. One date question only when no rule gives the timing; amounts are never re-asked | `conversation_evidence.alternatives()`, `governed_claims.alternatives_claims()`, `Conversation.decision_plan()` |
+| Combined schedules (one-time payment plus monthly cost) are described as both | `governed_claims.describe_schedule()` |
+| Financing decision questions ("Could RBF help fund my expansion?") skip application guidance and use `get_rbf_quote` and `get_financing_matches`. The backend binds the advance: the decision's first stated cost, capped at the calculator's maximum (read from a first quote call), shown beside the shortfall of paying it now. Navigation ("How do I open the RBF calculator?") still gets guidance | `conversation_evidence.funding_question()`, `funding()`; `governed_claims.funding_claims()`; `Conversation.reply()` |
+| Forecast-basis qualifications are carried by decision id, so paraphrased subjects don't repeat them | `conversation_review.topic_key()` |
+| Mandatory qualifications (a cited claim's `requires`) no longer count against the sentence limit; before, they alone could exceed it, so the model's wording was rejected twice and the backend wrote the reply ("AI wording was not used") | `conversation_review.check()` |
+| The modelled period of an assumed sales change is disclosed (applied from the assessment date through the end of the projection) | `governed_claims.scenario_claims()` |
+| A projection with an assumed change and no new cost in the window (postponed cost, no linked costs) is allowed | `copilot/cash_impact.run()` |
+
+| A date attached to an assumed sales/expense change ("sales decrease 20% starting November 2026") is the change's start (`change_start_date`, backend-only entity; tool argument `change_start_date`), not the assessment date, so the projection still starts today | `conversation_evidence.bind_dates()`, `cash_impact.run()`, `governed_tools` input schema, `conversation_state.BACKEND_ENTITIES` |
+| A date next to "postpone/delay" belongs to the postponed alternative (`decision['postponed_date']`), not the planned payment date; the earlier date is kept | `conversation_evidence.bind_dates()` |
+| Horizon: 90 days unless a stated date is later, then extended to cover it (tool maximum 180); a date beyond 180 days is not modelled instead of failing the turn ("Purchase date must be inside the forecast horizon") | `conversation_evidence.horizon()`, `scenario_args()` |
+| Alternatives also cover "the original plan" (at its planned date); a recommendation follow-up ("what would you recommend?") re-runs the last compared alternatives and cites `advice.alternatives`, a backend recommendation derived only from the ranking (it states the trade-off when the later shortfall and the smaller shortfall are different options) | `conversation_evidence.alternatives()`, `governed_claims.alternatives_claims()`, `conversation_review.compose()` |
+| Funding scenario pays on the planned date when one exists; `missing_updated_result` accepts the funding claim (it previously rejected every RBF answer after a restated cost) | `conversation_evidence.funding()`, `conversation_review.semantic_checks()` |
+
+Not done (deferred): a general time-window engine (a change "for the next three months" still runs across the whole 90-day projection, disclosed); postponed dates inside the window ("postpone to December") are not parsed.

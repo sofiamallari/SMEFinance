@@ -625,21 +625,29 @@ def analytical_claims(results):
         records['analysis.comparison']={'kind':'derived_calculation','metric':'sales_comparison','value':str(delta),'currency':a['currency'],'source':'get_financial_summary','inputs':[left+'.net_sales',right+'.net_sales'],'formula':'current_minus_prior; percent=delta/prior*100 when prior != 0','display':display,'brief':brief,'requires':requires}
     scenarios=[(key,v) for key,name,v in results if name=='run_cash_impact_scenario']
     if len(scenarios)>=2:
-        # Lower-risk ordering uses only recalculated metrics: no negative day first, then the higher minimum balance.
-        def cost(v):return sum(Decimal(r['amount']) for r in v['schedule'])
+        # Each option is described by its own recalculated inputs; all share the assessment date and horizon.
+        def describe(v):
+            c=v['currency'];sched=v['schedule']
+            text=describe_schedule(sched,c)
+            changes=v.get('assumed_changes') or {}
+            moves=[w+' '+format(abs(Decimal(str(changes[f]))).normalize(),'f')+'% '+('lower' if changes[f]<0 else 'higher') for f,w in (('sales_change_percent','sales'),('expense_change_percent','expenses')) if changes.get(f)]
+            return text+(' with '+' and '.join(moves) if moves else '')
+        def outcome(row,c):
+            low=row.get('min_after_change') or row['min_balance']
+            return ('goes negative on '+day(row['first_negative_date'])) if row['first_negative_date'] else ('stays positive (lowest '+cash(low,c)+', ending at '+cash(row['closing_balance'],c)+')')
         def rank(item):
             a=item[1]['adjusted']
-            return (a['first_negative_date'] is None,a['first_negative_date'] or '',Decimal(a['min_balance']))
+            return (a['first_negative_date'] is None,a['first_negative_date'] or '',Decimal(a.get('min_after_change') or a['min_balance']),Decimal(a['closing_balance']))
         ordered=sorted(scenarios,key=rank,reverse=True);best=ordered[0];currency=best[1]['currency']
-        parts=[]
-        for key,v in scenarios:
-            a=v['adjusted']
-            parts.append('a '+cash(cost(v),currency)+' payment leaves a lowest projected balance of '+cash(a['min_balance'],currency)+(' and first goes negative on '+day(a['first_negative_date']) if a['first_negative_date'] else ' with no projected negative balance'))
+        base=scenarios[0][1]['baseline']
+        parts=['without the new cost the projection '+outcome(base,currency)]+[describe(v)+': '+outcome(v['adjusted'],currency) for key,v in scenarios]
         tie=rank(ordered[0])==rank(ordered[1])
-        brief='In the projections, '+'; '.join(parts)+'.'+('' if tie else ' The '+cash(cost(best[1]),currency)+' option carries less projected cash-flow risk.')
-        records['analysis.scenario_comparison']={'kind':'derived_calculation','metric':'scenario_comparison','value':'' if tie else str(cost(best[1])),'currency':currency,'source':'run_cash_impact_scenario',
-            'inputs':[key+'.adjusted' for key,v in scenarios],'formula':'rank by no projected negative balance, later first negative date, then higher minimum projected balance',
-            'display':'Scenario comparison (hypothetical, recalculated this turn): '+'; '.join(parts)+'. Ranking: no projected negative balance first, then the later first negative date, then the higher minimum projected balance.','brief':brief,
+        same=len({(v['assessment_date'],v['horizon_days']) for _,v in scenarios})==1
+        brief='Over the same '+str(scenarios[0][1]['horizon_days'])+'-day projection, '+'; '.join(parts)+'.'+('' if tie else ' Of the options, '+describe(best[1])+' keeps more cash in this projection.')
+        if not same:brief+=' These options use different projection windows, so compare them with care.'
+        records['analysis.scenario_comparison']={'kind':'derived_calculation','metric':'scenario_comparison','value':'' if tie else str(sum(Decimal(r['amount']) for r in best[1]['schedule'])),'currency':currency,'source':'run_cash_impact_scenario',
+            'inputs':[key+'.adjusted' for key,v in scenarios],'formula':'rank by no projected negative balance, later first negative date, higher lowest balance after the change starts, then higher closing balance',
+            'display':'Scenario comparison (hypothetical, recalculated this turn): '+'; '.join(parts)+'. Ranking: no projected negative balance first, then the later first negative date, then the higher lowest balance after the change starts, then the higher closing balance.','brief':brief,
             'requires':[scenarios[0][0]+'.scenario_basis']}
     for prefix,name,rows in results:
         if name!='get_transaction_trends' or not rows:continue
@@ -728,8 +736,13 @@ def recommendation_claims(records):
             'Recommended: confirm transaction imports are complete for periods with incomplete record coverage before interpreting sales changes.',gaps)
     negative=[k for k,r in records.items() if r.get('source')=='run_cash_impact_scenario' and r.get('metric') in ('adjusted','user_cash_adjusted') and ('goes negative' in r.get('brief',''))]
     if negative:
-        add('review_expense_timing','Consider changing the timing or size of the payment, since the projection goes negative.',
-            'Recommended: review the timing or amount of the planned expense because a modeled scenario projects a negative balance.',negative)
+        # The suggestion follows the modeled scenario: a one-off payment, a recurring cost, and/or an assumed sales or expense change.
+        prefixes={k.split('.')[0] for k in negative}
+        recurring=any('monthly payments' in r.get('brief','') for k,r in records.items() if k.split('.')[0] in prefixes and r.get('metric')=='schedule')
+        stressed=any(r.get('metric')=='assumed_changes' for k,r in records.items() if k.split('.')[0] in prefixes)
+        step=('Consider a later start date or a lower total monthly cost' if recurring else 'Consider changing the timing or size of the payment')+', since the projection goes negative.'
+        if stressed:step+=' If sales fall as assumed, a cash buffer for slower months would also help.'
+        add('review_expense_timing',step,'Recommended: '+step[0].lower()+step[1:],negative)
     synthetic=[k for k,r in records.items() if r.get('metric') in ('synthetic_cash_basis','scenario_basis')]
     if synthetic:
         add('confirm_cash','Before committing, check this against your bank balance, because the forecast is not reconciled with your bank.',
@@ -739,6 +752,118 @@ def recommendation_claims(records):
         add('verify_payroll','Also confirm your existing payroll obligations, because payroll is not tracked separately.',
             'Recommended: verify existing payroll obligations; there is no separate payroll category.',recurring)
     return out
+
+
+def _outcome(row,currency):
+    low=row.get('min_after_change') or row['min_balance']
+    return ('goes negative on '+day(row['first_negative_date'])+' (lowest '+cash(row['min_balance'],currency)+')') if row['first_negative_date'] else ('stays positive (lowest '+cash(low,currency)+', ending at '+cash(row['closing_balance'],currency)+')')
+
+def _rank(row):
+    return (row['first_negative_date'] is None,row['first_negative_date'] or '',Decimal(row.get('min_after_change') or row['min_balance']),Decimal(row['closing_balance']))
+
+def _shared_text(base,changes,missing,currency):
+    """What every compared option has in common: costs planned together, and whether an assumed sales change applies."""
+    parts=[]
+    for b in base:
+        unit=cash(b['unit'],b['currency']);per=' per month' if b['kind']=='recurring' else ''
+        amount=(str(b['quantity'])+' × '+unit+per+' = '+cash(b['amount'],b['currency'])+per) if b['quantity']>1 else unit+per
+        parts.append('the planned cost for '+b['subject']+' ('+amount+(' from ' if b['kind']=='recurring' else ' on ')+day(b['date'])+')')
+    moves=[w+' '+format(abs(Decimal(str(changes[f]))).normalize(),'f')+'% '+('lower' if changes[f]<0 else 'higher') for f,w in (('sales_change_percent','sales'),('expense_change_percent','expenses')) if changes.get(f)]
+    text=('Each option includes '+' and '.join(parts)+'. ' if parts else '')
+    since=(' from '+day(changes['change_start_date'])+' to the end of the projection') if changes.get('change_start_date') else ' across the whole projection'
+    text+=('Each option also assumes '+' and '.join(moves)+' than the recent pattern (your assumption)'+since+'. ' if moves else 'No sales or expense change is applied. ')
+    for m in missing:
+        text+='Your '+m['subject']+' is not included because it has no '+m['reason']+' yet. '
+    return text.strip()
+
+def alternatives_claims(results,plan):
+    """Original, reduced and postponed alternatives of one decision, recalculated this turn over the same horizon.
+    A postponed cost falls due after the projection: it is deferred, not cancelled."""
+    by={prefix:v for prefix,name,v in results if name=='run_cash_impact_scenario'}
+    if not by:return {}
+    first=next(iter(by.values()));currency=plan.get('currency') or first['currency']
+    start=first['assessment_date'];end=(date.fromisoformat(start)+__import__('datetime').timedelta(days=first['horizon_days'])).isoformat()
+    rows=[]
+    for option in plan['options']:
+        v=by.get(option.get('prefix'))
+        if option.get('prefix') and v is None:continue
+        row=v['adjusted'] if v else first['baseline'] # a postponed cost with nothing else changed is the forecast without the new cost
+        what=('no '+plan['subject']+' payment within the projection') if option['value'] is None else (cash(Decimal(option['value'])*int(option.get('quantity') or 1),option['currency'])+(' per month from ' if plan['kind']=='recurring' else ' paid on ')+day(option['date']))
+        rows.append((option,row,option['label']+' ('+what+')'))
+    if len(rows)<2:return {}
+    ordered=sorted(rows,key=lambda r:_rank(r[1]),reverse=True);tie=_rank(ordered[0][1])==_rank(ordered[1][1])
+    lines='; '.join(label+': '+_outcome(row,currency) for option,row,label in rows)
+    notes=[]
+    if plan.get('now_assumed'):notes.append('"Now" means paying on '+day(start)+', the date of this question'+('; the reduced budget is assumed to be paid at the same time' if any(o['name']=='reduced' for o,_,_ in rows) else '')+'.')
+    if any(o['name']=='postponed' and o['value'] is None for o,_,_ in rows):
+        amounts=' or '.join(dict.fromkeys(cash(a,currency) for a in plan.get('deferred') or []))
+        notes.append('Postponing does not cancel the cost: the '+plan['subject']+' payment'+(' ('+amounts+')' if amounts else '')+' would still fall due after '+day(end)+', outside this projection.')
+    shared=_shared_text(plan.get('base') or [],plan.get('changes') or {},plan.get('missing') or [],currency)
+    brief='Over the same '+str(first['horizon_days'])+'-day projection ('+day(start)+' to '+day(end)+'): '+lines+'. '+shared+' '+('' if tie else 'Of these, '+ordered[0][0]['label'][0].lower()+ordered[0][0]['label'][1:]+(' keeps the most cash in this projection. ' if ordered[0][1]['first_negative_date'] is None or max(rows,key=lambda r:Decimal(r[1]['min_balance']))[0] is ordered[0][0] else ' goes negative latest in this projection. '))+' '.join(notes)
+    prefixes=[o.get('prefix') for o,_,_ in rows if o.get('prefix')]
+    out={}
+    # The recommendation follows the recalculated ranking only; it never adds reasons the projections don't show.
+    positive=[r for r in rows if r[1]['first_negative_date'] is None]
+    if not tie:
+        best=ordered[0][0]['label'][0].lower()+ordered[0][0]['label'][1:]
+        if len(positive)==len(rows):step='All options stay positive in this projection; '+best+' leaves the largest cushion, so it is the safer choice for cash flow if the assumptions hold.'
+        elif positive:step=('Only '+best+' keeps the balance positive' if len(positive)==1 else best[0].upper()+best[1:]+' keeps the most cash and stays positive')+' in this projection, so it is the safer choice for cash flow; the other options would need more cash, lower costs or later timing.'
+        else:step='Every option goes negative in this projection; none fits without more cash, lower costs or later timing.'
+        # When the later shortfall and the smaller shortfall belong to different options, both are stated.
+        shallow=max(rows,key=lambda r:Decimal(r[1]['min_balance']))
+        if shallow[0] is not ordered[0][0] and not positive:
+            other=shallow[0]['label'][0].lower()+shallow[0]['label'][1:]
+            step+=' '+best[0].upper()+best[1:]+' pushes the first negative balance furthest out ('+day(ordered[0][1]['first_negative_date'])+'), while '+other+' keeps the smallest shortfall (lowest '+cash(shallow[1]['min_balance'],currency)+').'
+        elif not positive:step+=' '+best[0].upper()+best[1:]+' does least harm.'
+        out['advice.alternatives']={'kind':'recommendation','metric':'alternatives_recommendation','value':'','source':'backend_recommendation','basis':['analysis.scenario_comparison'],
+            'display':'Recommended (from the recalculated comparison): '+step,'brief':step+' Check this against your bank balance before committing.','requires':['analysis.scenario_comparison']}
+    out['analysis.scenario_comparison']={'kind':'derived_calculation','metric':'scenario_comparison','value':'' if tie else (ordered[0][0]['value'] or '0'),'currency':currency,'source':'run_cash_impact_scenario',
+        'inputs':[p+'.adjusted' for p in prefixes],'formula':'rank by no projected negative balance, later first negative date, higher lowest balance after the change starts, then higher closing balance',
+        'display':'Alternatives comparison (hypothetical, recalculated this turn): '+lines+'. '+shared+' Ranking: no projected negative balance first, then the later first negative date, then the higher lowest balance, then the higher closing balance. '+' '.join(notes),
+        'brief':re.sub(r'\s+',' ',brief).strip(),'requires':[prefixes[0]+'.scenario_basis']}
+    return out
+
+def funding_claims(results,plan):
+    """The RBF quote beside the cash-flow shortfall of paying the decision's cost now. Arithmetic only: the advance and
+    its repayments are not part of the projection, and a quote is never an offer, eligibility or approval."""
+    quote=next((v for p,n,v in reversed(results) if n=='get_rbf_quote'),None)
+    scenario=next(((p,v) for p,n,v in results if n=='run_cash_impact_scenario'),None)
+    c=plan.get('currency','CNY');need=Decimal(str(plan['need']));parts=[]
+    if quote is None and plan.get('max_advance') is None and not plan.get('rbf_unavailable'):return {}
+    maximum=Decimal(str(quote['max_advance'] if quote else plan.get('max_advance') or 0))
+    if plan.get('rbf_unavailable'):parts.append('RBF quotes are not available for your account, so I cannot quote the '+cash(need,c)+' '+plan['subject']+' cost.')
+    elif quote is None:parts.append('The RBF calculator has no advance available for your recorded sales right now, so it cannot quote the '+cash(need,c)+' '+plan['subject']+' cost.')
+    elif need>maximum:parts.append('The '+cash(need,c)+' '+plan['subject']+' cost is above the RBF calculator’s maximum advance of '+cash(maximum,c)+', so the indicative quote is for '+cash(quote['advance'],c)+' and about '+cash(need-Decimal(str(quote['advance'])),c)+' would still need other funding.')
+    else:parts.append('The indicative RBF quote is for the full '+cash(quote['advance'],c)+' '+plan['subject']+' cost (the calculator allows up to '+cash(maximum,c)+').')
+    requires=[]
+    if scenario:
+        prefix,v=scenario;row=v['adjusted'];low=Decimal(row['min_balance'])
+        with_base=_shared_text(plan.get('base') or [],plan.get('changes') or {},plan.get('missing') or [],c).replace('Each option includes','It includes').replace('Each option also assumes','It also assumes')
+        shortfall=-low if low<0 else Decimal('0')
+        if row['first_negative_date']:parts.append('If the full '+cash(need,c)+' were paid from business cash on '+day(plan['date'])+', the projection goes negative on '+day(row['first_negative_date'])+' and reaches '+cash(low,c)+', a shortfall of about '+cash(shortfall,c)+'.')
+        else:parts.append('If the full '+cash(need,c)+' were paid from business cash on '+day(plan['date'])+', the projection stays positive (lowest '+cash(low,c)+').')
+        parts.append(with_base)
+        if quote and shortfall>0:parts.append('The quoted advance is '+('larger' if Decimal(str(quote['advance']))>=shortfall else 'smaller')+' than that shortfall, but the advance and its repayments from daily sales are not modelled in this projection.')
+        requires.append(prefix+'.scenario_basis')
+    if quote:requires.append(next(p for p,n,v in reversed(results) if n=='get_rbf_quote')+'.rbf_basis')
+    brief=' '.join(parts)
+    return {'analysis.funding_gap':{'kind':'derived_calculation','metric':'funding_gap','value':str(need),'currency':c,'source':'get_rbf_quote','inputs':[p+'.rbf' for p,n,v in results if n=='get_rbf_quote'][-1:]+([scenario[0]+'.adjusted'] if scenario else []),
+        'formula':'funding need = the decision cost the user gave, capped at the calculator maximum advance; shortfall = negative lowest projected balance when paid now',
+        'display':'Funding need versus indicative RBF quote: '+brief,'brief':brief,'requires':requires}}
+
+def describe_schedule(schedule,currency,article=False):
+    """Plain words for a hypothetical outflow schedule: one payment, a monthly cost, or a one-time payment plus a monthly cost."""
+    if not schedule:return 'no new cost in the projection'
+    amounts=[Decimal(r['amount']) for r in schedule]
+    if len(schedule)==1:return ('the ' if article else 'a one-time ')+cash(amounts[0],currency)+' payment on '+day(schedule[0]['date'])
+    if len(set(amounts))==1:
+        return ('the new cost of ' if article else '')+cash(amounts[0],currency)+' per month from '+day(schedule[0]['date'])+' ('+str(len(schedule))+' monthly payments in the projection)'
+    single=[a for a in set(amounts) if amounts.count(a)==1]
+    monthly=[r for r in schedule if amounts.count(Decimal(r['amount']))>1]
+    if len(single)==1 and monthly and len({r['amount'] for r in monthly})==1:
+        one=next(r for r in schedule if Decimal(r['amount'])==single[0])
+        return ('the ' if article else 'a one-time ')+cash(single[0],currency)+' payment on '+day(one['date'])+' plus '+cash(monthly[0]['amount'],currency)+' per month from '+day(monthly[0]['date'])+' ('+str(len(monthly))+' monthly payments in the projection)'
+    return 'payments of '+'; '.join(cash(r['amount'],currency)+' on '+day(r['date']) for r in schedule)
 
 
 def scenario_claims(value,prefix):
@@ -753,29 +878,36 @@ def scenario_claims(value,prefix):
     end=(date.fromisoformat(value['assessment_date'])+__import__('datetime').timedelta(days=value['horizon_days'])).isoformat()
     add('period','Hypothetical assessment date: '+day(value['assessment_date'])+'; forecast horizon: '+str(value['horizon_days'])+' days, through '+day(end)+'. Forecast starts on the opening-balance date '+day(value['opening_balance_date'])+'. Latest financial-data date: '+day(value['latest_data_date'])+'.',
         brief='The projection runs through '+day(end)+'.')
-    schedule=value['schedule'];total=sum(Decimal(r['amount']) for r in schedule)
-    # A recurring cost is described per month, never as a summed one-off amount.
-    if len(schedule)==1:cost_text='the '+cash(total,currency)+' payment on '+day(schedule[0]['date'])
-    else:cost_text='the new cost of '+cash(schedule[0]['amount'],currency)+' per month from '+day(schedule[0]['date'])+' ('+str(len(schedule))+' monthly payments in the projection)'
+    schedule=value['schedule']
+    # A recurring cost is described per month, never as a summed one-off amount; a one-time payment planned together
+    # with a monthly cost is described as both.
+    cost_text=describe_schedule(schedule,currency,article=True)
     # Combined scenario (C8): the user's % change to recent sales/expenses travels with every adjusted figure.
     changes=value.get('assumed_changes') or {};parts=[]
     for field,word in (('sales_change_percent','sales'),('expense_change_percent','expenses')):
         if changes.get(field):parts.append(word+' '+format(abs(Decimal(str(changes[field]))).normalize(),'f')+'% '+('lower' if changes[field]<0 else 'higher'))
     requires=[basis]
+    assessed=day(value['assessment_date']);since=day(changes.get('start_date') or value['assessment_date'])
     if parts:
         cost_text+=' and '+' and '.join(parts)+' than the recent pattern'
-        add('assumed_changes','Your assumption: '+' and '.join(parts)+' than the recent daily pattern, applied across the whole projection; scheduled payables, receivables and loan repayments are unchanged.','', 'data_limitation',
-            brief='The '+' and '.join(p.split()[0] for p in parts)+' change is your assumption, applied to the whole projection.')
+        # The modelled period is disclosed: the change runs across the whole projection, not a shorter period the user named.
+        add('assumed_changes','Your assumption: '+' and '.join(parts)+' than the recent daily pattern, applied from '+since+' through '+day(end)+' (to the end of the projection; earlier days are unchanged); scheduled payables, receivables and loan repayments are unchanged.','', 'data_limitation',
+            brief='The '+' and '.join(p.split()[0] for p in parts)+' change is your assumption, applied from '+since+' through '+day(end)+'.')
         requires=[basis,prefix+'.assumed_changes']
-    for key,label in [('baseline','Baseline forecast'),('adjusted','Hypothetical cost-adjusted forecast'),('user_cash_baseline','Separate user-reported cash baseline (unverified)'),('user_cash_adjusted','Separate cost-adjusted user-cash forecast (unverified)')]:
+    # Outcomes count from the assessment date; the lowest balance after the change starts shows its effect.
+    effective=min([r['date'] for r in schedule]+([changes.get('start_date') or value['assessment_date']] if parts else [])) if schedule or parts else value['assessment_date']
+    without='Without the new cost'+(' or the assumed '+' and '.join(p.split()[0] for p in parts)+' change' if parts else '')
+    for key,label in [('baseline','Baseline forecast (no new cost'+(', no assumed change' if parts else '')+')'),('adjusted','Hypothetical cost-adjusted forecast'),('user_cash_baseline','Separate user-reported cash baseline (unverified)'),('user_cash_adjusted','Separate cost-adjusted user-cash forecast (unverified)')]:
         row=value.get(key)
         if row is None:continue
-        display=label+': projected closing balance '+money(row['closing_balance'],currency)+'; minimum projected balance '+money(row['min_balance'],currency)+'. '
-        display+=('First projected negative balance: '+day(row['first_negative_date'])+' (day '+str(row['runway_days'])+').' if row['runway_days'] is not None else 'No negative balance projected within this horizon.')
-        if row['buffer_days'] is not None:display+=' Expense-coverage estimate: '+str(row['buffer_days'])+' days.'
+        display=label+' from '+assessed+': projected closing balance '+money(row['closing_balance'],currency)+'; lowest projected balance '+money(row['min_balance'],currency)
+        if row.get('min_after_change') is not None:display+='; lowest balance from '+day(effective)+' '+money(row['min_after_change'],currency)
+        display+='. '+('First projected negative balance: '+day(row['first_negative_date'])+' ('+str(row['runway_days'])+' days after '+assessed+').' if row['runway_days'] is not None else 'No negative balance projected within this horizon.')
+        if row['buffer_days'] is not None:display+=' Cash buffer: the opening balance covers about '+str(row['buffer_days'])+' days of typical spending.'
         display+=' This does not establish actual affordability.'
-        lead={'baseline':'Without these changes' if parts else 'Without the new cost','adjusted':'With '+cost_text,'user_cash_baseline':'Starting from the cash you reported, without the new cost','user_cash_adjusted':'Starting from the cash you reported, with '+cost_text}[key]
-        brief=lead+', the lowest projected balance is '+cash(row['min_balance'],currency)+(' and the balance first goes negative on '+day(row['first_negative_date'])+'.' if row['first_negative_date'] else ' with no projected negative balance through '+day(end)+'.')
+        lead={'baseline':without,'adjusted':'With '+cost_text,'user_cash_baseline':'Starting from the cash you reported, without the new cost','user_cash_adjusted':'Starting from the cash you reported, with '+cost_text}[key]
+        low=row.get('min_after_change') or row['min_balance']
+        brief=lead+', the lowest projected balance from '+day(effective)+' is '+cash(low,currency)+(' and the balance first goes negative on '+day(row['first_negative_date'])+'.' if row['first_negative_date'] else ', the projection ends at '+cash(row['closing_balance'],currency)+' on '+day(end)+' with no negative balance.')
         add(key,display,row['closing_balance'],inputs=['authorized forecast', 'explicit hypothetical schedule'],formula='existing weekday forecast plus incremental scheduled outflows',brief=brief,requires=requires if key in ('adjusted','user_cash_adjusted') else [basis])
     add('schedule','Incremental hypothetical outflow schedule: '+'; '.join(day(r['date'])+': '+money(r['amount'],currency) for r in schedule)+'. Existing scheduled obligations are included once by the baseline.',
         brief='The projection includes '+cost_text+'.')
