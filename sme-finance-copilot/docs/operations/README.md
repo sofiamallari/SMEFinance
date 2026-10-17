@@ -1,5 +1,6 @@
 # Operations
 
+- [Deployment instructions (start here)](deployment.md)
 - [Local setup / ZIP handoff](local-setup.md)
 - [Environment variables and secret handling](environment.md)
 - [Initialization, login and recovery](authentication.md)

@@ -1,42 +1,66 @@
-# SME Finance Copilot
+# SME Finance Copilot ("Shifu")
 
-Synthetic CNY financial-management and SME-to-Bank review POC for the Shenzhen International FinTechathon. The existing Python/static-web architecture is preserved. This is not a live payment service or credit approval engine.
+An AI financial partner for small-business owners, built for the Shenzhen International FinTechathon (International Track, Topic E: SME Finance Copilot).
 
-## Start locally
+Shifu combines a small-business finance workspace (dashboard, transactions, digital payments, cash-flow forecasting and alerts, financing matches and an RBF calculator) with an **AI Financial Partner** chat. The chat answers questions and models decisions such as "Can I afford to hire two staff from December?" or "Should I expand now, reduce the budget or postpone?" using only the business's own authorised, read-only data. Google Gemini interprets the question and words the reply; the Python backend owns identity, permissions, every financial figure, every calculation and the final verification of each answer.
 
-Use Python 3.12 from this application directory:
+- **Repository:** https://github.com/sofiamallari/SMEFinance
+- **Data:** a synthetic CNY dataset with six merchants (M001 to M006). Payments and bank reviews are simulated; nothing moves real money or makes a credit decision.
+- **Roles:** business owner, staff (delegated access), bank (consent-scoped) and system administrator.
+
+## Quick start
+
+Python 3.12, from this folder (Windows PowerShell shown; see the deployment guide for macOS/Linux):
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-# First-time source-only ZIP/clone: follow the private-password seed procedure below.
-.\.venv\Scripts\python.exe -m copilot.cny_demo verify
+# First time only: create the synthetic demo data and accounts (see the deployment guide)
+.\.venv\Scripts\python.exe -m copilot.cny_demo seed
 .\.venv\Scripts\python.exe -m copilot.server --host 127.0.0.1 --port 8000
 ```
 
-Open http://127.0.0.1:8000/login. A source-only download normally excludes initialized logs: **seed before verify/start**, using [the complete setup guide](docs/operations/local-setup.md). Existing initialized copies use their matching assigned credentials. Bootstrap is not a password reset. A preparer-specific credentials JSON file is private and not guaranteed on another machine; the supported CLI uses the seed password supplied by that recipient.
+Open http://127.0.0.1:8000/login and sign in as `demo_owner`, `demo_staff`, `demo_bank` or `demo_admin`. The seed command needs a password you choose, passed privately in `COPILOT_CNY_DEMO_PASSWORD`; the [deployment guide](docs/operations/deployment.md) shows how.
 
-## Modules and architecture
+**Live AI (optional):** put `COPILOT_GOVERNED_LIVE=yes` and the `COPILOT_LLM_BASE_URL`, `COPILOT_LLM_MODEL` and `COPILOT_LLM_API_KEY` settings in a local `.env` file (never commit it). Without them the chat runs in a deterministic, backend-only mode. See [.env.example](.env.example).
 
-Owner/Staff workspace: Dashboard (Overview, Sales & Payments, Business Growth, Alerts); Merchant Transactions (single, CSV/XLSX import, history, monitoring, settings); Digital Payments; Cash Flow; Financing (Overview, RBF Calculator, Applications); existing AI Financial Partner and optional Owner-only Business Stress Test. Owner also manages Bank Authorization and delegated Staff access.
+## Deployment instructions
 
-Bank portal: Overview, Financing Applications, Authorized Merchants, with request/financial/review/history dialog tabs. System Admin: accounts, merchant profiles and bounded security configuration, without merchant financial authority. Current simulated Bank outcomes never approve/reject or disburse financing.
+[docs/operations/deployment.md](docs/operations/deployment.md): local install, Docker and Railway, with the status of each. Details: [local setup](docs/operations/local-setup.md), [Railway](docs/operations/railway.md), [environment variables](docs/operations/environment.md).
 
-The standard-library HTTP server serves the static UI, JSON API and authenticated MCP. SQLite stores identity, scoped policy and workflow/payment state; checksummed JSONL stores canonical transactions and audit/execution evidence. Active default storage is logs/shenzhen_cny_demo. Missing initialization fails closed. Shared formatting uses CNY codes and ¥ display; original foreign-currency evidence is inactive in private backups.
+## Tests
+
+```bash
+COPILOT_LOAD_LLM_ENV=no python -m unittest discover -s tests
+```
+
+The tests use temporary databases, synthetic data and provider doubles; they never call Gemini or touch the demo data. [Test cases](docs/hackathon/test-cases.md) lists the happy-path and unhappy-path cases per role and the automated test that checks each one. Optional browser checks are the Playwright scripts in `scripts/`.
+
+## How it is built
+
+- **Backend:** Python 3.12 standard-library HTTP server; Babel, tzdata and jsonschema are the only runtime packages.
+- **Front end:** static HTML, CSS and vanilla JavaScript in `web/`.
+- **Storage:** SQLite for identity, roles, sessions, consents and workflow state; checksummed JSON Lines files for the transaction ledger and audit logs (`logs/shenzhen_cny_demo/`).
+- **AI:** Google Gemini through its OpenAI-compatible endpoint, behind a governance policy (`config/ai_governance_policy.json`), a governed tool gateway that authorises every call, and an independent answer verifier.
+- **Agents:** an authenticated MCP server exposes the same governed, read-only tools.
 
 ## Documentation
 
-- [AI Financial Partner 2.0: local governance, tool contracts and limitations](docs/technical/ai-governance.md)
+| Topic | Document |
+|---|---|
+| Architecture notes | [docs/technical/architecture.md](docs/technical/architecture.md) |
+| Financial algorithms | [docs/technical/financial-algorithms.md](docs/technical/financial-algorithms.md) |
+| AI orchestrator design | [docs/technical/ai-orchestrator-design.md](docs/technical/ai-orchestrator-design.md) |
+| AI governance and tool contracts | [docs/technical/ai-governance.md](docs/technical/ai-governance.md) |
+| Roles, delegation and bank consent | [docs/technical/security-permissions.md](docs/technical/security-permissions.md) |
+| Security self-assessment | [docs/hackathon/security-self-assessment.md](docs/hackathon/security-self-assessment.md) |
+| Test cases | [docs/hackathon/test-cases.md](docs/hackathon/test-cases.md) |
+| Hackathon overview and demo scenarios | [docs/hackathon/README.md](docs/hackathon/README.md) |
+| Walkthrough recordings | [docs/gifs](docs/gifs/README.md) |
+| User guides per role | [docs/user-guide/README.md](docs/user-guide/README.md) |
+| Known limitations | [docs/technical/known-limitations.md](docs/technical/known-limitations.md) |
+| All documentation | [docs/README.md](docs/README.md) |
 
-- [User guides](docs/user-guide/README.md)
-- [Canonical roles, delegation and Bank consent](docs/technical/security-permissions.md)
-- [Architecture and financial algorithms](docs/technical/README.md)
-- [Setup, environment, recovery and Railway preparation](docs/operations/README.md)
-- [Hackathon overview, six scenarios and end-to-end journey](docs/hackathon/README.md)
-- [Evidence and verification scope](docs/hackathon/evidence.md)
-- [Known limitations](docs/technical/known-limitations.md)
-- [Full documentation navigation](docs/README.md)
+## Security notes
 
-Do not publish .env, API keys, session/reset tokens, credential files or private DB/backups. Seed code and reviewed synthetic examples can be distributed; recipients initialize their own password. General storage/hosting variables require process/service configuration; only the supported LLM/feature allowlist auto-loads from .env. Runtime dependencies are in requirements.txt. Node/Playwright are optional verification tools.
-
-Financial/security parameters are a provisional POC baseline. No live cash/bank verification, lending decisions or guaranteed forecasts. Docker build/volume permissions, secure hosting and provider availability remain separate deployment checks; nothing is deployed by this documentation consolidation.
+Never publish `.env`, API keys, session or reset tokens, credential files, `logs/` or database backups. Only the allow-listed AI settings are read from `.env`; other settings must be set in the process or hosting service. Financial and security parameters are a proof-of-concept baseline: there is no live bank verification, no lending decision and no guaranteed forecast.
