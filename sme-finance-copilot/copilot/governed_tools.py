@@ -120,6 +120,9 @@ PERMISSIONS['get_import_summary']='view_transactions'
 OUTPUTS['get_payment_channel_mix']['revenue_share_percent']={'type':'number','minimum':0,'maximum':100}
 OUTPUTS['get_financial_summary']['digital_capture_percent']={'type':['number','null'],'minimum':0,'maximum':100}
 OUTPUTS['get_transaction_trends']['recorded_expenses']=TEXT
+# Amounts behind those shares: digital vs cash sales, and each channel's revenue (the Dashboard Channel Performance table).
+OUTPUTS['get_financial_summary'].update(digital_sales={'type':['string','null'],'maxLength':40},cash_sales={'type':['string','null'],'maxLength':40})
+OUTPUTS['get_payment_channel_mix'].update(revenue=TEXT,currency=TEXT)
 
 # One line per tool on which user questions it answers; the interpretation step chooses tools from these.
 TOOL_GUIDE={
@@ -158,6 +161,21 @@ def amortize(principal,annual_rate,months):
         rows.append({'month':month,'payment':format(pay,'.2f'),'interest':format(interest,'.2f'),'principal':format(pay-interest,'.2f'),'balance':format(max(balance,Decimal(0)),'.2f')})
     return {'monthly_payment':format(payment,'.2f'),'total_paid':format(total,'.2f'),'total_interest':format(total-p,'.2f'),'rows':rows}
 
+IDENTITY_ARGS={'merchant','merchant_id','merchantid','mid','user','user_id','userid','role','session','session_id','token','owner','owner_id','tenant'}
+# User-supplied text (descriptions, references, names, file cells) reaches the model only as capped, cleaned data.
+FREE_TEXT={'description','reference','party','label','id','category','source_values','name','file','files','filename'}
+FREE_TEXT_LIMIT=200
+CONTROL=__import__('re').compile('[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u200b-\u200f\u202a-\u202e\u2066-\u2069]')
+
+def untrusted(value,key=None):
+    """Strip control and direction-override characters everywhere; cap free-text fields."""
+    if isinstance(value,str):
+        value=CONTROL.sub('',value)
+        return value[:FREE_TEXT_LIMIT] if key in FREE_TEXT else value
+    if isinstance(value,dict):return {k:untrusted(v,k if key not in FREE_TEXT else key) for k,v in value.items()}
+    if isinstance(value,list):return [untrusted(v,key) for v in value]
+    return value
+
 def public_transaction(row):
     return {'transaction_id':row['transaction_id'],'reference':(row.get('external_reference') or None) and str(row['external_reference'])[:80],'business_date':row['business_date'],'transaction_type':row['transaction_type'],'amount':str(row['amount']),'currency':row.get('currency') or 'CNY',
             'payment_method':row.get('payment_method'),'status':row['status'],'description':(row.get('description') or None) and str(row['description'])[:200],'category':row.get('category'),'source':row.get('source') or 'unknown','classification':row.get('classification'),
@@ -170,6 +188,10 @@ class Gateway:
     def event(self, p, mid, event, tool=None, outcome='allowed', approval=None):
         self.auth.audit(event,p,mid,result=outcome,metadata={'tool':tool,'policy_version':self.policy.version,'approval_reference':__import__('hashlib').sha256(approval.encode()).hexdigest()[:16] if approval else None})
 
+    def grant(self, token, mid):
+        """Per-merchant check of an existing application permission, for policy conditions."""
+        return lambda permission:self.auth.authorize(token,permission,mid)
+
     def identity(self, token, mid):
         p=self.auth.principal(token)
         self.auth.authorize(token,'use_copilot',mid)
@@ -179,11 +201,8 @@ class Gateway:
 
     def authorize(self,token,mid,name):
         p=self.identity(token,mid)
-        spec=self.policy.tool(p,name)
-        cap=self.policy.section('capabilities')[spec['capability']]
-        from copilot.authorization import AUTHORITATIVE_ROLES
-        if cap['role_effects'][AUTHORITATIVE_ROLES[p.role]]=='conditional':
-            self.auth.authorize(token,cap['required_application_permission'],mid)
+        # Conditional capabilities: explicit finance.* permission, or Staff's delegated grant for this merchant.
+        spec=self.policy.tool(p,name,self.grant(token,mid))
         self.auth.authorize(token,PERMISSIONS[name],mid)
         if name in INTERNAL:
             tool=self.c.tools[INTERNAL[name]]
@@ -210,6 +229,10 @@ class Gateway:
 
     def execute(self,token,mid,name,args,*,simulation_requested=False,deadline=None):
         p=self.identity(token,mid);self.event(p,mid,'ai_tool_requested',name)
+        if isinstance(args,dict) and IDENTITY_ARGS&{str(k).lower() for k in args}:
+            # Identity and merchant scope come from the authenticated session only; an override is rejected, never ignored.
+            self.event(p,mid,'ai_identity_override_rejected',name,'denied')
+            raise AccessDenied('Identity or merchant arguments are not accepted')
         try:
             p,spec=self.authorize(token,mid,name)
             if name not in INPUTS:raise AccessDenied('Unknown tool')
@@ -230,7 +253,7 @@ class Gateway:
             fields=[k for k in spec['output_field_allowlist'] if FIELD_CLASSES[name].get(k) in spec['allowed_data_classes']]
             rows=result if isinstance(result,list) else [result]
             if len(rows)>min(100,spec['result_max_records']):raise ValueError('Result record bound exceeded; use a shorter period')
-            clean=[{key:row[key] for key in fields if key in row} for row in rows]
+            clean=[untrusted({key:row[key] for key in fields if key in row}) for row in rows]
             schema={'type':'object','properties':{k:OUTPUTS[name][k] for k in fields},'additionalProperties':False}
             for row in clean:Draft202012Validator(schema).validate(row)
             if len(json.dumps(clean))>64000:raise ValueError('Tool result too large')
@@ -239,6 +262,16 @@ class Gateway:
         except Exception:
             self.event(p,mid,'ai_tool_denied_or_error',name,'denied')
             raise
+
+    @staticmethod
+    def _digital_split(d):
+        """Digital and cash sales amounts from the Dashboard channel revenue (the amounts behind Digital Capture)."""
+        from copilot import config
+        if not d['mix']['total_transactions']:return {'digital_sales':None,'cash_sales':None}
+        # Decimal start: a day with no digital (or no cash) sales sums to Decimal 0, not int 0.
+        digital=sum((Decimal(str(c['revenue'])) for k,c in d['mix']['by_channel'].items() if config.CHANNELS.get(k,{}).get('digital')),Decimal(0))
+        cash=sum((Decimal(str(c['revenue'])) for k,c in d['mix']['by_channel'].items() if not config.CHANNELS.get(k,{}).get('digital')),Decimal(0))
+        return {'digital_sales':format(digital.quantize(Decimal('.01')),'.2f'),'cash_sales':format(cash.quantize(Decimal('.01')),'.2f')}
 
     def _read(self,token,p,mid,name,args):
         if name=='get_transaction_details':
@@ -354,8 +387,9 @@ class Gateway:
             return {'period':period,'currency':d['merchant']['currency'],'net_sales':f['net_sales'],'expenses':f['expenses'],'net_income':f['net_income'],'record_count':f['record_count'],
                     'coverage':{'start':min(both),'end':max(both)} if both else None,'averages':averages,'expense_split':split}
         if name=='get_financial_summary':return {'coverage':coverage,'period':period,'currency':d['merchant']['currency'],'recorded_net_sales':d['financial_metrics']['net_sales'],'transaction_count':d['mix']['total_transactions'],'source_timestamp':now,
-            'digital_capture_percent':round(d['capture']['digital_share']*100,1) if d['mix']['total_transactions'] else None}
+            'digital_capture_percent':round(d['capture']['digital_share']*100,1) if d['mix']['total_transactions'] else None,**self._digital_split(d)}
         if name=='get_transaction_trends':return [{'coverage':coverage,'period':r['period'],'granularity':d['period']['granularity'],'transaction_count':r['transactions'],'recorded_net_sales':format(Decimal(str(r['revenue'])),'.2f'),'recorded_expenses':format(Decimal(str(r.get('expenses',0))).quantize(Decimal('.01')),'.2f'),'source_timestamp':now} for r in d['trend']]
-        if name=='get_payment_channel_mix':return [{'period':period,'channel':c['label'],'transaction_count':c['transactions'],'share_percent':c['volume_share']*100,'revenue_share_percent':round(c['revenue_share']*100,2)} for c in d['mix']['by_channel'].values()]
+        if name=='get_payment_channel_mix':return [{'period':period,'channel':c['label'],'transaction_count':c['transactions'],'share_percent':c['volume_share']*100,'revenue_share_percent':round(c['revenue_share']*100,2),
+            'revenue':format(Decimal(str(c['revenue'])).quantize(Decimal('.01')),'.2f'),'currency':d['merchant']['currency']} for c in d['mix']['by_channel'].values()]
         if name=='get_business_highlights':return [{'period':period,'highlight_type':'Receivables insight','summary':d['receivables']['explanation'],'source_metric':'receivable_behaviour'},{'period':period,'highlight_type':'Incentive milestone','summary':d['incentive']['tier_name'] or 'No milestone yet','source_metric':'incentive_status'}]
         raise AccessDenied('Unsupported tool')

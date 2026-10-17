@@ -178,8 +178,10 @@ def comparison_args(state,today,text):
   if args and args not in options:options.append(args)
  return options[-3:] if len(options)>=2 else []
 
+MAX_TOOL_CALLS=5 # per message (orchestrator design); the whole-turn deadline still applies
+
 def requests(plan,state,c,mid,today,definitions,text,notes=None):
- """Three executions max. All arguments remain schema-checked by the gateway."""
+ """At most MAX_TOOL_CALLS executions per message. All arguments remain schema-checked by the gateway."""
  notes=[] if notes is None else notes
  allowed={d['function']['name'] for d in definitions};intent=state['intent'];entities=state['entities']
  period=entities.get('reporting_period',{}).get('value') or default_period(c,mid,today)
@@ -197,24 +199,24 @@ def requests(plan,state,c,mid,today,definitions,text,notes=None):
   name=TOOLS.get(intent);proposals=[{'name':name,'arguments':{}}] if name else []
   if scenario:proposals=[{'name':'run_cash_impact_scenario','arguments':{}}]
   if name=='get_financial_summary' and 'comparison_period' in entities:proposals.append({'name':name,'arguments':comparison})
- if len(proposals)>3:raise ClaimError('tool_count_exceeded')
+ if len(proposals)>MAX_TOOL_CALLS:raise ClaimError('tool_count_exceeded')
  if scenario and 'run_cash_impact_scenario' in allowed and not any(p['name']=='run_cash_impact_scenario' for p in proposals):
   # Complete scenario inputs are always modeled; the backend binds every argument.
-  notes.append('scenario_added_by_backend');proposals=[{'name':'run_cash_impact_scenario','arguments':{}},*proposals][:3]
+  notes.append('scenario_added_by_backend');proposals=[{'name':'run_cash_impact_scenario','arguments':{}},*proposals][:MAX_TOOL_CALLS]
  # Workbook questions (who owes me, overdue, bills due, 7-day runway) are answered from the Cash Flow tab workbook, not the forecast.
  book=bool(BOOK.search(text)) and 'get_cashflow_book' in allowed and intent in ('cash_flow','decision_support') and not scenario
  if book:proposals=[p for p in proposals if p['name']!='get_cash_flow']
  if not scenario and not book and intent in ('decision_support','cash_flow') and 'get_cash_flow' in allowed and not any(p['name']=='get_cash_flow' for p in proposals):
   # Affordability and cash-flow questions always show the existing forecast figures the app already has.
-  notes.append('cash_flow_added_by_backend');proposals=[{'name':'get_cash_flow','arguments':{}},*proposals][:3]
+  notes.append('cash_flow_added_by_backend');proposals=[{'name':'get_cash_flow','arguments':{}},*proposals][:MAX_TOOL_CALLS]
  if re.search(TX_REF,text) and intent=='transactions' and 'get_transaction_details' in allowed and not any(p['name']=='get_transaction_details' for p in proposals):
-  notes.append('transaction_lookup_added_by_backend');proposals=[{'name':'get_transaction_details','arguments':{}},*proposals][:3]
+  notes.append('transaction_lookup_added_by_backend');proposals=[{'name':'get_transaction_details','arguments':{}},*proposals][:MAX_TOOL_CALLS]
  elif not proposals and DEFAULT_TOOL.get(intent) in allowed:
   notes.append('default_tool_added_by_backend');proposals=[{'name':DEFAULT_TOOL[intent],'arguments':{}}]
  # Explicit module words ("alerts", "expenses", "net income") always fetch that module's data when relevant.
  for pattern,tool in KEYWORD_TOOLS:
   if re.search(pattern,text,re.I) and tool in allowed and tool in RELEVANT.get(intent,set()) and not any(p['name']==tool for p in proposals):
-   notes.append('keyword_tool_added:'+tool);proposals=[{'name':tool,'arguments':{}},*proposals][:3]
+   notes.append('keyword_tool_added:'+tool);proposals=[{'name':tool,'arguments':{}},*proposals][:MAX_TOOL_CALLS]
  if DASHBOARD_DIFF.search(text) and 'get_financial_summary' in allowed and intent=='sales_analysis':
   # The Dashboard opens on the last 90 days of records; fetch that window next to the period the chat used.
   end=c.financial_data.as_of(mid);dash={'start':(end-timedelta(days=89)).isoformat(),'end':end.isoformat()}

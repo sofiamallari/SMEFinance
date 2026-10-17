@@ -63,7 +63,11 @@ def model_request(messages,tools,*,response_schema=None):
     parsed=urlsplit(base)
     if parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password:
         raise ValueError('A trusted HTTPS LLM endpoint is required')
-    payload={'model':os.environ['COPILOT_LLM_MODEL'],'temperature':0,'messages':messages,'max_tokens':1200,'response_format':{'type':'json_schema','json_schema':{'name':'financial_response','strict':True,'schema':RESPONSE_SCHEMA}}}
+    # Thinking models (e.g. Gemini 3.5 Flash) count hidden reasoning toward max_tokens, which truncated the JSON
+    # replies mid-object; a low reasoning effort and a larger budget keep structured output complete.
+    payload={'model':os.environ['COPILOT_LLM_MODEL'],'temperature':0,'messages':messages,'max_tokens':int(os.environ.get('COPILOT_LLM_MAX_TOKENS','4096')),'response_format':{'type':'json_schema','json_schema':{'name':'financial_response','strict':True,'schema':RESPONSE_SCHEMA}}}
+    effort=os.environ.get('COPILOT_LLM_REASONING_EFFORT','low')
+    if effort and effort!='default':payload['reasoning_effort']=effort
     if not any(m.get('role')=='system' and 'typed claim' in str(m.get('content','')) for m in messages):payload.pop('response_format',None)
     if 'response_format' in payload:
         schema=copy.deepcopy(RESPONSE_SCHEMA)
@@ -80,7 +84,9 @@ def model_request(messages,tools,*,response_schema=None):
     except HTTPError as error:
         if error.code==503:raise ProviderUnavailable() from None
         raise
-    return result['choices'][0]['message']
+    choice=result['choices'][0]
+    if choice.get('finish_reason')=='length':raise TimeoutError('Model output limit reached before a complete reply')
+    return choice['message']
 
 
 class Partner:
@@ -91,6 +97,8 @@ class Partner:
         self.research=Research(self.gateway,clock,research_provider)
         self.provider=provider or model_request
         self.records={};self.lock=threading.RLock()
+        # Fallback answers by category (provider failure, timeout, verification, denial); counts only, no content.
+        self.fallbacks=__import__('collections').Counter()
 
     def sweep(self):
         now=self.clock()

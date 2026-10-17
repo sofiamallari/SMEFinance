@@ -151,6 +151,10 @@ def tool_claims(name,value,currency='CNY',prefix='fact'):
             share=format(value['digital_capture_percent'],'.1f')
             add('digital_capture','digital_capture_share',share,'Digital Capture for '+period(requested)+': '+share+'% of recorded net sales were paid digitally (card, QR, tap-to-pay, e-wallet or pay link); the rest was cash.','deterministic_result',period=requested,
                 brief='Digital Capture for '+span_text(requested)+' is '+share+'%: that share of your sales was paid digitally rather than in cash.',requires=requires)
+            if value.get('digital_sales') is not None:
+                # The amount behind the share: "how much was paid digitally", "translate it to its amount".
+                add('digital_sales','digital_sales_amount',value['digital_sales'],'Digital payments received for '+period(requested)+': '+money(value['digital_sales'],currency)+' ('+share+'% of recorded net sales of '+money(value['recorded_net_sales'],currency)+'); cash sales: '+money(value['cash_sales'],currency)+'. Revenue is not profit or available cash.',currency=currency,period=requested,
+                    brief='Digital payments received for '+span_text(requested)+' were '+cash(value['digital_sales'],currency)+' ('+share+'% of recorded net sales of '+cash(value['recorded_net_sales'],currency)+'); cash sales were '+cash(value['cash_sales'],currency)+'.',requires=requires)
         if 'coverage' in value:
             coverage=value['coverage']
             display=('Available sales/payment record dates within the requested period: '+period(coverage)+'. This is record coverage, not proof of complete business activity.' if coverage else 'No sales/payment records were returned within this requested period; other periods may contain records.')
@@ -210,6 +214,13 @@ def tool_claims(name,value,currency='CNY',prefix='fact'):
             if row.get('revenue_share_percent') is not None:
                 add('revenue_share'+str(index),'revenue_share',str(row['revenue_share_percent']),row['channel']+': '+format(row['revenue_share_percent'],'.2f')+'% of recorded revenue.','deterministic_result',period=row['period'],
                     brief=row['channel']+' brought in '+format(row['revenue_share_percent'],'.2f')+'% of your revenue.')
+        rows=[r for r in value if r.get('revenue') is not None]
+        if rows:
+            # How the period's sales were paid, method by method (Dashboard Channel Performance).
+            c=rows[0].get('currency') or currency;total=sum((Decimal(r['revenue']) for r in rows),Decimal(0));requested=rows[0]['period']
+            parts=[r['channel']+' '+cash(r['revenue'],c)+' ('+format(r['revenue_share_percent'],'.2f')+'%)' for r in rows]
+            add('channel_split','revenue_by_channel',format(total,'.2f'),'Recorded sales for '+period(requested)+' by payment method: '+'; '.join(r['channel']+' '+money(r['revenue'],c)+' ('+format(r['revenue_share_percent'],'.2f')+'% of revenue, '+format(r['transaction_count'],',')+' transactions)' for r in rows)+'. Total '+money(format(total,'.2f'),c)+'.','deterministic_result',currency=c,period=requested,
+                brief='Recorded sales of '+cash(format(total,'.2f'),c)+' for '+span_text(requested)+' were paid by: '+', '.join(parts)+'.')
     elif name in ('get_financing_status','get_financing_details'):
         reference=value['application_reference']
         if name=='get_financing_status':add('status','submitted_application_status',value['status'],'Application '+reference+': '+value['status']+' (submission status; not credit approval).',application_reference=reference,
@@ -491,7 +502,8 @@ def verify_response(content,records,*,inline=False):
                 if re.fullmatch(r'I can explain how (?:your |the )?(?:cash.flow forecast|sales report|payment.channel mix) works',clause.strip(),re.I):continue
                 if re.search(r'(?:historical|financial|sales) data (?:is|are) missing',clause,re.I):raise ClaimError('unsupported_data_coverage_claim')
                 uncertain=bool(re.search(r"cannot|can't|not|unverified|unavailable|missing|unknown|uncertain|whether|depends|need|verify|verification|assuming|hypothetical|\bif\b|could|\?",clause,re.I))
-                risky=re.search(r'(?:your|our|recorded|the business).{0,35}(?:profitable|healthy|strong|cash|balance|profit|reserves|grew|increased|decreased)|you have (?:enough|sufficient)|you (?:have|hold|possess).{0,20}(?:cash|balance)|available cash is|bank balance is|profit is|\bverified (?:available )?cash|sales (?:are|is|equals?|means?) (?:your )?(?:available )?cash|spend (?:your |the )?(?:net )?sales|sales.{0,20}spendable|(?:our|your).{0,25}(?:loan|financing application)|afford(?:able|ability)?',clause,re.I)
+                # "your cash flow forecast" names a report, not a cash position; "your cash", "your balance" still need evidence.
+                risky=re.search(r'(?:your|our|recorded|the business).{0,35}(?:profitable|healthy|strong|cash(?![- ]?(?:flow|impact))|balance|profit|reserves|grew|increased|decreased)|you have (?:enough|sufficient)|you (?:have|hold|possess).{0,20}(?:cash|balance)|available cash is|bank balance is|profit is|\bverified (?:available )?cash|sales (?:are|is|equals?|means?) (?:your )?(?:available )?cash|spend (?:your |the )?(?:net )?sales|sales.{0,20}spendable|(?:our|your).{0,25}(?:loan|financing application)|afford(?:able|ability)?',clause,re.I)
                 if risky and not uncertain:raise ClaimError('unsupported_business_fact')
             output.append(text)
         else:raise ClaimError('invalid_claim_segment')
@@ -769,3 +781,52 @@ def scenario_claims(value,prefix):
         brief='The projection includes '+cost_text+'.')
     add('limitations',' '.join(value['limitations']))
     return records
+
+
+CALCULATION_OPS=('percent_of','sum','difference','ratio')
+CALCULATION_IDS=('calc0','calc1','calc2')
+
+def is_percent(record):
+    metric=str(record.get('metric',''))
+    return not record.get('currency') and (metric.endswith(('_share','_percent','share_percent','_rate')) or record.get('unit')=='percent')
+
+def calculation_claims(requests,records):
+    """The `calculate` tool: arithmetic over existing claim IDs only (server-owned facts or recorded user assumptions).
+    The model names the operation and operand IDs; the server checks compatibility, computes and renders the result."""
+    out={}
+    for request in requests or []:
+        key,op,operands=request.get('id'),request.get('op'),request.get('operands') or []
+        if key not in CALCULATION_IDS or key in out or op not in CALCULATION_OPS or len(operands)!=2:raise ClaimError('invalid_calculation')
+        try:a,b=(records[k] for k in operands)
+        except KeyError:raise ClaimError('calculation_operand_without_source') from None
+        if any(r.get('kind') in ('recommendation','data_limitation','external_fact') for r in (a,b)):raise ClaimError('invalid_calculation')
+        try:x,y=Decimal(str(a['value']).replace(',','')),Decimal(str(b['value']).replace(',',''))
+        except Exception:raise ClaimError('invalid_calculation') from None
+        if not (x.is_finite() and y.is_finite()):raise ClaimError('invalid_calculation')
+        pa,pb=a.get('period'),b.get('period')
+        cent=Decimal('.01')
+        if op=='percent_of':
+            if not is_percent(a) or not b.get('currency') or (pa and pb and pa!=pb):raise ClaimError('incompatible_calculation_operands')
+            value,currency,period=(y*x/100).quantize(cent),b['currency'],pb or pa
+            shown=cash(value,currency);how=format(x,'f')+'% of '+cash(y,currency)
+        elif op in ('sum','difference'):
+            if a.get('currency')!=b.get('currency') or is_percent(a)!=is_percent(b):raise ClaimError('incompatible_calculation_operands')
+            value,currency=(x+y if op=='sum' else x-y).quantize(cent),a.get('currency')
+            period=pa if pa==pb else None
+            fmt=(lambda v:cash(v,currency)) if currency else (lambda v:format(v,'f')+('%' if is_percent(a) else ''))
+            shown=fmt(value);how=fmt(x)+(' plus ' if op=='sum' else ' minus ')+fmt(y)
+        else:
+            if a.get('currency')!=b.get('currency') or is_percent(a) or is_percent(b) or y==0:raise ClaimError('incompatible_calculation_operands')
+            value,currency=(x/y*100).quantize(Decimal('.1')),None
+            period=pa if pa==pb else None
+            fmt=(lambda v:cash(v,a['currency'])) if a.get('currency') else (lambda v:format(v,'f'))
+            shown=format(value,'f')+'%';how=fmt(x)+' as a share of '+fmt(y)
+        assumption=[k for k,r in zip(operands,(a,b)) if r.get('kind') in ('user_assumption','user_date')]
+        when=' for '+span_text(period) if period else ''
+        basis=' using your assumption' if assumption else ''
+        out[key]={'kind':'derived_calculation','metric':'calculation_'+op,'value':str(value),**({'currency':currency} if currency else {}),**({'period':period} if period else {}),
+                  'source':'calculate','inputs':list(operands),'formula':op,'unit':None if currency else 'percent',
+                  'display':'Calculated by the app'+basis+': '+how+' = '+shown+when+'.','brief':'That is '+shown+when+' ('+how+')'+basis+'.',
+                  'requires':list(dict.fromkeys([*assumption,*a.get('requires',[]),*b.get('requires',[])]))}
+        records={**records,key:out[key]}
+    return out

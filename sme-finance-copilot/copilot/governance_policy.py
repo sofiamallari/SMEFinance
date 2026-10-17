@@ -9,6 +9,8 @@ ROLES = {'SME_OWNER', 'SME_STAFF', 'BANK', 'SYSTEM_ADMIN'}
 CAPABILITIES = {'financial_education','sales_summary_read','transaction_trends_read','payment_channel_mix_read','cash_flow_read','business_highlights_read','financing_status_read','financing_details_read','survival_simulation_run','expansion_assessment','public_research','financial_execution','cash_impact_scenario_run','business_maturity_read','cash_flow_alerts_read','data_quality_read','financing_matches_read','income_summary_read','rbf_quote_read','transaction_detail_read','loan_repayment_calculation','cashflow_book_read','import_summary_read'}
 TOOL_CAPABILITIES = dict(run_cash_impact_scenario='cash_impact_scenario_run',get_financial_summary='sales_summary_read',get_transaction_trends='transaction_trends_read',get_payment_channel_mix='payment_channel_mix_read',get_cash_flow='cash_flow_read',get_business_highlights='business_highlights_read',get_financing_status='financing_status_read',get_financing_details='financing_details_read',run_survival_simulation='survival_simulation_run',search_public_financial_information='public_research',get_transaction_details='transaction_detail_read',get_recent_transactions='transaction_detail_read',get_data_quality='data_quality_read',get_income_summary='income_summary_read',get_cash_flow_alerts='cash_flow_alerts_read',get_financing_matches='financing_matches_read',get_rbf_quote='rbf_quote_read',get_business_maturity='business_maturity_read',calculate_loan_repayment='loan_repayment_calculation',get_cashflow_book='cashflow_book_read')
 TOOL_CAPABILITIES['get_import_summary']='import_summary_read'
+# Existing per-merchant application grants that may stand in for a Staff-conditional finance.* permission.
+DELEGATED_GRANTS = {'view_dashboard','view_forecasts','view_reports','view_transactions','view_quality_monitoring','view_financing','view_assessment'}
 FIELD_CLASSES = {
  'get_financial_summary':dict(coverage='D2',period='D1',currency='D1',recorded_net_sales='D2',transaction_count='D1',source_timestamp='D1'),
  'get_transaction_trends':dict(coverage='D2',period='D1',granularity='D1',transaction_count='D1',recorded_net_sales='D2',source_timestamp='D1'),
@@ -44,6 +46,9 @@ FIELD_CLASSES['get_import_summary']={k:'D2' for k in ['currency','latest_import'
 FIELD_CLASSES['get_payment_channel_mix']['revenue_share_percent']='D1'
 FIELD_CLASSES['get_financial_summary']['digital_capture_percent']='D1'
 FIELD_CLASSES['get_transaction_trends']['recorded_expenses']='D2'
+# Amounts behind Digital Capture and the Revenue Mix (Dashboard Channel Performance): same class as recorded net sales.
+FIELD_CLASSES['get_financial_summary'].update(digital_sales='D2',cash_sales='D2')
+FIELD_CLASSES['get_payment_channel_mix'].update(revenue='D2',currency='D1')
 
 class Policy:
     def __init__(self):
@@ -64,7 +69,7 @@ class Policy:
         from jsonschema import Draft202012Validator
         Draft202012Validator.check_schema(schema)
         Draft202012Validator(schema).validate(data)
-        if data['metadata']['version'] != '0.6.0' or data['metadata']['schema_version'] != '1.0.0':
+        if data['metadata']['version'] != '0.7.0' or data['metadata']['schema_version'] != '1.0.0':
             raise ValueError('Unreviewed policy version')
         if set(data['roles']) != ROLES or set(data['capabilities']) != CAPABILITIES or set(data['tools']) != set(TOOL_CAPABILITIES):
             raise ValueError('Unknown role, capability or tool')
@@ -73,6 +78,10 @@ class Policy:
         for name, capability in data['capabilities'].items():
             if set(capability['role_effects']) != ROLES or set(capability['role_effects'].values()) - {'allow','conditional','deny'}:
                 raise ValueError('Unknown role or effect')
+            # A delegated grant may satisfy only a Staff-conditional capability; Bank access keeps explicit permissions and consent.
+            if 'delegated_grant' in capability and (capability['role_effects']['SME_STAFF'] != 'conditional' or capability['delegated_grant'] not in DELEGATED_GRANTS
+                    or any(effect == 'conditional' for role, effect in capability['role_effects'].items() if role != 'SME_STAFF')):
+                raise ValueError('Unsafe delegated grant')
         if set(data['capabilities']['financial_execution']['role_effects'].values()) != {'deny'}:
             raise ValueError('Financial execution must remain prohibited')
         for name, tool in data['tools'].items():
@@ -121,7 +130,8 @@ class Policy:
             raise AccessDenied('Governed AI is unavailable because its policy is missing or invalid')
         return copy.deepcopy(self._data[name])
 
-    def capability(self, principal, capability):
+    def capability(self, principal, capability, grant=None):
+        """grant(permission) verifies an existing application permission for the active merchant (raises AccessDenied)."""
         from copilot.authorization import AUTHORITATIVE_ROLES
         if not principal.authenticated or not principal.authorizer:
             raise AccessDenied('Authenticated application identity required')
@@ -131,16 +141,19 @@ class Policy:
         if effect == 'deny':
             raise AccessDenied('This AI capability is restricted for your account')
         if effect == 'conditional':
-            # These granular permissions do not currently exist. Do not translate
-            # broad role/Staff grants into invented finance.* permissions.
             required = item.get('required_application_permission')
-            if not required or required not in principal.permissions:
+            if required and required in principal.permissions:
+                return item
+            # Staff: the existing per-merchant delegated grant the matching module already uses (policy 0.7.0).
+            delegated = item.get('delegated_grant')
+            if role != 'SME_STAFF' or not delegated or grant is None:
                 raise AccessDenied('An explicit granular application permission is required')
+            grant(delegated)
         return item
 
-    def tool(self, principal, name):
+    def tool(self, principal, name, grant=None):
         item = self.section('tools').get(name)
         if not item:
             raise AccessDenied('Unknown governed AI tool')
-        self.capability(principal, item['capability'])
+        self.capability(principal, item['capability'], grant)
         return item

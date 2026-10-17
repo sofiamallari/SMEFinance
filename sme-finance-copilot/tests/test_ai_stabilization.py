@@ -34,11 +34,13 @@ class Stabilization(unittest.TestCase):
   with patch('copilot.conversation_review.provider',side_effect=AssertionError('No provider')):
    r=self.ask('What can you help me with as a business owner?')
   self.assertEqual(r['classification'],'CAPABILITIES');self.assertIn('cash-impact',r['reply']);self.assertNotIn('expense analysis',r['reply'])
-  definitions=self.g.definitions(self.tokens['staff'],'M002');self.assertNotIn('cash-impact',ev.capability_answer(definitions))
+  # Policy 0.7.0: Staff with view_forecasts on M002 may model cash impact; financing records stay out of their capabilities.
+  definitions=self.g.definitions(self.tokens['staff'],'M002');self.assertIn('cash-impact',ev.capability_answer(definitions))
+  self.assertFalse({'get_financing_status','get_financing_details'}&{d['function']['name'] for d in definitions})
  def test_policy_and_field_class_contract(self):
   from copilot.governed_tools import OUTPUTS
   from copilot.governance_policy import FIELD_CLASSES,Policy
-  self.assertTrue(Policy().available);self.assertEqual(self.p.policy.version,'0.6.0')
+  self.assertTrue(Policy().available);self.assertEqual(self.p.policy.version,'0.7.0')
   for name,spec in self.p.policy.section('tools').items():
    self.assertFalse(set(spec['output_field_allowlist'])-set(OUTPUTS[name]));self.assertFalse(set(spec['output_field_allowlist'])-set(FIELD_CLASSES[name]))
  def test_month_quarter_and_equal_comparison_period(self):

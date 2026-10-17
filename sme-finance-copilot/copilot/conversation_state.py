@@ -121,6 +121,13 @@ def scalar(key,quote,*,currency,today,previous=None,question=''):
    return {'value':start.isoformat(),'precision':'month'}
   if low in ('today','tomorrow','now','immediately'):return {'value':(today+timedelta(days=1 if low=='tomorrow' else 0)).isoformat()}
   if low in ('next week','in a week','in one week'):return {'value':(today+timedelta(days=7)).isoformat()}
+  # A bare month for a planned start or payment ("in December", "starting January"): the 1st of its next occurrence.
+  bare=re.fullmatch(r'(?:(?:in|from|starting|start of|beginning of|early)\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:\s+(\d{4}))?',low)
+  if bare and (bare[1] in MONTHS):
+   month=MONTHS[bare[1]];year=int(bare[2]) if bare[2] else today.year+(1 if month<today.month else 0)
+   start=date(year,month,1)
+   if start<today.replace(day=1):raise ClaimError('invalid_entity_value')
+   return {'value':max(start,today).isoformat(),'precision':'month'}
   natural=natural_date(low,today)
   if natural:return {'value':natural.isoformat()}
   try:return {'value':date.fromisoformat(text).isoformat()}
@@ -136,6 +143,10 @@ def scalar(key,quote,*,currency,today,previous=None,question=''):
   elif low in ('last month','previous month'):
    end=today.replace(day=1)-timedelta(days=1);start=end.replace(day=1)
   elif low in ('this month','current month'):start=today.replace(day=1);end=today
+  # A single business day or week ("digital payments received today", "sales yesterday").
+  elif low in ('today','yesterday'):start=end=today-timedelta(days=1 if low=='yesterday' else 0)
+  elif low in ('this week','last week'):
+   start=today-timedelta(days=today.weekday()+(7 if low=='last week' else 0));end=min(today,start+timedelta(days=6))
   elif re.fullmatch(r'(?:q[1-4](?:\s+\d{4})?|last quarter)',low):
    if low=='last quarter':
     q=(today.month-1)//3-1;year=today.year
@@ -267,6 +278,7 @@ def claim_records(state):
  for key,entry in state['entities'].items():
   kind,label=ENTITIES[key];value=entry['value']
   if kind=='money':display=label+': '+money(value,entry['currency'])+'.'
+  elif kind=='percent' and entry.get('default'):display=label+': unchanged (assumed, because no change was given; tell me if it will change).'
   elif kind=='percent':display=label+': '+value+'% (your assumption).'
   elif kind=='duration':display=label+': '+value+' months (your assumption).'
   elif kind=='period':display=label+': '+day(value['start'])+' to '+day(value['end'])+'.'

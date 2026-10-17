@@ -1,7 +1,7 @@
 {
   "metadata": {
     "policy_id": "sme-finance-ai-governance",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "status": "proposed",
     "default_effect": "deny",
     "schema_version": "1.0.0",
@@ -72,7 +72,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.sales.summary.read"
+      "required_application_permission": "finance.sales.summary.read",
+      "delegated_grant": "view_dashboard"
     },
     "transaction_trends_read": {
       "description": "Read aggregated transaction volume and sales trends",
@@ -83,18 +84,20 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.transactions.trends.read"
+      "required_application_permission": "finance.transactions.trends.read",
+      "delegated_grant": "view_dashboard"
     },
     "payment_channel_mix_read": {
       "description": "Read authorized payment-channel breakdown",
-      "data_classification_ceiling": "D1",
+      "data_classification_ceiling": "D2",
       "role_effects": {
         "SME_OWNER": "allow",
         "SME_STAFF": "conditional",
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.payments.channels.read"
+      "required_application_permission": "finance.payments.channels.read",
+      "delegated_grant": "view_dashboard"
     },
     "cash_flow_read": {
       "description": "Read merchant cash inflows, outflows, and available cash when supported",
@@ -105,7 +108,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.cashflow.read"
+      "required_application_permission": "finance.cashflow.read",
+      "delegated_grant": "view_forecasts"
     },
     "business_highlights_read": {
       "description": "Read authorized business highlights and operational alerts",
@@ -116,7 +120,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.highlights.read"
+      "required_application_permission": "finance.highlights.read",
+      "delegated_grant": "view_dashboard"
     },
     "financing_status_read": {
       "description": "Read status of a specifically authorized financing application",
@@ -149,7 +154,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.simulation.run"
+      "required_application_permission": "finance.simulation.run",
+      "delegated_grant": "view_reports"
     },
     "expansion_assessment": {
       "description": "Discuss expansion affordability using permitted information",
@@ -160,7 +166,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.expansion.assess"
+      "required_application_permission": "finance.expansion.assess",
+      "delegated_grant": "view_reports"
     },
     "public_research": {
       "description": "Request a controlled public-information search",
@@ -191,7 +198,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.cash_scenario.run"
+      "required_application_permission": "finance.cash_scenario.run",
+      "delegated_grant": "view_forecasts"
     },
     "transaction_detail_read": {
       "description": "Read one recorded transaction by its reference, as shown in Transaction History",
@@ -202,7 +210,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.transactions.read"
+      "required_application_permission": "finance.transactions.read",
+      "delegated_grant": "view_transactions"
     },
     "data_quality_read": {
       "description": "Read import status, data-quality rates and open data-quality alerts",
@@ -213,7 +222,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.data_quality.read"
+      "required_application_permission": "finance.data_quality.read",
+      "delegated_grant": "view_quality_monitoring"
     },
     "income_summary_read": {
       "description": "Read recorded net sales, expenses and net income for a period",
@@ -224,7 +234,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.income.read"
+      "required_application_permission": "finance.income.read",
+      "delegated_grant": "view_dashboard"
     },
     "cash_flow_alerts_read": {
       "description": "Read the existing rule-based cash-flow alerts and recommended actions",
@@ -235,7 +246,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.cashflow.read"
+      "required_application_permission": "finance.cashflow.read",
+      "delegated_grant": "view_forecasts"
     },
     "financing_matches_read": {
       "description": "Read indicative financing matches; not offers or approvals",
@@ -246,7 +258,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.financing.read"
+      "required_application_permission": "finance.financing.read",
+      "delegated_grant": "view_financing"
     },
     "rbf_quote_read": {
       "description": "Read an indicative revenue-based financing simulation; not an offer",
@@ -257,7 +270,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.financing.read"
+      "required_application_permission": "finance.financing.read",
+      "delegated_grant": "view_financing"
     },
     "business_maturity_read": {
       "description": "Read the existing business maturity assessment, stage and next-stage gap",
@@ -268,7 +282,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.assessment.read"
+      "required_application_permission": "finance.assessment.read",
+      "delegated_grant": "view_assessment"
     },
     "loan_repayment_calculation": {
       "description": "Standard fixed-rate loan repayment arithmetic from user-supplied amount, rate and term",
@@ -279,7 +294,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.loan_calculation.run"
+      "required_application_permission": "finance.loan_calculation.run",
+      "delegated_grant": "view_financing"
     },
     "cashflow_book_read": {
       "description": "Read the Cash Flow tab summary computed from the business's uploaded AR/AP workbook",
@@ -290,7 +306,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.cashflow.read"
+      "required_application_permission": "finance.cashflow.read",
+      "delegated_grant": "view_forecasts"
     },
     "import_summary_read": {
       "description": "Read the latest Bulk POS Import outcome, current imported and manual record counts and unfinished uploads",
@@ -301,7 +318,8 @@
         "BANK": "deny",
         "SYSTEM_ADMIN": "deny"
       },
-      "required_application_permission": "finance.transactions.read"
+      "required_application_permission": "finance.transactions.read",
+      "delegated_grant": "view_transactions"
     }
   },
   "tools": {
@@ -319,7 +337,9 @@
         "transaction_count",
         "source_timestamp",
         "coverage",
-        "digital_capture_percent"
+        "digital_capture_percent",
+        "digital_sales",
+        "cash_sales"
       ],
       "approval": "none",
       "read_only": true,
@@ -353,14 +373,17 @@
       "capability": "payment_channel_mix_read",
       "resource_scope": "authorized_merchant",
       "allowed_data_classes": [
-        "D1"
+        "D1",
+        "D2"
       ],
       "output_field_allowlist": [
         "period",
         "channel",
         "transaction_count",
         "share_percent",
-        "revenue_share_percent"
+        "revenue_share_percent",
+        "revenue",
+        "currency"
       ],
       "approval": "none",
       "read_only": true,
@@ -917,7 +940,7 @@
   "implementation_notes": [
     "This file is a proposed AI-specific upper-bound policy, not a grant of application permissions.",
     "The backend must independently check authenticated identity, merchant/resource ownership, and field-level permissions.",
-    "A conditional effect is DENY unless an explicit existing application permission is verified.",
+    "A conditional effect is DENY unless an explicit existing application permission is verified: the capability's required_application_permission, or, for SME_STAFF only, the existing per-merchant delegated grant named in delegated_grant (verified for the active merchant on every call).",
     "Tool output allowlists are illustrative; verify actual source fields and their classifications before implementation.",
     "Never send the full policy or raw sensitive data to the model as a substitute for backend enforcement."
   ]

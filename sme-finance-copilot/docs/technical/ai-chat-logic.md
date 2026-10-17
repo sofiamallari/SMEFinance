@@ -64,9 +64,9 @@ Gemini never calculates, never sees fields outside the allow-list, and never tri
 
 | Tool | Module | Permission | Data class |
 |---|---|---|---|
-| `get_financial_summary` | Dashboard sales, count, record coverage | view_dashboard | D2 |
+| `get_financial_summary` | Dashboard sales, count, record coverage, Digital Capture share and the digital / cash sales amounts behind it | view_dashboard | D2 |
 | `get_transaction_trends` | Dashboard trends | view_dashboard | D2 |
-| `get_payment_channel_mix` | Dashboard channel volume | view_dashboard | D1 |
+| `get_payment_channel_mix` | Dashboard channel volume and revenue: each payment method's share of transactions and of revenue, and its revenue amount (Channel Performance) | view_dashboard | D2 |
 | `get_income_summary` | Net sales, expenses, net income; Dashboard Average Revenue / Average Expense (per month, week, day; partial months by days covered) and Expense Split (top 5 categories + other) | view_dashboard | D2 |
 | `get_cash_flow` | Cash Flow forecast | view_forecasts | D2 |
 | `get_cash_flow_alerts` | Cash Flow alerts | view_forecasts | D2 |
@@ -84,9 +84,9 @@ Gemini never calculates, never sees fields outside the allow-list, and never tri
 | `calculate_loan_repayment` | Loan repayment estimate from the user's amount, rate and term (optional rate change) | view_financing | D1 |
 | `search_public_financial_information` | Public search: SME lending rates, industry benchmarks, regulations/tax | use_copilot + approval | D0 |
 
-All tools are read-only and Owner-allowed. Staff need an explicit granular permission (decision: transaction and data-quality tools stay Owner-only). Bank and System Admin are denied. Transaction tools cover transactions recorded in the app (manual entries and imports), the same as Transaction History. A Bulk POS Import replaces all earlier imported transactions (the ledger keeps them but marks them `supersedes`; manual entries are kept), and every tool reads the current ledger only, so replaced rows never reach the chat. Import-run counts in `get_data_quality` still include earlier runs, and its full text says so.
+All tools are read-only and Owner-allowed. Staff get a tool when they hold its existing delegated grant for the active merchant (policy 0.7.0 `delegated_grant`); financing application status and details stay denied. Bank and System Admin are denied. Transaction tools cover transactions recorded in the app (manual entries and imports), the same as Transaction History. A Bulk POS Import replaces all earlier imported transactions (the ledger keeps them but marks them `supersedes`; manual entries are kept), and every tool reads the current ledger only, so replaced rows never reach the chat. Import-run counts in `get_data_quality` still include earlier runs, and its full text says so.
 
-Cash Flow workbook answers always carry the qualification "Based on your cash-flow workbook uploaded <date>, as of <reference date>; projections are not guarantees". Workbook cash on hand is the value typed in the workbook, not a bank-verified balance. Questions about receivables, who owes the business, overdue invoices, bills due, 7-day runway or workbook cash on hand go to `get_cashflow_book` (route B, intent `cash_flow`) instead of the forecast; a plain "runway" or "cash flow next month" still uses the forecast. "Average revenue/expense" and "expense split" about the business's own records stay route B (not an industry search); with no named period, averages use the last three complete months.
+Cash Flow workbook answers always carry the qualification "Based on your cash-flow workbook uploaded <date>, as of <reference date>; projections are not guarantees". Workbook cash on hand is the value typed in the workbook, not a bank-verified balance. Questions about receivables, who owes the business, overdue invoices, bills due, 7-day runway or workbook cash on hand go to `get_cashflow_book` (route B, intent `cash_flow`) instead of the forecast; a plain "runway" or "cash flow next month" still uses the forecast. Payment questions: "today", "yesterday", "this week", "last week" and month names set the reporting period (business today is in the merchant's time zone). "How much digital payments were received" answers with the digital amount, its Digital Capture share and the cash amount; "what share is digital" answers with the share. "Is this paid in cash or card?", "split by payment method" and similar go to `get_payment_channel_mix` (route B, intent `payment_channels`) and list every method's amount and share of revenue. A follow-up that refers back ("it", "this", "its amount") keeps the previous metric and period, and these focused answers are written by the backend from the matching claim. "Average revenue/expense" and "expense split" about the business's own records stay route B (not an industry search); with no named period, averages use the last three complete months.
 
 ### How app data is described
 
@@ -130,6 +130,7 @@ App records are treated as the business's actual data. Required warnings are the
 | B6 | Best period | "Best month?" | B | tools | Should | S6 | Partial (best month needs Gemini) |
 | B7 | Several asks | "Sales and alerts?" | G | up to 3 tools | Should | S3 | Partial (without Gemini only one module per turn) |
 | B10 | Cash Flow workbook | "Who owes me money?", "What's overdue?", "Bills due this week?", "My 7-day runway?", "Cash on hand from my workbook?" | B | workbook tool | Yes | S1–S4 S6 S7 | Done |
+| B12 | Payment amounts and methods | "How much was paid digitally today?", "Translate it to its amount", "Is this paid in cash or card?" | B | sales summary + channel mix | Yes | S1–S4 S6 | Done |
 | B11 | Averages and expense split | "My average revenue and expense?", "My expense split?" | B | income summary | Yes | S1–S4 S6 S7 | Done |
 | B8 | Is my data complete? | "Why is October empty?" | B | data quality + coverage | Yes | S7 | Done |
 | E1 | Why did it change? | "Why did sales drop?" | E | tools + data quality | Yes | S8 | Done |
@@ -168,7 +169,7 @@ App records are treated as the business's actual data. Required warnings are the
 | M-1 | New question | "Can I afford a warehouse?" | Classify fresh | S1 S3 | Done |
 | M-2 | Answer to open question | "20k", "on Dec 10th" | Backend parses and fills the saved field | S6 | Done |
 | M-3 | Correction | "Actually 30k" | Update one field; keep earlier option for comparison | S6 | Done |
-| M-4 | Follow-up | "What's causing that?" | Same topic; data re-fetched, never reused stale | S4 | Done |
+| M-4 | Follow-up | "What's causing that?", "Translate it to its amount", "Is this paid in cash or card?" | Same topic; data re-fetched, never reused stale. A referring follow-up keeps the previous metric (digital amount or share, payment-method split) and reporting period | S4 | Done |
 | M-5 | Topic switch (related module) | "Balance today?" mid-warehouse | Answer it; save details; don't repeat the open question | S11 | Done |
 | M-6 | Interruption (unrelated) | "What is RBF?" mid-warehouse | Answer on its own; park topic; at most one reminder | S11 | Done |
 | M-7 | Return to topic | "Back to the warehouse" or answering the parked question | Restore saved details | S11 | Done |

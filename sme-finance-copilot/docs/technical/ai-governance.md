@@ -1,6 +1,6 @@
 # AI Financial Partner 2.0 — local governance implementation
 
-Local feature: `feature/ai-governance-chatbot-v2`. Local policy: **0.6.0**, schema **1.0.0**. The supplied policy's `proposed` metadata is preserved; user approval covers local implementation/testing, not production readiness. No `saif` directory was found by a case-insensitive repository search.
+Local feature: `feature/ai-orchestrator` (from `feature/ai-governance-chatbot-v2`). Local policy: **0.7.0**, schema **1.0.0**. See [ai-orchestrator-design.md](ai-orchestrator-design.md). The supplied policy's `proposed` metadata is preserved; user approval covers local implementation/testing, not production readiness. No `saif` directory was found by a case-insensitive repository search.
 
 ## Boundaries and discovery
 
@@ -25,11 +25,11 @@ Existing integration: `ai_agent.py` uses OpenAI-compatible function calls, inclu
 | Role | Available subset | Denied / blocked |
 |---|---|---|
 | SME Owner | Authorized merchant read tools, public education/help/research proposal; enabled and requested Survival Simulation | Other merchants, financial execution, unmodeled financial conclusions |
-| SME Staff | Education, authorized explain-only application help, public research approval when existing `use_copilot` grant permits | Financing always denied. Conditional operational/simulation/expansion capabilities remain denied because exact `finance.*` permissions are absent |
+| SME Staff | Education, authorized explain-only application help, public research approval when existing `use_copilot` grant permits | Financing application status and details always denied. Conditional capabilities are satisfied by the existing per-merchant delegated grant named in the policy (`delegated_grant`, policy 0.7.0), e.g. `view_dashboard` for sales and channel mix, `view_forecasts` for cash flow |
 | Bank | Public education/research through an already authorized session/merchant API or MCP context | Conditional financing tools remain denied despite existing consent; exact `finance.financing.*` permissions are absent. No general merchant summaries/cash flow |
 | System Admin | Existing administration portal | Existing backend does not grant `use_copilot` or merchant financial scope. Even policy-allowed D0 assistant access is therefore unavailable; no automatic role expansion |
 
-These are safe prerequisite gaps, not successful Staff/Bank financial integrations. Existing application grants are not renamed or promoted into the missing granular permissions. The Bank portal still has no new chat drawer.
+Bank financing tools still need explicit permissions and consent. For Staff only, policy 0.7.0 maps each conditional capability to the existing delegated grant its module already uses, checked for the active merchant on every call; the explicit `finance.*` permission also still works. The Bank portal still has no new chat drawer.
 
 ## Policy, gateway and data minimization
 
