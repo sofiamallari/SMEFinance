@@ -1,9 +1,0 @@
-{
-  "tests_run": 14,
-  "failures": 0,
-  "errors": 0,
-  "skipped": 0,
-  "seconds": 3.129,
-  "pattern": "test_report_profiles.py",
-  "isolated": true
-}

@@ -8,4 +8,4 @@ Current Validate shows five cards, one outcome and only meaningful findings. Pre
 
 Synthetic seed activity, imported receipts and sandbox collections are separately identified. Seed aggregates are not reinserted into the canonical journal. No reliable external match exists for unlinked duplicate real-world descriptions, so never assume an unlinked POS import and sandbox collection are different sales. Wallet settlement is not extra revenue; no FX conversion/relabeling is performed.
 
-Maturity and forecast inputs include configured synthetic attributes/obligations. Recorded net income is not audited profit; operating projections are not cash balances. Historical evidence snapshots remain available in [archive](../archive/README.md), without approval of their provisional business assumptions.
+Maturity and forecast inputs include configured synthetic attributes/obligations. Recorded net income is not audited profit; operating projections are not cash balances. Older evidence snapshots were removed from the submission repository; they never approved the provisional business assumptions.

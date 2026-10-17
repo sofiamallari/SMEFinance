@@ -18,4 +18,4 @@
 
 - [Bank access, simulated financing decisions and simulator isolation](bank-workflow-delivery.md)
 
-[Documentation home](../README.md) · [Historical implementation notes](../archive/README.md)
+[Documentation home](../README.md)

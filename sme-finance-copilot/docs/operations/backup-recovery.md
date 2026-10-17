@@ -8,4 +8,4 @@ Original pre-CNY snapshot and retirement directories remain under the ignored lo
 
 Recovery requires stopped writers, preservation of the failed/current dataset and a matching verified snapshot. Restore identity/journal/state together to an approved dedicated root, select that root, verify it and then start. Do not combine CNY journal with archived foreign-currency identity/state. Legacy cutover rollback also needs the corresponding selector code/configuration; consult the retained private cutover record rather than blindly copying five files over a live service.
 
-[Storage](cny-dataset.md) · [troubleshooting](troubleshooting.md) · [historical preparation record](../archive/implementation-notes/CNY_DEMO_AND_RAILWAY.md).
+[Storage](cny-dataset.md) · [troubleshooting](troubleshooting.md).
