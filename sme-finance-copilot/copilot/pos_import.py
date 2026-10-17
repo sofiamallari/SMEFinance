@@ -156,16 +156,17 @@ class POSImportService:
             if 'transaction_type' not in columns:
                 permitted=('sale','refund','reversal') if profile['kind']=='revenue' else ('expense',)
                 if defaults.get('transaction_type') not in permitted:raise InputError('Worksheet default transaction type conflicts with the selected report profile')
-            if 'payment_method' not in columns and review.get('payment_method_confirmed') is not True:raise InputError('Missing source payment method: explicitly verify a worksheet payment method from trustworthy records')
+            if profile['kind']=='revenue' and 'payment_method' not in columns and review.get('payment_method_confirmed') is not True:raise InputError('Missing source payment method: explicitly verify a worksheet payment method from trustworthy records')
         if 'transaction_type' not in columns and review.get('type_confirmed') is not True:raise InputError('Explicitly confirm the worksheet transaction type default')
         ambiguous=any(re.sub(r'\s*\([^)]*\)\s*$','',str(columns.get(k,'')).strip().casefold())=='amount' for k in ('net_amount','gross_amount'))
         if ambiguous and review.get('amount_confirmed') is not True:raise InputError('Confirm whether Amount represents net or gross before validation')
         if file.get('ambiguous_currency_symbols') and not file.get('currency_hints') and review.get('currency_confirmed') is not True:raise InputError('Ambiguous currency symbol: explicitly confirm the source currency')
         translations=mapping.get('payment_method_values',{})
-        if not isinstance(translations,dict) or len(translations)>30 or any(not isinstance(k,str) or len(k)>100 or v not in ('cash','qr_pay','tap_pay','pay_link','external_card','external_wallet') for k,v in translations.items()):raise InputError('Invalid explicit payment-method translations')
+        if not isinstance(translations,dict) or len(translations)>30 or any(not isinstance(k,str) or len(k)>100 or v not in ('cash','qr_pay','tap_pay','pay_link','external_card','external_wallet','bank_transfer','not_recorded') for k,v in translations.items()):raise InputError('Invalid explicit payment-method translations')
         if not isinstance(columns,dict) or set(columns)-FIELDS or any(not isinstance(v,str) or v not in file['headers'] for v in columns.values()) or len(set(columns.values()))!=len(columns):raise InputError('Column mapping contains unknown, protected or conflicting fields')
         if not isinstance(defaults,dict) or set(defaults)-{'currency','transaction_type','status','payment_method','category'}:raise InputError('Unsupported mapping defaults')
-        if not REQUIRED<=set(columns)|set(defaults) or 'transaction_date' not in columns or not {'net_amount','gross_amount'}&set(columns):raise InputError('Map date and net/gross amount; explicitly map or default all required fields')
+        required=REQUIRED-{'payment_method'} if (profile or {}).get('kind')=='expense' else REQUIRED # expense reports may not record how a cost was paid
+        if not required<=set(columns)|set(defaults) or 'transaction_date' not in columns or not {'net_amount','gross_amount'}&set(columns):raise InputError('Map date and net/gross amount; explicitly map or default all required fields')
         if any(columns.get(k,'').strip().lower() in ALIASES['settlement_amount'] for k in ('net_amount','gross_amount')):raise InputError('Settlement columns cannot be mapped as sales net/gross amounts')
         if mapping.get('date_format','iso') not in ('iso','day_first','month_first'):raise InputError('Invalid date format')
         zone(mapping.get('timezone','+00:00'))
@@ -176,6 +177,16 @@ class POSImportService:
         for field in ('net_total','gross_total'):
             if control.get(field) not in (None,''):money(control[field],field)
         return columns,defaults,control
+
+    @staticmethod
+    def _imported(existing,mid):
+        """Current Bulk POS Import batches for a merchant; a new import replaces all of them (manual entries stay)."""
+        return sorted({r['import_batch_id'] for r in existing.values() if r.get('merchant_id')==mid and str(r.get('source','')).startswith('pos_') and r.get('import_batch_id')})
+
+    @staticmethod
+    def _kept(existing,mid):
+        """Records that survive a replacing import, used for duplicate checks."""
+        return {t:r for t,r in existing.items() if not (r.get('merchant_id')==mid and str(r.get('source','')).startswith('pos_'))}
 
     def _duplicates(self,existing,seen,row):
         ref=row['external_reference'].casefold();fp=fingerprint(row)
@@ -194,7 +205,7 @@ class POSImportService:
     def validate(self,token,mid,bid,mappings):
         self.authorize(token,'bulk_import',mid)
         with self.journal.writer():
-            existing,_=self.read_ledger(mid)
+            existing,_=self.read_ledger(mid);replaced=[r for r in existing.values() if r.get('import_batch_id') in set(self._imported(existing,mid))];existing=self._kept(existing,mid)
             with self.auth.db() as db:
                 db.execute('BEGIN IMMEDIATE');self._cleanup(db);actor,run=self._private(db,token,mid,bid)
                 if run['state'] in ('committed','committing','cancelled'):raise InputError('This batch cannot be revalidated',409)
@@ -226,7 +237,7 @@ class POSImportService:
                             values={field:raw['values'][header] for field,header in columns.items()};values={**defaults,**values}
                             if values.get('payment_method') in mapping.get('payment_method_values',{}):values['payment_method']=mapping['payment_method_values'][values['payment_method']]
                             row=normalize(values,self.store.copilot.merchants[mid],{**mapping,'merchant_timezone':merchant_settings['timezone'],'source_currency_hints':file.get('currency_hints',[])},now)
-                            if mapping.get('profile') and ((mapping['profile']['kind']=='expense' and row['transaction_type']!='expense') or (mapping['profile']['kind']=='revenue' and row['transaction_type']=='expense')):raise RowError('transaction_type','Source transaction type conflicts with the selected report profile; correct the profile or split mixed revenue/expense sources')
+                            if mapping.get('profile') and ((mapping['profile']['kind']=='expense' and row['transaction_type'] not in ('expense','cash_out')) or (mapping['profile']['kind']=='revenue' and row['transaction_type'] in ('expense','cash_out'))):raise RowError('transaction_type','Source transaction type conflicts with the selected report profile; correct the profile or split mixed revenue/expense sources')
                             row.update(transaction_id='TX-'+bid+'-'+str(ordinal),merchant_id=mid,source='pos_'+file['format'],
                                 import_batch_id=bid,source_filename=file['filename'],source_file_hash=file['sha256'],source_row_number=raw['row'],source_file_id=file['file_id'],source_worksheet=file.get('worksheet'),source_workbook_hash=file.get('workbook_hash'),source_values=raw['values'],
                                 mapping_version=version,created_by=actor.user_id,created_at=utc(now))
@@ -281,6 +292,7 @@ class POSImportService:
                 if any(f['field']=='mapping' for f in errors):
                     for rule in ('monetary_precision','date_validity','currency_validity','status_validity','payment_method_validity','financial_reconciliation'):
                         if metrics['rules'][rule]=='pass':metrics['rules'][rule]='warning'
+                metrics.update(replaced_rows=len(replaced),replaced_imports=len({r['import_batch_id'] for r in replaced}))
                 preview=secrets.token_urlsafe(32) if not blocked else None
                 db.execute('UPDATE pos_import_runs SET state=?,mappings_json=?,dataset_json=?,dataset_signature=?,preview_hash=?,validation_version=?,metrics_json=?,findings_json=? WHERE batch_id=?',
                     ('validation_failed' if blocked else 'validated',dump(mappings),dump(eligible),self._dataset_sign(bid,mid,actor.user_id,eligible,mappings,version,run['session_hash']),digest(preview) if preview else None,version,dump(metrics),dump(findings),bid))
@@ -328,7 +340,7 @@ class POSImportService:
         self.authorize(token,'bulk_import',mid)
         if confirmed is not True or not isinstance(preview_token,str):raise InputError('Explicit confirmation of the validated preview is required')
         with self.journal.writer():
-            existing,batches=self.read_ledger(mid)
+            existing,batches=self.read_ledger(mid);supersedes=self._imported(existing,mid);existing=self._kept(existing,mid)
             with self.auth.db() as db:
                 db.execute('BEGIN IMMEDIATE');actor,run=self._private(db,token,mid,bid)
                 if run['state']=='committed':raise InputError('Batch already committed. Fetch its confirmed outcome; replay is denied.',409)
@@ -346,11 +358,11 @@ class POSImportService:
                 result={'ok':True,'batch_id':bid,'files_processed':metrics.get('file_count',0),'worksheets_processed':metrics.get('worksheet_count',0),'imported_rows':len(rows),
                         'duplicates_excluded':metrics.get('duplicate_rows',0),'rejected_rows':metrics.get('invalid_rows',0),
                         'imported_total':metrics.get('eligible_total','0.00'),'currency':self.store.copilot.merchants[mid].currency,
-                        'completed_at':utc(now),'status':'committed'}
+                        'completed_at':utc(now),'status':'committed','replaced_imports':len(supersedes)}
                 db.execute("UPDATE pos_import_runs SET state='committing',result_json=?,completed_at=? WHERE batch_id=?",(dump(result),now,bid))
                 self.auth.audit('pos_commit_intent',actor,mid,bid,db=db)
             try:
-                self.journal.append_batch(bid,mid,rows)
+                self.journal.append_batch(bid,mid,rows,supersedes)
                 self._finalize(bid)
             except LedgerError:
                 self._storage_failure(mid,bid,'critical','Ledger integrity verification failed; writes are blocked.')
@@ -430,6 +442,14 @@ class POSImportService:
                 raise InputError('Transaction persistence could not be finalized; check history before retrying',500) from None
             return result
 
+    def template(self,token,mid):
+        """Blank standard Revenue/Expense report template for this merchant (Bulk Import permission)."""
+        actor=self.authorize(token,'bulk_import',mid)
+        from copilot.report_template import build
+        merchant=self.store.copilot.merchants[mid];name,content=build(merchant.name,merchant.currency)
+        self.auth.audit('pos_template_downloaded',actor,mid,result='success')
+        return name,content
+
     def history(self,token,mid,filters=None):
         filters=filters or {}
         with self.auth.db() as db:self._guard(db,token,'view_transactions',mid)
@@ -445,6 +465,17 @@ class POSImportService:
         rows=[r for r in records.values() if r['merchant_id']==mid]
         for field in ('status','source','payment_method'):
             if filters.get(field):rows=[r for r in rows if r.get(field)==filters[field]]
+        # Report type follows the transaction's financial meaning, so manual entries are grouped the same way as imports.
+        report=filters.get('report')
+        if report not in (None,'','revenue','expense'):raise InputError('Report type must be revenue or expense')
+        if report:rows=[r for r in rows if (r.get('transaction_type') in ('expense','cash_out'))==(report=='expense')]
+        search=str(filters.get('search') or '').strip().casefold()
+        if len(search)>80:raise InputError('Search text must be at most 80 characters')
+        if search:
+            fields=('transaction_id','external_reference','description','category','sub_category','classification','source_filename','source_worksheet','payment_method','transaction_type')
+            # The original file values ("Credit Card", sub-category text) are searchable too.
+            text=lambda r:' '.join([*(str(r.get(f) or '') for f in fields),*(str(v) for v in (r.get('source_values') or {}).values())]).casefold()
+            rows=[r for r in rows if all(term in text(r) for term in search.split())]
         if filters.get('start'):rows=[r for r in rows if r['business_date']>=filters['start']]
         if filters.get('end'):rows=[r for r in rows if r['business_date']<=filters['end']]
         offset=int(filters.get('offset',0));limit=int(filters.get('limit',50))

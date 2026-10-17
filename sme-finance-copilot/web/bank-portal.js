@@ -1,6 +1,6 @@
 /* Bank-only sandbox request review. No AI adapter or financial calculation changes. */
 (()=>{'use strict';const U=BankUI,$=s=>document.querySelector(s),modules=[['overview','Overview','layout-dashboard'],['applications','Financing Applications','receipt-text']];
-const outcomes={reviewed:'Reviewed',more_information_needed:'More Information Needed',ready_for_further_assessment:'Ready for Further Assessment',approved:'Approve · Simulated',rejected:'Reject · Simulated'};
+const outcomes={reviewed:'Reviewed',more_information_needed:'More Information Needed',ready_for_further_assessment:'Ready for Further Assessment'}; // approval and rejection are disabled for bank users
 let me,applications=[],merchants=[],requestEpoch=0,dialogEpoch=0,refreshing=false,currentDialog=null,financialMid=null,expiryTimer;
 const pages={recent:{page:1,size:10},applications:{page:1,size:10},merchants:{page:1,size:10},history:{page:1,size:10}},filters={merchant:'',status:'',review:''};
 const label=v=>({SUBMITTED_FOR_LENDER_REVIEW:'Submitted for Review',awaiting_review:'Awaiting Review',request_information:'Legacy Information Request',sandbox_recommended:'Legacy Sandbox Recommendation',sandbox_declined:'Legacy Sandbox Decline',...outcomes}[v]||String(v||'Unavailable').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase()));

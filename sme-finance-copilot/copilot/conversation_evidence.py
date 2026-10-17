@@ -9,7 +9,8 @@ LABELS={'get_financial_summary':'recorded sales summaries and period comparisons
  'get_payment_channel_mix':'payment-channel transaction mix',
  'get_cash_flow':'cash-flow forecasts (estimates, not reconciled with your bank)',
  'get_cash_flow_alerts':'cash-flow alerts and recommended actions',
- 'get_income_summary':'expenses and net income for a period',
+ 'get_income_summary':'expenses, net income, average revenue and expense, and the expense split for a period',
+ 'get_cashflow_book':'your uploaded cash-flow workbook: who owes you, overdue invoices, bills due and your 7-day runway',
  'get_transaction_details':'looking up a recorded transaction by its TX- reference',
  'get_recent_transactions':'your most recent recorded transactions',
  'get_data_quality':'import status and data-quality alerts',
@@ -104,8 +105,8 @@ TX_REF=r'\bTX-[A-Za-z0-9-]{4,120}\b'
 # Which tools each intent may use; extra proposals outside this map are skipped, not executed.
 RELEVANT={
  'sales_analysis':{'get_financial_summary','get_transaction_trends','get_payment_channel_mix','get_income_summary','get_data_quality'},
- 'cash_flow':{'get_cash_flow','get_business_highlights','get_cash_flow_alerts','get_income_summary'},
- 'decision_support':{'get_cash_flow','run_cash_impact_scenario','get_financial_summary','get_business_highlights','get_cash_flow_alerts','get_income_summary','get_business_maturity','get_financing_matches'},
+ 'cash_flow':{'get_cash_flow','get_business_highlights','get_cash_flow_alerts','get_income_summary','get_cashflow_book'},
+ 'decision_support':{'get_cashflow_book','get_cash_flow','run_cash_impact_scenario','get_financial_summary','get_business_highlights','get_cash_flow_alerts','get_income_summary','get_business_maturity','get_financing_matches'},
  'financing':{'get_financing_status','get_financing_details','get_financing_matches','get_rbf_quote','get_business_maturity'},
  'payment_channels':{'get_payment_channel_mix','get_financial_summary'},
  'simulation':{'run_survival_simulation','get_financial_summary','get_cash_flow'},
@@ -114,9 +115,11 @@ RELEVANT={
  'business_growth':{'get_business_maturity','get_income_summary','get_financing_matches'},
  'loan_calculation':{'calculate_loan_repayment'},
  'past_what_if':{'get_income_summary'}}
-KEYWORD_TOOLS=[(r'\balerts?\b|\bwarnings?\b','get_cash_flow_alerts'),(r'\bexpenses?\b|\bnet income\b|\bprofit\b','get_income_summary'),
+KEYWORD_TOOLS=[(r'\balerts?\b|\bwarnings?\b','get_cash_flow_alerts'),(r'\bexpenses?\b|\bnet income\b|\bprofit\b|\baverages?\b','get_income_summary'),
  (r'\btrends?\b|\bover time\b|\bmonth by month\b|\bmonthly (?:sales|revenue)\b','get_transaction_trends'),
  (r'\bfinancing (?:options|matches)\b|\bwhich (?:loan|financing)\b','get_financing_matches'),(r'\brbf\b|\brevenue[- ]based\b','get_rbf_quote')]
+from copilot.conversation_routes import BOOK,OWN_AVERAGE
+KEYWORD_TOOLS.append((BOOK.pattern,'get_cashflow_book'))
 # A dependable default tool per intent when the model proposes none.
 DEFAULT_TOOL={'transactions':'get_recent_transactions','data_quality':'get_data_quality','business_growth':'get_business_maturity','loan_calculation':'calculate_loan_repayment','past_what_if':'get_income_summary'}
 # Values each backend calculation needs before it runs; a missing one becomes one question.
@@ -130,6 +133,24 @@ def loan_args(entities):
  args={'principal':float(get('financing_amount')),'annual_rate_percent':float(get('annual_interest_rate')),'months':int(get('financing_duration'))}
  if get('interest_rate_change'):args['rate_change_percent']=float(get('interest_rate_change'))
  return args
+
+MONTH_NAMES=r'(?P<m>jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?'
+
+def lookup_day(text,today):
+ """A past calendar day the user names ("oct2", "October 2nd", "2 Oct", "2026-10-02", "yesterday"); never a future date."""
+ from copilot.conversation_state import MONTHS
+ if re.search(r'\byesterday\b',text,re.I):return (today-timedelta(days=1)).isoformat()
+ iso=re.search(r'\b(\d{4})-(\d{2})-(\d{2})\b',text)
+ match=re.search(r'\b'+MONTH_NAMES+r'\s*(?P<d>\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s*(?P<y>\d{4}))?|\b(?P<d2>\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(?P<m2>jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b(?:,?\s*(?P<y2>\d{4}))?',text,re.I)
+ try:
+  if iso:value=date(int(iso[1]),int(iso[2]),int(iso[3]))
+  elif match:
+   month=MONTHS[(match['m'] or match['m2']).lower()];number=int(match['d'] or match['d2']);year=match['y'] or match['y2']
+   value=date(int(year) if year else today.year,month,number)
+   if not year and value>today:value=value.replace(year=value.year-1)
+  else:return None
+ except ValueError:return None
+ return value.isoformat() if value<=today else None
 
 NOT_NAMES={'my','the','a','an','that','this','last','latest','recent','single','manual','one','each','every','your','new','first','sale','sales','expense','which','what','any','no','of','for','is'}
 
@@ -177,7 +198,10 @@ def requests(plan,state,c,mid,today,definitions,text,notes=None):
  if scenario and 'run_cash_impact_scenario' in allowed and not any(p['name']=='run_cash_impact_scenario' for p in proposals):
   # Complete scenario inputs are always modeled; the backend binds every argument.
   notes.append('scenario_added_by_backend');proposals=[{'name':'run_cash_impact_scenario','arguments':{}},*proposals][:3]
- if not scenario and intent in ('decision_support','cash_flow') and 'get_cash_flow' in allowed and not any(p['name']=='get_cash_flow' for p in proposals):
+ # Workbook questions (who owes me, overdue, bills due, 7-day runway) are answered from the Cash Flow tab workbook, not the forecast.
+ book=bool(BOOK.search(text)) and 'get_cashflow_book' in allowed and intent in ('cash_flow','decision_support') and not scenario
+ if book:proposals=[p for p in proposals if p['name']!='get_cash_flow']
+ if not scenario and not book and intent in ('decision_support','cash_flow') and 'get_cash_flow' in allowed and not any(p['name']=='get_cash_flow' for p in proposals):
   # Affordability and cash-flow questions always show the existing forecast figures the app already has.
   notes.append('cash_flow_added_by_backend');proposals=[{'name':'get_cash_flow','arguments':{}},*proposals][:3]
  if re.search(TX_REF,text) and intent=='transactions' and 'get_transaction_details' in allowed and not any(p['name']=='get_transaction_details' for p in proposals):
@@ -224,7 +248,9 @@ def requests(plan,state,c,mid,today,definitions,text,notes=None):
   elif name=='get_recent_transactions':
    singular=re.search(r'\b(?:latest|last|most recent|newest)\s+(?:single\s+|manual\s+)?(?:trans\w*ction|sale|expense|entry)\b(?!s)',text,re.I)
    bound={'limit':1 if singular else min(int(args.get('limit') or 10),20)}
-   if re.search(r'\btoday\b',text,re.I):bound.update(start=today.isoformat(),end=today.isoformat())
+   on=lookup_day(text,today)
+   if on:bound.update(start=on,end=on,limit=20) # "my transaction on Oct 2": that day's records
+   elif re.search(r'\btoday\b',text,re.I):bound.update(start=today.isoformat(),end=today.isoformat())
    # Only a period named in this message narrows the list; an earlier question's period never does.
    elif entities.get('reporting_period') and entities['reporting_period'].get('turn')==state['turn']:bound.update(entities['reporting_period']['value'])
    if re.search(r'\b(?:single|manual(?:ly)?|entered|typed)\b',text,re.I):bound['source']='manual'
@@ -234,6 +260,12 @@ def requests(plan,state,c,mid,today,definitions,text,notes=None):
   elif name=='get_income_summary':
    if intent=='past_what_if' and not entities.get('reporting_period'):continue # asked for, never defaulted
    args=dict(comparison if comparison and args and {k:args.get(k) for k in ('start','end')}==comparison else period)
+   if OWN_AVERAGE.search(text) and not entities.get('reporting_period'):
+    # Averages with no named period use the last three complete months, so a month's average is not just its total.
+    end=date.fromisoformat(args['end']);first=end.replace(day=1)
+    for _ in range(2):first=(first-timedelta(days=1)).replace(day=1)
+    args={'start':first.isoformat(),'end':end.isoformat()}
+  elif name=='get_cashflow_book':args={'reference_date':today.isoformat()} # the backend binds the reference date (business today)
   elif name=='calculate_loan_repayment':
    expected=loan_args(entities)
    if expected is None:continue

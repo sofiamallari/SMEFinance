@@ -187,6 +187,22 @@ class Conversation:
    # Saved values return; figures are fetched again for this turn.
    return self.backend(token,mid,p,row,state,text,state['intent'],today,definitions,deadline,rid,trace,persist=True,lead='Back to the '+name+'.',reason='resume')
   if route=='unclear':return respond(routes.unclear(state),classification='CLARIFICATION')
+  if route=='guide':
+   from copilot.category_guide import answer as guide_answer
+   return respond(guide_answer(rule['kind'],rule['entry']),classification='CATEGORY_GUIDE')
+  if route=='column':
+   if 'get_recent_transactions' not in allowed:return respond("Your uploaded file's columns aren't available for your account. Ask the business owner for Transaction History access.",classification='DENIED')
+   rows=self.partner.gateway.execute(token,mid,'get_recent_transactions',{'file_columns':True,'limit':20},deadline=deadline)
+   reply=routes.explain_columns(rows,text)
+   if rule.get('soft') and reply.startswith('Your imported files have these columns'):
+    rule=None # "what does X mean?" about something that is not a file column: leave it to the normal route
+   else:return self.say(row,text,self.partner.response(reply,classification='FILE_COLUMNS',engine='generalized',tools_used=['get_recent_transactions']))
+  if not rule:return None
+  if route=='define':
+   # Answered on its own; an open topic stays as it was (one gentle reminder at most).
+   reply=rule['term'];parked=state.get('pending')
+   if parked and not parked.get('reminded'):reply+=' We can go back to the '+(cs.subject(state['entities']) or 'earlier question')+" whenever you're ready.";state['pending']={**parked,'reminded':True}
+   return respond(reply,classification='EDUCATION')
   if route in ('export','action'):
    self.partner.gateway.event(p,mid,'ai_review_request_denied',outcome='denied')
    return respond(routes.guidance(p,mid,text,route),classification='DENIED')
@@ -337,6 +353,10 @@ class Conversation:
      if entity not in updated['entities']:
       if (updated.get('pending') or {}).get('entity') not in [e for e,_ in evidence.NEEDS[intent]]:updated['pending']={'entity':entity,'text':question,'intent':intent}
       break
+    # An affordability question without any cost asks for the cost once (the forecast is still shown).
+    ents=updated['entities']
+    if intent=='decision_support' and not updated.get('pending') and not any(k in ents for k in ('one_time_cost','recurring_expense','expansion_cost')) and not updated.get('scenarios'):
+     updated['pending']={'entity':'one_time_cost','text':'How much do you expect the '+((ents.get('business_subject') or {}).get('value') or 'purchase')+' to cost?','intent':intent}
     # Tag a new question with the topic that asked it, so it is only repeated on that topic.
     if updated.get('pending') and 'intent' not in updated['pending']:updated['pending']={**updated['pending'],'intent':intent}
     row['conversation_state']=state=updated # Verified user answers survive narration failures.
@@ -475,7 +495,8 @@ INTERPRETATION=("Interpret the current financial conversation under the JSON sch
  "A question about today's balance or what the cash flow contains is a cash_flow question in the same conversation, not a topic_change; keep the saved details. "
  "Natural dates such as on December 10th are purchase_date spans; select the span with the month and day. "
  "Intents: transactions for a specific TX- reference or recent/today's transactions; data_quality for imports and data-quality alerts; business_growth for maturity stage or growth readiness; financing also covers financing matches and RBF quotes; cash_flow also covers cash-flow alerts. "
- "Expenses, net income and profit questions use get_income_summary.")
+ "Expenses, net income and profit questions use get_income_summary; it also carries average revenue and expense per month, week and day and the expense split. "
+ "Receivables, who owes the business, overdue invoices, bills due, the 7-day runway and cash on hand from the uploaded workbook are cash_flow questions that use get_cashflow_book.")
 INTERPRETATION+=(" Intents: loan_calculation for loan repayment, monthly loan payment or interest-rate-change questions (financing_amount, annual_interest_rate, financing_duration, interest_rate_change); "
  "past_what_if for what-if questions about a past period, such as leaving out a cost already spent (past_expense, reporting_period). "
  "A cost what-if that also changes sales or expenses by a percentage is one decision_support scenario (sales_change_percent or expense_change_percent plus the cost).")
@@ -517,6 +538,8 @@ NARRATION=("Answer the user's question directly in one or two short, plain sente
  "For affordability or decision questions you may use up to four sentences: never just refuse; show what the app has. Cite the cash-flow overview claim; once a cost is known, cite the user's cost claim and analysis.cost_cushion (illustrative arithmetic, not a recalculated forecast); once a scenario exists, cite its adjusted result. "
  "For 'what is in the cash flow' cite the composition claim and, if present, analysis.cost_not_applied. For balance questions cite the overview claim; there is no verified bank balance. A text segment may briefly say you are helping evaluate the decision, without figures. "
  "Treat the app's records as the business's actual data; forecasts are estimates not reconciled with the bank. For transaction, data-quality, income, alert, financing-match, RBF and maturity questions cite the matching claim (and its requires) directly. "
+ "For receivables, who owes the business, overdue invoices, bills due, 7-day runway or workbook cash-on-hand questions cite the matching cashflow_book claim with its requires (the workbook basis); if cashflow_book_missing is supplied, cite it, it tells the user where to upload the workbook. "
+ "For average revenue or expense cite income_averages; for the expense split or breakdown cite expense_split. "
  "For trend questions cite analysis.trend (and the income or sales claim if also asked). For loan_calculation cite the loan claim (and loan_repayment_rate_change when present) with their requires; for past_what_if cite analysis.past_what_if with its requires. "
  "When diagnose_question is true, the app can only show data reasons: cite the comparison and its caveat, the data-quality summary and the check-imports recommendation; never suggest business causes. "
  "If previous_attempt_rejected is present, fix exactly that problem. For educational definitions use impersonal language with 'means' or 'refers to', without the personal financial-position patterns 'profit is', 'your profit', or 'your cash'.")
@@ -543,6 +566,10 @@ def compose(records,text,intent=None,diagnose=False):
  if re.search(r'\balerts?\b|\bwarnings?\b',text,re.I):module=['cash_flow_alerts',*module]
  if re.search(r'\bexpenses?\b|\bnet income\b|\bprofit\b',text,re.I):module=['income_summary',*module]
  if re.search(r'\btrends?\b|\bover time\b|\bmonth by month\b|\bmonthly\b',text,re.I):module=[*module,'sales_trend']
+ split=re.search(r'\bexpense (?:split|breakdown)|\bbreak ?down (?:of )?my expenses|\bexpenses? by category',text,re.I)
+ if re.search(r'\baverages?\b',text,re.I) or (routes.OWN_AVERAGE.search(text) and not split):module=['income_averages',*module]
+ if split:module=['expense_split',*module]
+ if routes.BOOK.search(text) or find('cashflow_book_missing'):module=['cashflow_book_missing',*book_metrics(text),*module]
  picked=[find(m) for m in module if find(m)]
  if picked:return with_requires(picked[:2])
  overview,composition=find('cash_flow_overview'),find('cash_flow_composition')
@@ -556,6 +583,13 @@ def compose(records,text,intent=None,diagnose=False):
  primary=next((k for k in ['analysis.comparison','fact0.net_sales',find('min_balance')] if k and k in records),None)
  if not primary:return advice[:1]
  return with_requires([primary])
+
+def book_metrics(text):
+ """Which Cash Flow tab workbook claims answer the question, most specific first."""
+ picked=[metric for pattern,metric in ((r'\bowe|receivabl|customers?|collect|invoices?','cashflow_book_receivables'),(r'overdue|past due|\blate\b','cashflow_book_overdue'),
+  (r'\bbills?\b|payabl|suppliers?|\bpay\b','cashflow_book_payables_7d'),(r'runway|cash on hand','cashflow_book_runway_7d'),(r'project\w*|next (?:few |three |3 )?months|ending cash','cashflow_book_projection')) if re.search(pattern,text,re.I)]
+ if 'cashflow_book_overdue' in picked and 'cashflow_book_receivables' in picked and not re.search(r'\bowe|receivabl|collect',text,re.I):picked.remove('cashflow_book_receivables')
+ return picked or ['cashflow_book_summary','cashflow_book_runway_7d']
 
 def sources_and_tools(records,keys):
  """Full labeled evidence, assumptions and qualifications for the Sources & Tools panel."""

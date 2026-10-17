@@ -211,32 +211,68 @@ def tool_claims(name,value,currency='CNY',prefix='fact'):
     return records
 
 
-def _txn(row):
-    kind={'sale':'sale','refund':'refund','expense':'expense'}.get(row.get('transaction_type'),row.get('transaction_type') or 'transaction')
-    parts=[day(row['business_date']),cash(row['amount'],row.get('currency') or 'CNY')+' '+kind]
-    if row.get('payment_method'):parts.append('via '+str(row['payment_method']).replace('_',' '))
+METHOD_LABELS={'external_card':'card','qr_pay':'QR pay','tap_pay':'tap-to-pay','cash':'cash','external_wallet':'e-wallet','pay_link':'pay link','bank_transfer':'bank transfer'}
+CARD_COLUMN=re.compile(r'card (?:type|brand|network|scheme)|\bscheme\b|\bnetwork\b|\bissuer\b|\bbrand\b',re.I)
+
+def _source(row,pattern):
+    """The uploaded file's own value for a column, e.g. Payment Method -> "Credit Card"."""
+    values=row.get('source_values') or {}
+    return next((str(v) for k,v in values.items() if re.search(pattern,k,re.I) and str(v).strip()),None)
+
+def _paid(row):
+    method=row.get('payment_method')
+    if not method:return None
+    if method=='not_recorded':return 'payment method not recorded in your expense report'
+    label=METHOD_LABELS.get(method,str(method).replace('_',' '))
+    original=_source(row,r'payment|tender|channel');brand=_source(row,CARD_COLUMN.pattern)
+    detail=[x for x in (brand,original) if x and x.strip().lower()!=label.lower()]
+    return 'paid by '+label+(' ("'+'", "'.join(dict.fromkeys(detail))+'" in your file)' if detail else '')
+
+def _txn(row,dated=True):
+    kind={'sale':'sale','refund':'refund','expense':'expense','cash_in':'cash-in (not revenue)','cash_out':'cash-out (not an expense)'}.get(row.get('transaction_type'),row.get('transaction_type') or 'transaction')
+    parts=([day(row['business_date'])] if dated else [])+[cash(row['amount'],row.get('currency') or 'CNY')+' '+kind]
+    if _paid(row):parts.append(_paid(row))
     parts.append(str(row.get('status') or 'unknown'))
     if row.get('reference'):parts.append('reference '+str(row['reference']))
+    from copilot.category_guide import label
+    if label(row.get('classification')) and row.get('classification') not in ('sales_revenue','operating_expense'):parts.append('classified as '+label(row['classification'])+(' (needs review)' if row['classification'] in ('needs_review','capital_purchase') else ''))
     return ', '.join(parts)+(' ("'+row['description']+'")' if row.get('description') else '')
+
+def _file_values(row):
+    values=row.get('source_values') or {}
+    return '; '.join(str(k)+': '+str(v) for k,v in list(values.items())[:12])
 
 def _transaction_details(value,add,prefix):
     ref=value['transaction_id']
     if not value.get('found'):
         add('transaction','transaction_lookup','not_found','No recorded transaction with reference '+ref+' was found in Transaction History for this business.','backend_fact',
             brief='I couldn’t find transaction '+ref+' in your recorded transactions for this business.');return
-    add('transaction','transaction_lookup',value['amount'],'Transaction '+ref+': '+day(value['business_date'])+'; type '+value['transaction_type']+'; amount '+money(value['amount'],value.get('currency') or 'CNY')+'; payment method '+str(value.get('payment_method'))+'; status '+value['status']+'; source '+value['source']+'; description '+str(value.get('description'))+'.',
+    add('transaction','transaction_lookup',value['amount'],'Transaction '+ref+': '+day(value['business_date'])+'; type '+value['transaction_type']+'; amount '+money(value['amount'],value.get('currency') or 'CNY')+'; payment method '+str(value.get('payment_method'))+'; status '+value['status']+'; source '+value['source']+'; description '+str(value.get('description'))+'.'+(' Uploaded file values: '+_file_values(value)+'.' if value.get('source_values') else ''),
         'backend_fact',currency=value.get('currency') or 'CNY',brief='Transaction '+ref+': '+_txn(value)+'.')
+    if value.get('source_values'):
+        add('transaction_file','transaction_file_values','file','From your uploaded file: '+_file_values(value)+'.','backend_fact',brief='In your uploaded file this row shows '+_file_values(value)+'.')
 
 def _recent_transactions(rows,add,prefix):
     if not rows:
-        add('recent','recent_transactions','0','No recorded transactions were returned for that request.','backend_fact',brief='I didn’t find any recorded transactions for that period.');return
+        add('recent','recent_transactions','0','No recorded transactions were returned for that request.','backend_fact',brief='I didn’t find any recorded transactions matching that.');return
     shown=rows[:5]
     add('recent','recent_transactions',str(len(rows)),'Recorded transactions (latest first): '+'; '.join(r['transaction_id']+' '+_txn(r) for r in rows)+'.','backend_fact',
-        brief=('Your latest recorded transaction'+('s are: ' if len(shown)>1 else ' is ')+'; '.join(_txn(r) for r in shown)+'.'))
+        brief=(('On '+day(rows[0]['business_date'])+': ' if len({r['business_date'] for r in rows})==1 and len(rows)>1 else 'Your latest recorded transaction'+('s are: ' if len(shown)>1 else ' is '))+'; '.join(_txn(r,dated=not (len({x['business_date'] for x in rows})==1 and len(rows)>1)) for r in shown)+'.'+(' (Showing '+str(len(shown))+' of '+str(len(rows))+'.)' if len(rows)>len(shown) else '')))
+    days=sorted({r['business_date'] for r in rows})
+    if len(days)==1 and len(rows)>1:
+        # "What card did I use on Oct 2?": how that day's returned transactions were paid.
+        mix={}
+        for r in rows:
+            label=METHOD_LABELS.get(r.get('payment_method'),str(r.get('payment_method') or 'unknown').replace('_',' '));mix[label]=mix.get(label,0)+1
+        text=', '.join(str(n)+' '+label for label,n in sorted(mix.items(),key=lambda x:-x[1]))
+        add('recent_day','transactions_by_payment_method',str(len(rows)),'Payment methods for '+str(len(rows))+' returned transactions on '+day(days[0])+': '+text+'.','backend_fact',
+            brief='On '+day(days[0])+', the '+str(len(rows))+' transactions I found were paid by '+text+'.'+(' This is the latest '+str(len(rows))+' of that day.' if len(rows)>=20 else ''))
+    if len(rows)==1 and rows[0].get('source_values'):
+        add('recent_file','transaction_file_values','file','From your uploaded file: '+_file_values(rows[0])+'.','backend_fact',brief='In your uploaded file this row shows '+_file_values(rows[0])+'.')
 
 def _data_quality(value,add,prefix):
     rate=lambda v:'n/a' if v is None else format(Decimal(str(v))*100,'.1f')+'%'
-    add('quality','data_quality_summary',str(value['open_alerts']),'Imports: '+str(value['total_import_runs'])+' runs, '+str(value['successful_imports'])+' successful, '+str(value['failed_imports'])+' failed; parsed rows '+str(value['parsed_rows'])+'; valid-row rate '+rate(value['valid_row_rate'])+'; invalid-row rate '+rate(value['invalid_row_rate'])+'; open alerts '+str(value['open_alerts'])+'; last successful import '+str(value['last_successful_import'] or 'none')+'.','backend_fact',
+    add('quality','data_quality_summary',str(value['open_alerts']),'Imports: '+str(value['total_import_runs'])+' runs, '+str(value['successful_imports'])+' successful, '+str(value['failed_imports'])+' failed; parsed rows '+str(value['parsed_rows'])+'; valid-row rate '+rate(value['valid_row_rate'])+'; invalid-row rate '+rate(value['invalid_row_rate'])+'; open alerts '+str(value['open_alerts'])+'; last successful import '+str(value['last_successful_import'] or 'none')+'. Run counts include earlier imports; each Bulk POS Import replaces all earlier imported transactions (manual entries are kept), so only the latest import is in your records.','backend_fact',
         brief='You have '+str(value['total_import_runs'])+' import runs ('+str(value['successful_imports'])+' successful, '+str(value['failed_imports'])+' failed), '+rate(value['valid_row_rate'])+' of parsed rows were valid, and there '+('is 1 open data-quality alert' if value['open_alerts']==1 else 'are '+str(value['open_alerts'])+' open data-quality alerts')+(', with the last successful import on '+day(str(value['last_successful_import'])[:10]) if value['last_successful_import'] else '')+'.')
     if value['attention']:
         top=value['attention'][0]
@@ -250,6 +286,7 @@ def _income(value,add,prefix):
             brief=('Records for '+span_text(requested)+' only cover '+span_text(value['coverage'])+', so some transactions may not be recorded yet.' if value['coverage'] else 'No records were found for '+span_text(requested)+'.'))
     add('income','income_summary',value['net_income'],'Income summary '+period(requested)+': recorded net sales '+money(value['net_sales'],c)+', recorded expenses '+money(value['expenses'],c)+', net income '+money(value['net_income'],c)+' ('+str(value['record_count'])+' records). Net income is not available cash.','derived_calculation',currency=c,period=requested,
         brief='For '+span_text(requested)+', recorded net sales were '+cash(value['net_sales'],c)+', expenses '+cash(value['expenses'],c)+' and net income '+cash(value['net_income'],c)+'.',requires=[prefix+'.coverage_gap'] if gap else [])
+    _income_extra(value,add,prefix)
 
 def _alerts(rows,add,prefix):
     add('alerts_basis','alerts_basis','estimate','Alerts are rule-based results from the cash-flow forecast; the forecast is an estimate and is not reconciled with your bank.','data_limitation',
@@ -302,8 +339,63 @@ def _loan(value,add,prefix):
         add('loan_alternative','loan_repayment_rate_change',alt['monthly_payment'],'At '+_rate(alt['annual_rate_percent'])+' a year: monthly payment '+money(alt['monthly_payment'],c)+', total repaid '+money(alt['total_paid'],c)+', total interest '+money(alt['total_interest'],c)+'.','derived_calculation',currency=c,
             brief='At '+_rate(alt['annual_rate_percent'])+' the payment would be about '+cash(alt['monthly_payment'],c)+' a month ('+cash(abs(diff),c)+(' more' if diff>=0 else ' less')+'), '+cash(alt['total_paid'],c)+' in total.',requires=[basis])
 
+BOOK_UPLOAD='Cash Flow tab > Upload workbook'
+
+def _book_item(i,c):
+    when=('overdue '+str(-i['days'])+' day'+('' if i['days']==-1 else 's')) if i['days']<0 else 'due today' if i['days']==0 else 'due tomorrow' if i['days']==1 else 'due '+day(i['due'])
+    return i['party']+' '+cash(i['amount'],c)+' ('+when+')'
+
+def _cashflow_book(value,add,prefix):
+    """Cash Flow tab figures from the uploaded workbook; every figure is qualified by its upload and reference dates."""
+    if not value.get('available'):
+        add('book_missing','cashflow_book_missing','none','No cash-flow workbook has been uploaded for this business, so receivables, payables and the 7-day runway are not available. Upload one in '+BOOK_UPLOAD+'.','data_limitation',
+            brief='You haven’t uploaded a cash-flow workbook yet, so I can’t show who owes you, bills due or your 7-day runway. Upload it in '+BOOK_UPLOAD+'.');return
+    c=value['currency'];ref=value['reference_date'];basis=prefix+'.book_basis'
+    uploaded=(' uploaded '+day(value['uploaded_at'])) if value.get('uploaded_at') else ''
+    add('book_basis','cashflow_book_basis','workbook','Based on your cash-flow workbook'+uploaded+', as of '+day(ref)+'. Balances are invoice or bill amounts minus amounts collected or paid; cash on hand is the value in your workbook, not a bank-verified balance; projections are not guarantees.','data_limitation',
+        brief='Based on your cash-flow workbook'+uploaded+', as of '+day(ref)+'; projections are not guarantees.')
+    ar=value['top_receivables'];ap=value['top_payables']
+    add('book_summary','cashflow_book_summary',value['total_receivables'],'Workbook as of '+day(ref)+': open receivables '+money(value['total_receivables'],c)+' ('+str(value['receivables_count'])+' invoices), of which overdue '+money(value['overdue_receivables'],c)+' ('+str(value['overdue_receivables_count'])+'); open payables '+money(value['total_payables'],c)+' ('+str(value['payables_count'])+' bills), of which overdue '+money(value['overdue_payables'],c)+' ('+str(value['overdue_payables_count'])+').','backend_fact',currency=c,
+        brief='Customers owe you '+cash(value['total_receivables'],c)+' ('+cash(value['overdue_receivables'],c)+' overdue), and you owe suppliers '+cash(value['total_payables'],c)+' ('+cash(value['overdue_payables'],c)+' overdue).',requires=[basis])
+    if value['receivables_count']:
+        add('book_receivables','cashflow_book_receivables',value['total_receivables'],'Open receivables (earliest due first): '+'; '.join(_book_item(i,c) for i in ar)+('; and '+str(value['receivables_count']-len(ar))+' more' if value['receivables_count']>len(ar) else '')+'.','backend_fact',currency=c,
+            brief='Customers owe you '+cash(value['total_receivables'],c)+' across '+str(value['receivables_count'])+' open invoice'+('s' if value['receivables_count']!=1 else '')+'; the earliest due are '+', '.join(_book_item(i,c) for i in ar[:3])+'.',requires=[basis])
+    else:add('book_receivables','cashflow_book_receivables','0','No open receivables in the workbook.','backend_fact',brief='Your workbook shows no open customer invoices.',requires=[basis])
+    late=[i for i in ar if i['bucket']=='OVERDUE'];late_bills=[i for i in ap if i['bucket']=='OVERDUE']
+    if value['overdue_receivables_count'] or value['overdue_payables_count']:
+        parts=[]
+        if value['overdue_receivables_count']:parts.append(cash(value['overdue_receivables'],c)+' in '+str(value['overdue_receivables_count'])+' overdue customer invoice'+('s' if value['overdue_receivables_count']!=1 else '')+(': '+', '.join(_book_item(i,c) for i in late[:3]) if late else ''))
+        if value['overdue_payables_count']:parts.append(cash(value['overdue_payables'],c)+' in '+str(value['overdue_payables_count'])+' overdue supplier bill'+('s' if value['overdue_payables_count']!=1 else '')+(': '+', '.join(_book_item(i,c) for i in late_bills[:3]) if late_bills else ''))
+        add('book_overdue','cashflow_book_overdue',value['overdue_receivables'],'Overdue as of '+day(ref)+': '+'; '.join(parts)+'.','backend_fact',currency=c,brief='Overdue: '+'; and '.join(parts)+'.',requires=[basis])
+    else:add('book_overdue','cashflow_book_overdue','0','Nothing is overdue in the workbook as of '+day(ref)+'.','backend_fact',brief='Nothing in your workbook is overdue.',requires=[basis])
+    week=[i for i in ap if i['bucket'] in ('DUE_TOMORROW','NEXT_7')]
+    add('book_payables','cashflow_book_payables_7d',value['upcoming_payables_7d'],'Bills due in the next 7 days (including today): '+money(value['upcoming_payables_7d'],c)+' ('+str(value['payables_7d_count'])+' bills)'+(': '+'; '.join(_book_item(i,c) for i in week) if week else '')+'. Open payables in total: '+money(value['total_payables'],c)+'.','backend_fact',currency=c,
+        brief=('You have '+cash(value['upcoming_payables_7d'],c)+' in '+str(value['payables_7d_count'])+' bill'+('s' if value['payables_7d_count']!=1 else '')+' due in the next 7 days'+(': '+', '.join(_book_item(i,c) for i in week[:3]) if week else '')+'.') if value['payables_7d_count'] else 'No supplier bills are due in the next 7 days.',requires=[basis])
+    cash_label='cash on hand from your workbook' if value.get('cash_on_hand_recorded') else 'cash on hand (not set in your workbook, so zero)'
+    add('book_runway','cashflow_book_runway_7d',value['net_runway_7d'],'7-day net runway: '+cash_label+' '+money(value['cash_on_hand'],c)+' plus expected collections '+money(value['expected_collections_7d'],c)+' ('+str(value['collections_count'])+' invoices) minus upcoming payables '+money(value['upcoming_payables_7d'],c)+' ('+str(value['payables_7d_count'])+' bills) = '+money(value['net_runway_7d'],c)+'.','derived_calculation',currency=c,
+        brief='Your 7-day net runway is '+cash(value['net_runway_7d'],c)+': '+cash_label+' '+cash(value['cash_on_hand'],c)+', plus '+cash(value['expected_collections_7d'],c)+' expected from customers, minus '+cash(value['upcoming_payables_7d'],c)+' in bills due.',requires=[basis])
+    if value.get('projected_months'):
+        months=value['projected_months']
+        month=lambda m:date.fromisoformat(m['month']+'-01').strftime('%B %Y')
+        add('book_projection','cashflow_book_projection',months[-1]['ending'],'Projected months (open invoices and bills due in each month only, not expected sales): '+'; '.join(month(m)+' in '+money(m['inflow'],c)+', out '+money(m['outflow'],c)+', ending cash '+money(m['ending'],c) for m in months)+'.','derived_calculation',currency=c,
+            brief='Projected ending cash: '+', '.join(month(m)+' '+cash(m['ending'],c) for m in months)+' (from open invoices and bills only).',requires=[basis])
+
+def _income_extra(value,add,prefix):
+    """Dashboard Average Revenue / Average Expense and Expense Split for the same period."""
+    requested=value['period'];c=value['currency'];gap=[prefix+'.coverage_gap'] if coverage_gap(value) else []
+    a=value.get('averages')
+    if a:
+        add('income_averages','income_averages',a['monthly']['net_sales'],'Averages over '+period(requested)+' ('+str(a['days'])+' days, '+format(a['weeks'],'.2f')+' weeks, '+format(a['months'],'.2f')+' months; a partial month counts by its days): average revenue '+money(a['monthly']['net_sales'],c)+' a month, '+money(a['weekly']['net_sales'],c)+' a week, '+money(a['daily']['net_sales'],c)+' a day; average expense '+money(a['monthly']['expenses'],c)+' a month, '+money(a['weekly']['expenses'],c)+' a week, '+money(a['daily']['expenses'],c)+' a day.','derived_calculation',currency=c,period=requested,
+            brief='For '+span_text(requested)+', average revenue was '+cash(a['monthly']['net_sales'],c)+' a month ('+cash(a['weekly']['net_sales'],c)+' a week, '+cash(a['daily']['net_sales'],c)+' a day) and average expense '+cash(a['monthly']['expenses'],c)+' a month ('+cash(a['weekly']['expenses'],c)+' a week, '+cash(a['daily']['expenses'],c)+' a day).',requires=gap)
+    split=value.get('expense_split')
+    if split is not None:
+        label=lambda k:str(k).replace('_',' ')
+        if split:add('expense_split','expense_split',split[0]['amount'],'Expense split '+period(requested)+': '+'; '.join(label(r['category'])+' '+money(r['amount'],c)+' ('+format(r['share_percent'],'.1f')+'%)' for r in split)+'.','backend_fact',currency=c,period=requested,
+            brief='Your expenses for '+span_text(requested)+' split as '+', '.join(label(r['category'])+' '+cash(r['amount'],c)+' ('+format(r['share_percent'],'.1f')+'%)' for r in split[:4])+'.',requires=gap)
+        else:add('expense_split','expense_split','0','No recorded expenses in '+period(requested)+'.','backend_fact',period=requested,brief='No expenses were recorded for '+span_text(requested)+'.',requires=gap)
+
 MODULE_CLAIMS={'calculate_loan_repayment':_loan,'get_transaction_details':_transaction_details,'get_recent_transactions':_recent_transactions,'get_data_quality':_data_quality,'get_income_summary':_income,
- 'get_cash_flow_alerts':_alerts,'get_financing_matches':_matches,'get_rbf_quote':_rbf,'get_business_maturity':_maturity}
+ 'get_cash_flow_alerts':_alerts,'get_financing_matches':_matches,'get_rbf_quote':_rbf,'get_business_maturity':_maturity,'get_cashflow_book':_cashflow_book}
 
 
 def verify_response(content,records,*,inline=False):
@@ -506,7 +598,7 @@ def analytical_claims(results):
         # One backend sentence for "how is the trend": each month's recorded sales and transaction count, oldest first.
         currency=rows[0].get('currency','CNY');shown=rows[-6:]
         label=lambda p:datetime.strptime(p,'%Y-%m').strftime('%b %Y') if re.fullmatch(r'\d{4}-\d{2}',str(p)) else str(p)
-        bucket=lambda r:label(r['period'])+' '+cash(r['recorded_net_sales'],currency)+' ('+format(r['transaction_count'],',')+' transactions)'
+        bucket=lambda r:label(r['period'])+' '+cash(r['recorded_net_sales'],currency)+' ('+format(r['transaction_count'],',')+(' transaction)' if r['transaction_count']==1 else ' transactions)')
         records['analysis.trend']={'kind':'derived_calculation','metric':'sales_trend','value':str(Decimal(shown[-1]['recorded_net_sales'])-Decimal(shown[0]['recorded_net_sales'])),'currency':currency,'source':name,
             'inputs':[prefix+'.sales'+str(i) for i in range(len(rows))],'formula':'returned buckets, oldest first',
             'display':'Recorded sales and transaction volume by period: '+'; '.join(bucket(r) for r in rows)+'. The latest period may be partial; sales are not profit or cash.',

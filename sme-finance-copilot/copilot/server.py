@@ -129,7 +129,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _read_raw(self) -> bytes:
         n = int(self.headers.get("Content-Length", 0) or 0)
-        maximum=14_100_000 if urlparse(self.path).path in ('/api/pos-import/stage','/api/pos-import/inspect') else MAX_BODY
+        maximum=14_100_000 if urlparse(self.path).path in ('/api/pos-import/stage','/api/pos-import/inspect','/api/cashflow-book/upload') else MAX_BODY
         if n < 0 or n > maximum:
             raise ValueError("request too large")
         return self.rfile.read(n) if n else b""
@@ -269,6 +269,19 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/api/pos-import/stage' and method=='POST':
             if set(body)-{'merchant','files'}:raise InputError('Unsupported upload request fields')
             return self._send(201,pos_service().stage(token,body.get('merchant'),body.get('files')))
+        if path.startswith('/api/cashflow-book'):
+            from copilot.cashflow_book import CashflowBook
+            book=CashflowBook(AUTH,COPILOT)
+            if path=='/api/cashflow-book' and method=='GET':return self._send(200,book.view(token,q.get('merchant'),q.get('ref'),q.get('cash')))
+            if path=='/api/cashflow-book/upload' and method=='POST':
+                if set(body)-{'merchant','file'}:raise InputError('Unsupported upload fields')
+                return self._send(200,book.upload(token,body.get('merchant'),body.get('file')))
+            if path=='/api/cashflow-book/template' and method=='GET':
+                name,content=book.template(token,q.get('merchant'))
+                return self._send(200,content,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',{'Content-Disposition':'attachment; filename="'+name+'"','Cache-Control':'no-store'})
+        if path=='/api/pos-import/template' and method=='GET':
+            name,content=pos_service().template(token,q.get('merchant'))
+            return self._send(200,content,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',{'Content-Disposition':'attachment; filename="'+name+'"','Cache-Control':'no-store'})
         if path.startswith('/api/pos-import/'):
             parts=path.split('/');bid=parts[3];mid=q.get('merchant') or body.get('merchant');service=pos_service()
             if len(parts)==4 and method=='GET':return self._send(200,service.get_session(token,mid,bid))
@@ -328,7 +341,7 @@ class Handler(BaseHTTPRequestHandler):
             body = {}
             # Reject unauthenticated/CSRF-invalid transaction uploads before allocating
             # their larger body. Merchant and stage binding are rechecked after parsing.
-            transaction_request=path.startswith(('/api/pos-import','/api/merchant-transactions','/api/data-quality'))
+            transaction_request=path.startswith(('/api/pos-import','/api/merchant-transactions','/api/data-quality','/api/cashflow-book'))
             if transaction_request:
                 token=session_token(self.headers);p=AUTH.principal(token)
                 if p.role not in ('owner','staff'):raise AccessDenied('Administrative/financing accounts have no merchant transaction access')

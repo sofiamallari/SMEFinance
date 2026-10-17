@@ -280,6 +280,17 @@
         "SYSTEM_ADMIN": "deny"
       },
       "required_application_permission": "finance.loan_calculation.run"
+    },
+    "cashflow_book_read": {
+      "description": "Read the Cash Flow tab summary computed from the business's uploaded AR/AP workbook",
+      "data_classification_ceiling": "D2",
+      "role_effects": {
+        "SME_OWNER": "allow",
+        "SME_STAFF": "conditional",
+        "BANK": "deny",
+        "SYSTEM_ADMIN": "deny"
+      },
+      "required_application_permission": "finance.cashflow.read"
     }
   },
   "tools": {
@@ -511,7 +522,9 @@
         "status",
         "description",
         "category",
-        "source"
+        "source",
+        "source_values",
+        "classification"
       ],
       "approval": "none",
       "read_only": true,
@@ -536,7 +549,9 @@
         "status",
         "description",
         "category",
-        "source"
+        "source",
+        "source_values",
+        "classification"
       ],
       "approval": "none",
       "read_only": true,
@@ -580,7 +595,9 @@
         "expenses",
         "net_income",
         "record_count",
-        "coverage"
+        "coverage",
+        "averages",
+        "expense_split"
       ],
       "approval": "none",
       "read_only": true,
@@ -698,6 +715,44 @@
       "server_authorization_required": true,
       "result_max_records": 1,
       "timeout_seconds": 5
+    },
+    "get_cashflow_book": {
+      "capability": "cashflow_book_read",
+      "resource_scope": "authorized_merchant",
+      "allowed_data_classes": [
+        "D2"
+      ],
+      "output_field_allowlist": [
+        "available",
+        "reference_date",
+        "uploaded_at",
+        "currency",
+        "cash_on_hand",
+        "cash_on_hand_recorded",
+        "total_receivables",
+        "receivables_count",
+        "overdue_receivables",
+        "overdue_receivables_count",
+        "total_payables",
+        "payables_count",
+        "overdue_payables",
+        "overdue_payables_count",
+        "expected_collections_7d",
+        "collections_count",
+        "upcoming_payables_7d",
+        "payables_7d_count",
+        "net_runway_7d",
+        "receivable_buckets",
+        "payable_buckets",
+        "top_receivables",
+        "top_payables",
+        "projected_months"
+      ],
+      "approval": "none",
+      "read_only": true,
+      "server_authorization_required": true,
+      "result_max_records": 1,
+      "timeout_seconds": 10
     }
   },
   "authorization_policy": {

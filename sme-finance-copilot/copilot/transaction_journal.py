@@ -66,6 +66,10 @@ class TransactionJournal:
                         if event.get('checksum')!=checksum(body):raise LedgerError()
                         bid=event['batch_id']
                         if bid in batches and batches[bid]['checksum']!=event['checksum']:raise LedgerError()
+                        # A Bulk POS Import replaces earlier imports: their rows stay in the file (append-only) but are no longer current.
+                        for old in event.get('supersedes') or []:
+                            if old not in batches or batches[old]['merchant']!=mid:raise LedgerError()
+                            for tid in [t for t,r in records.items() if r.get('import_batch_id')==old and r.get('merchant_id')==mid]:records.pop(tid)
                         for row in event['transactions']:
                             if row.get('merchant_id')!=mid or not isinstance(row.get('transaction_id'),str) or not isinstance(row.get('amount'),str) or not Decimal(row['amount']).is_finite():raise LedgerError()
                             tid=row['transaction_id']
@@ -104,12 +108,12 @@ class TransactionJournal:
                     stream.seek(offset);stream.truncate();stream.flush();os.fsync(stream.fileno())
                     raise
 
-    def append_batch(self,batch_id,merchant,rows):
+    def append_batch(self,batch_id,merchant,rows,supersedes=None):
         with self.writer():
             records,batches=self.read()
             if batch_id in batches:
                 if batches[batch_id]['transactions']!=rows:raise LedgerError()
                 return False
-            body={'action':'canonical_batch','schema_version':2,'batch_id':batch_id,'merchant':merchant,'transactions':rows}
+            body={'action':'canonical_batch','schema_version':2,'batch_id':batch_id,'merchant':merchant,'transactions':rows,**({'supersedes':sorted(supersedes)} if supersedes else {})}
             self.append({**body,'checksum':checksum(body)})
             return True

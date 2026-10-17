@@ -67,9 +67,10 @@ Gemini never calculates, never sees fields outside the allow-list, and never tri
 | `get_financial_summary` | Dashboard sales, count, record coverage | view_dashboard | D2 |
 | `get_transaction_trends` | Dashboard trends | view_dashboard | D2 |
 | `get_payment_channel_mix` | Dashboard channel volume | view_dashboard | D1 |
-| `get_income_summary` | Net sales, expenses, net income | view_dashboard | D2 |
+| `get_income_summary` | Net sales, expenses, net income; Dashboard Average Revenue / Average Expense (per month, week, day; partial months by days covered) and Expense Split (top 5 categories + other) | view_dashboard | D2 |
 | `get_cash_flow` | Cash Flow forecast | view_forecasts | D2 |
 | `get_cash_flow_alerts` | Cash Flow alerts | view_forecasts | D2 |
+| `get_cashflow_book` | Cash Flow tab workbook (uploaded AR/AP): total and overdue receivables/payables, 7-day collections and bills, net runway, workbook cash on hand, bucket totals, top 5 open invoices and bills, 3 projected months. Reference date = business today (backend-bound). No workbook → says so and points to Cash Flow tab > Upload workbook | view_forecasts | D2 |
 | `get_business_highlights` | Receivables, incentives | view_dashboard | D2 |
 | `get_transaction_details` | Transaction History (by `TX-` reference) | view_transactions | D2 |
 | `get_recent_transactions` | Transaction History (latest / today) | view_transactions | D2 |
@@ -83,7 +84,9 @@ Gemini never calculates, never sees fields outside the allow-list, and never tri
 | `calculate_loan_repayment` | Loan repayment estimate from the user's amount, rate and term (optional rate change) | view_financing | D1 |
 | `search_public_financial_information` | Public search: SME lending rates, industry benchmarks, regulations/tax | use_copilot + approval | D0 |
 
-All tools are read-only and Owner-allowed. Staff need an explicit granular permission (decision: transaction and data-quality tools stay Owner-only). Bank and System Admin are denied. Transaction tools cover transactions recorded in the app (manual entries and imports), the same as Transaction History.
+All tools are read-only and Owner-allowed. Staff need an explicit granular permission (decision: transaction and data-quality tools stay Owner-only). Bank and System Admin are denied. Transaction tools cover transactions recorded in the app (manual entries and imports), the same as Transaction History. A Bulk POS Import replaces all earlier imported transactions (the ledger keeps them but marks them `supersedes`; manual entries are kept), and every tool reads the current ledger only, so replaced rows never reach the chat. Import-run counts in `get_data_quality` still include earlier runs, and its full text says so.
+
+Cash Flow workbook answers always carry the qualification "Based on your cash-flow workbook uploaded <date>, as of <reference date>; projections are not guarantees". Workbook cash on hand is the value typed in the workbook, not a bank-verified balance. Questions about receivables, who owes the business, overdue invoices, bills due, 7-day runway or workbook cash on hand go to `get_cashflow_book` (route B, intent `cash_flow`) instead of the forecast; a plain "runway" or "cash flow next month" still uses the forecast. "Average revenue/expense" and "expense split" about the business's own records stay route B (not an industry search); with no named period, averages use the last three complete months.
 
 ### How app data is described
 
@@ -115,13 +118,19 @@ App records are treated as the business's actual data. Required warnings are the
 | A2 | Definition | "What is RBF?" | A | none | No | S6 S8 | Done |
 | A3 | App how-to | "How do I import POS files?" | A | app guide | Yes | S2 | Done |
 | A4 | General advice | "How do I improve cash flow?" | A | none | No | S6 S8 | Partial |
+| A5 | Explain a file column | "What does Processing Fee mean?" | A | original file values | Yes | S2 S4 | Done |
+| A6 | Category Guide | "Is loan proceeds revenue?", "How do I record a loan repayment?" | A | reviewed guide | Yes | S8 | Done |
+| A7 | Financing option types | "Tell me about equipment leasing" | A | reviewed guide | Yes | S8 | Done (asks region first; no offers) |
 | B1 | Figure for a period | "Sales last month?" | B | tools | Yes | S1–S4 S6 S7 | Done |
 | B2 | One record by reference | "TX-998c…?" | B | tools | Yes | S1 S2 S4 S9 | Done |
 | B3 | Recent / today's records | "My transactions today?" | B | tools | Yes | S1 S2 S4 | Done |
+| B9 | A day's records and payment method | "For my transaction on Oct 2, what card did I use?" | B | tools | Yes | S1 S2 S4 | Done |
 | B4 | Module status | "Alerts / data issues / my stage / matches?" | B | tools | Yes | S1–S4 S7 | Done |
 | B5 | Period comparison | "Sep vs Aug?" | B | tools + backend calc | Yes | S6 S7 | Done |
 | B6 | Best period | "Best month?" | B | tools | Should | S6 | Partial (best month needs Gemini) |
 | B7 | Several asks | "Sales and alerts?" | G | up to 3 tools | Should | S3 | Partial (without Gemini only one module per turn) |
+| B10 | Cash Flow workbook | "Who owes me money?", "What's overdue?", "Bills due this week?", "My 7-day runway?", "Cash on hand from my workbook?" | B | workbook tool | Yes | S1–S4 S6 S7 | Done |
+| B11 | Averages and expense split | "My average revenue and expense?", "My expense split?" | B | income summary | Yes | S1–S4 S6 S7 | Done |
 | B8 | Is my data complete? | "Why is October empty?" | B | data quality + coverage | Yes | S7 | Done |
 | E1 | Why did it change? | "Why did sales drop?" | E | tools + data quality | Yes | S8 | Done |
 | C1 | Baseline forecast | "Cash flow next month?" | C | forecast | Figures yes | S6 S7 | Done |
@@ -177,6 +186,32 @@ App records are treated as the business's actual data. Required warnings are the
 3. Don't attach the parked question to the unrelated answer.
 4. Resume when the user answers the parked question or says "back to …".
 5. At most one gentle reminder.
+
+## 6a. Standard report template and Copilot Category Guide
+
+The standard revenue and expense report template adds classification columns ("Revenue / Cash-In Classification", "Cash-Flow / Accounting Type") and note columns. Bulk POS Import maps the classification column automatically (`classification` field, `copilot/canonical_transactions.py`):
+
+| Classification | Stored as | Counted in |
+|---|---|---|
+| Sales Revenue, Other Business Income | sale | Sales |
+| Customer Refund / Sales Return | refund | Reduces sales |
+| Loan Proceeds, Owner Contribution, Sales Tax / VAT Collected | cash_in | Neither sales nor net income (shown as non-revenue cash-in) |
+| Operating Expense, Tax / Permit / Government Fee, Loan Interest / Financing Fee, Income Tax, Equipment / Capital Purchase | expense | Expenses (capital purchases flagged for review) |
+| Loan Principal Repayment | cash_out | Neither expenses nor net income (shown as non-expense cash-out) |
+| Unknown / Needs Review, or an unrecognised label | the row's own type | As that type, flagged for review |
+
+The import mapping screen shows each tab's own template fields:
+
+| Tab | Fields mapped automatically |
+|---|---|
+| Revenue Report | Transaction ID, Transaction Date, Payment Method, Gross Amount, Processing Fee, Net Amount, Revenue / Cash-In Classification (Gross − Processing Fee must equal Net on every row) |
+| Expense Report | Expense ID, Expense Date, Category, Sub-Category, Description / Vendor, Amount (confirm it is the expense amount), Cash-Flow / Accounting Type |
+
+Note columns (Tax / Copilot Note, Indicative Tax Treatment, Financing / Tax Note) are kept with each row as original file values and explained in chat. An expense report does not need a payment-method column: its rows are stored as "not recorded" (bank transfer is also accepted for expenses), they count in expenses as usual, and they never enter the customer payment-channel mix. Revenue reports still require a payment method.
+
+Cash-in and cash-out rows are also left out of the cash-flow forecast's sales and expense patterns. A cash-in label in an expense report, or a cash-out label in a revenue report, is rejected at validation.
+
+The chat answers category and financing-option questions from a reviewed registry (`copilot/category_guide.py`), never from a workbook's text: when a category applies, how to handle it, what the app does with it, and the tax disclaimer. It never states a tax rate, a deductibility verdict, an offer or an approval. Every imported transaction keeps its original file row, so the chat can show a transaction's file values, its payment method in the file's wording (for example "Credit Card", or a card brand if the file has that column), and explain any column with examples from the user's records.
 
 ## 7. Failure handling per route
 
