@@ -92,7 +92,9 @@ class PurchaseIntegration(governance.GovernanceTests):
   r=self.ask(text);self.assertEqual(r['verification'],'passed');self.assertEqual(self.state()['facts']['fact0.net_sales']['period'],{'start':'2026-07-01','end':'2026-09-30'})
  def test_cash_funding_asks_only_an_unresolved_question(self):
   self.scripted([{'intent':'decision_support','updates':[('payment_method','cash')],'question':{'entity':'costs_included','text':'Does that include the other costs?'}}],[{'segments':[{'text':'Other costs are still unknown.'}]}])
-  r=self.ask(self.Q+' I will pay cash.');self.assertEqual(self.state()['entities']['payment_method']['value'],'cash');self.assertEqual(r['reply'].count('?'),1);self.assertNotIn('How would you fund',r['reply'])
+  # The stated RMB 10,000 cost and cash payment are filled from the user's own words, so the scenario can be modeled
+  # at once; at most the one unresolved question remains and funding is never asked again.
+  r=self.ask(self.Q+' I will pay cash.');self.assertEqual(self.state()['entities']['payment_method']['value'],'cash');self.assertLessEqual(r['reply'].count('?'),1);self.assertNotIn('How would you fund',r['reply'])
  def test_exact_cash_followup_does_not_invent_balance(self):
   self.scripted([{'intent':'decision_support','updates':[('one_time_cost','RMB 10,000')],'question':{'entity':'payment_method','text':'How would you fund this expense?'}},{'intent':'decision_support'}],[{'segments':[{'text':'The funding method is unknown.'}]},{'segments':[{'claim':'user.payment_method','kind':'user_assumption'}]}])
   self.ask(self.Q);r=self.ask('cash');self.assertNotIn('available_cash',self.state()['entities']);self.assertEqual(self.state()['entities']['one_time_cost']['value'],'10000.00');self.assertNotIn('How would you fund',r['reply'])

@@ -45,7 +45,26 @@ CHANNELS=re.compile(r"\bpayment (?:channel|method)s?\b|\bchannel mix\b|\b(?:whic
 # "Why is it 76.6% but the dashboard shows 73.6%?": the chat and the Dashboard looked at different dates.
 DASHBOARD_DIFF=re.compile(r"\bdashboard\b.{0,80}\b(?:differ\w*|different|mismatch|not (?:the )?same|doesn'?t match|says|shows?|showing|instead)\b"
  r"|\b(?:why|how come)\b.{0,80}\b(?:on|in|from) the dashboard\b|\b(?:differ\w*|different|mismatch|not (?:the )?same|doesn'?t match)\b.{0,60}\bdashboard\b",re.I)
-DIGITAL=re.compile(r"\bdigital capture\b|\bdigital (?:share|payments?|sales)\b|\bcash vs\.? digital\b",re.I)
+DIGITAL=re.compile(r"\bdigital capture\b|\bdigital (?:share|payments?|sales)\b|\bcash vs\.? digital\b|\b(?:share|percent(?:age)?|how much)\b.{0,40}\b(?:is|was|were|paid) digital(?:ly)?\b",re.I)
+# How a period's sales were paid, method by method ("is this paid in cash or credit card?", "split by payment method").
+PAY_WORDS=r"(?:cash|(?:credit |debit )?cards?|qr(?: pay)?|e-?wallets?|tap(?: pay)?|pay ?links?)"
+SPLIT=re.compile(r"\b(?:paid|pay|payments?|received|sales)\s+(?:in|by|with|via|through|using)\s+"+PAY_WORDS+r"\b|\b"+PAY_WORDS+r",?\s+(?:or|and|vs\.?|versus)\s+"+PAY_WORDS+r"\b"
+ r"|\b(?:by|per|each|for each) (?:payment )?(?:method|channel)s?\b|\b(?:split|breakdown|break(?:s)? ?down|broken down)\b.{0,30}\b(?:methods?|channels?|cash|cards?)\b",re.I)
+# The metric a follow-up refers to ("translate it to its amount", "is this paid in cash?").
+REFER=re.compile(r"\b(?:it|its|it'?s|that|this|those|these|same)\b",re.I)
+AMOUNT_ASK=re.compile(r"\b(?:amount|how much|value|figure|translate|convert|in (?:money|yuan|rmb|cny))\b",re.I)
+SHARE_ASK=re.compile(r"\b(?:share|percent(?:age)?|portion|proportion|ratio|capture)\b|%",re.I)
+
+def focus(text,state):
+    """'digital_amount', 'digital_share' or 'channels' for this turn; a referring follow-up keeps the previous one."""
+    if SPLIT.search(text):return 'channels'
+    if DIGITAL.search(text):return 'digital_share' if SHARE_ASK.search(text) and not AMOUNT_ASK.search(text) else 'digital_amount'
+    prior=state.get('focus')
+    if not prior or not REFER.search(text):return None
+    if prior.startswith('digital') and AMOUNT_ASK.search(text):return 'digital_amount'
+    if prior.startswith('digital') and SHARE_ASK.search(text):return 'digital_share'
+    if SALES.search(text) or CHANNELS.search(text) or CASH.search(text) or TX_REF.search(text):return None
+    return prior
 # Typo-tolerant ("transsaction", "teansaction"); a single/manual or user-named transaction is a record lookup too.
 TXN=r"(?:t[a-z]{0,2}ans?\w{0,3}ctions?|transactions?)"
 RECENT=re.compile(r"\b(?:recent|latest|last|newest|today'?s|single|manual)\s+(?:single\s+|manual\s+)?"+TXN+r"\b|\b"+TXN+r" today\b|\b[A-Za-z]*\d[A-Za-z0-9_.-]*\s+"+TXN+r"\b"
@@ -97,6 +116,8 @@ def classify(text,state):
         topic=search_topic(t)
         mixed=bool(topic=='industry_benchmarks' and MINE.search(t) and RECORD_WORDS.search(t))
         return {'route':'mixed' if mixed else 'search','topic':topic,'intent':'sales_analysis' if mixed else 'public_research'}
+    if SPLIT.search(t) and not TX_REF.search(t) and not re.search(r'\b'+TXN+r'\b',t,re.I) and state.get('intent')!='transactions':
+        return {'route':'B','intent':'payment_channels','strong':True,'follow_up':has_context}
     if TX_REF.search(t) or RECENT.search(t):return {'route':'B','intent':'transactions','strong':True}
     if APP_REF.search(t):return {'route':'B','intent':'financing','strong':True}
     if PAST.search(t):return {'route':'C','intent':'past_what_if','strong':True}
@@ -227,6 +248,11 @@ def guidance(p,mid,text,route):
         return message
     return "I can't take actions or change records from chat; I can only look things up and explain them."
 
+# A small bare number ("1 more staff", "2 machines") is a count, not a money amount; amounts carry a currency, a
+# magnitude suffix or at least three digits.
+SMALL_COUNT=re.compile(r'\s*\d{1,2}\s*')
+DIRECTED=re.compile(r'\b(?:decreas\w*|drop\w*|fall\w*|fell|declin\w*|reduc\w*|lower\w*|down|cut\w*|increas\w*|ris\w*|rose|grow\w*|grew|up|higher)\b',re.I)
+
 NOT_IN_APP={
  'others':"Other businesses' figures and customers' private details aren't recorded in the app, and I don't search the web for private business or personal data. I can show your own recorded figures, or search public industry benchmarks if you ask.",
  'bank_balance':"Your bank balance is not recorded in the app, so I can't confirm it.",
@@ -245,23 +271,40 @@ def updates(text,spans,intent,state):
         key=next((k for k,v in spans.items() if v==quote),None)
         if key:out.append({'entity':entity,'source':key});taken.add(entity)
     dates=[v for v in spans.values() if re.fullmatch(r'(?:on\s+)?(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?|(?:the\s+)?\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*)',v,re.I)]
-    periods=[v for v in spans.values() if re.fullmatch(r'last month|this month|previous month|current month|last quarter|Q[1-4](?:\s+\d{4})?|last \d+ days',v,re.I) or (v.lower().rstrip('.') in cs.MONTHS and len(v)>=3 and v.lower()!='may' and not any(v in d for d in dates))]
+    periods=[v for v in spans.values() if re.fullmatch(r'last month|this month|previous month|current month|last quarter|Q[1-4](?:\s+\d{4})?|last \d+ days|today|yesterday|this week|last week',v,re.I) or (v.lower().rstrip('.') in cs.MONTHS and len(v)>=3 and v.lower()!='may' and not any(v in d for d in dates))]
     for value in spans.values():
         position=text.find(value);before=text[max(0,position-40):position];after=text[position+len(value):position+len(value)+25];near=before+' '+after
         if re.fullmatch(r'\s*[+-]?\d+(?:\.\d+)?\s*%\s*',value):
+            # "a 20% drop", "decreasing by 20%": take the span that carries the direction, so the sign is never lost.
+            number=re.escape(value.strip())
+            directed=next((v for v in spans.values() if v!=value and len(v.split())<=5 and re.search(r'(?<![\d.])'+number,v) and DIRECTED.search(v)),value)
             if intent=='loan_calculation':add('interest_rate_change' if RISE.search(before[-25:]) else 'annual_interest_rate',value)
-            elif re.search(r'sales|revenue',before[-30:]+after[:15],re.I):add('sales_change_percent',value)
-            elif re.search(r'expense|cost',before[-30:]+after[:15],re.I):add('expense_change_percent',value)
+            elif re.search(r'sales|revenue',before[-30:]+after[:15],re.I):add('sales_change_percent',directed)
+            elif re.search(r'expense|cost',before[-30:]+after[:15],re.I):add('expense_change_percent',directed)
         elif re.fullmatch(r'\d+\s+(?:months?|years?)',value,re.I):
             add('financing_duration' if intent=='loan_calculation' else 'simulation_duration',value)
-        elif re.fullmatch(cs.BARE_AMOUNT,value,re.I) and re.search(r'\d',value) and not re.match(r'\s*(?:%|months?|years?|days?|st\b|nd\b|rd\b|th\b)',after,re.I) and not any(value.strip() in d for d in dates) and not re.fullmatch(r'\s*(?:19|20)\d\d\s*',value):
+        elif re.fullmatch(cs.BARE_AMOUNT,value,re.I) and re.search(r'\d',value) and not re.match(r'\s*(?:%|months?|years?|days?|st\b|nd\b|rd\b|th\b)',after,re.I) and not any(value.strip() in d for d in dates) and not re.fullmatch(r'\s*(?:19|20)\d\d\s*',value) and not SMALL_COUNT.fullmatch(value):
             if intent=='loan_calculation':add('financing_amount',value)
             elif intent=='past_what_if':add('past_expense',value)
             elif intent in ('decision_support','simulation'):add('recurring_expense' if MONTHLY.search(before[-20:]+after[:15]) else 'one_time_cost',value)
+    if intent=='decision_support':
+        # A count of what is bought or hired ("two", "3 machines"): costs stay per unit and the backend multiplies.
+        for value in spans.values():
+            if len(value.split())>2 or SMALL_COUNT.fullmatch(value) and re.search(r'(?:RMB|CNY|[¥￥])\s*$',text[:max(0,text.find(value))]):continue
+            try:cs.scalar('quantity',value,currency='CNY',today=None)
+            except Exception:continue
+            after=text[text.find(value)+len(value):][:20]
+            # "a", "an", "another" mean one, which is already the default.
+            if re.match(r'\s*(?:%|k\b|thousand|months?|years?|days?|weeks?|rmb|cny|yuan)',after,re.I) or value.lower().split()[0] in ('a','an','another','single'):continue
+            add('quantity',value);break
     if intent in ('decision_support','simulation'):
-        dates=dates+[v for v in spans.values() if re.fullmatch(r'next week|tomorrow|today|in a week',v,re.I)]
+        dates=dates+[v for v in spans.values() if re.fullmatch(r'next week|tomorrow|today|in a week|next month',v,re.I)]
+        # A bare month ("in December", "starting January") is the planned start or payment month.
+        if not dates:dates=[v for v in spans.values() if re.fullmatch(r'(?:in|from|starting)\s+(?:jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*',v,re.I)]
     if intent in ('decision_support','simulation') and dates:
-        one_time=any(u['entity']=='one_time_cost' for u in out) or 'one_time_cost' in state['entities']
+        # The date belongs to the cost described in this message: a hiring or salary start is never a purchase payment date.
+        recurring=any(u['entity']=='recurring_expense' for u in out) or bool(MONTHLY.search(text))
+        one_time=any(u['entity']=='one_time_cost' for u in out) or ('one_time_cost' in state['entities'] and not recurring)
         add('purchase_date' if one_time else 'start_date',dates[0])
     if intent in ('sales_analysis','past_what_if','data_quality','transactions','payment_channels') and periods:
         add('reporting_period',periods[0])

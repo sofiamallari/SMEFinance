@@ -34,7 +34,13 @@ ENTITIES={
  'assessment_date':('date','Requested assessment date'),
  'past_expense':('money','Past expense you asked to leave out'),
  'interest_rate_change':('percent','Assumed interest-rate change (percentage points)'),
+ # How many of the costed item (hires, units); costs stay per unit and the backend multiplies.
+ 'quantity':('count','Quantity'),
 }
+# Set only by the backend from a date the user attached to an assumed sales or expense change; never offered to the model
+# (keeps the provider schema unchanged).
+BACKEND_ENTITIES={'change_start_date':('date','Assumed sales/expense change starts')}
+NUMBER_WORDS={'one':1,'two':2,'three':3,'four':4,'five':5,'six':6,'seven':7,'eight':8,'nine':9,'ten':10,'eleven':11,'twelve':12,'a couple':2,'a couple of':2,'single':1,'another':1,'a':1,'an':1}
 INTENTS=['decision_support','sales_analysis','cash_flow','financing','payment_channels','simulation','transactions','data_quality','business_growth','financial_education','public_research','application_help','out_of_scope','loan_calculation','past_what_if','unknown']
 UPDATE={'type':'object','properties':{'entity':{'type':'string','enum':list(ENTITIES)},'quote':{'type':'string','maxLength':500}},'required':['entity','quote'],'additionalProperties':False}
 CONTEXT_SCHEMA={'type':'object','properties':{
@@ -43,11 +49,15 @@ CONTEXT_SCHEMA={'type':'object','properties':{
  'question':{'anyOf':[{'type':'null'},{'type':'object','properties':{'entity':{'type':'string','enum':list(ENTITIES)},'text':{'type':'string','maxLength':400}},'required':['entity','text'],'additionalProperties':False}]}},
  'required':['intent','topic_change','updates','question'],'additionalProperties':False}
 
-def fresh():return {'intent':'unknown','entities':{},'pending':None,'resolved':[],'corrections':[],'facts':{},'topics':[],'scenarios':[],'turn':0,'parked':None}
+def fresh():return {'intent':'unknown','entities':{},'pending':None,'resolved':[],'corrections':[],'facts':{},'topics':[],'scenarios':[],'turn':0,'parked':None,'decision':None,'options':[],'decision_seq':0,'links':[]}
 
 # A question ("what is RBF?", "sales in September?") is never an answer to the open question.
 ASKING=re.compile(r"\?\s*$|^\s*(?:what|what's|whats|how|why|which|who|when|where|is|are|was|were|can|could|do|does|did|should|would|will|show|tell|give|list)\b",re.I)
-TOPIC_KEYS=('intent','entities','pending','resolved','scenarios','last_requests')
+TOPIC_KEYS=('intent','entities','pending','resolved','scenarios','last_requests','decision','options')
+# Saved topics keep their decision identity, its options history and complete scenario versions.
+def topic_entry(state):
+ return {'intent':state.get('intent'),'entities':copy.deepcopy(state.get('entities') or {}),'pending':copy.deepcopy(state.get('pending')),'resolved':list(state.get('resolved') or []),
+  'decision':copy.deepcopy(state.get('decision')),'options':copy.deepcopy(state.get('options') or []),'scenarios':copy.deepcopy(state.get('scenarios') or [])}
 
 def active(state):
  """A topic worth parking: an open question or saved scenario details."""
@@ -57,7 +67,7 @@ def park(state):
  """Set the current topic aside (values, options and open question kept) for an unrelated question."""
  if not active(state):return False
  state['parked']={**{k:copy.deepcopy(state.get(k)) for k in TOPIC_KEYS},'reminded':False}
- state.update(intent='unknown',entities={},pending=None,resolved=[],scenarios=[],last_requests=[])
+ state.update(intent='unknown',entities={},pending=None,resolved=[],scenarios=[],last_requests=[],decision=None,options=[])
  return True
 
 def resume(state):
@@ -77,7 +87,16 @@ def scalar(key,quote,*,currency,today,previous=None,question=''):
   if not text or len(text)>90 or len(text.split())>6 or re.search(r'[%@<>]|https?://|\b(?:RMB|CNY|USD|PHP)\b',text,re.I):raise ClaimError('invalid_subject')
   # A subject names a thing: no amounts, no lone letters and not only function/question words.
   if re.search(r'\d',text) or len(text)<3 or all(w in STOPWORDS for w in re.findall(r"[a-z']+",low)):raise ClaimError('invalid_subject')
+  # Quantities and change instructions ("hire two", "instead") are not the thing being decided about.
+  if any(w in NUMBER_WORDS and w not in ('a','an','another','single') for w in re.findall(r"[a-z']+",low)) or re.search(r'\b(?:instead|more|fewer|less|extra|additional)\b',low):raise ClaimError('invalid_subject')
   return {'value':text}
+ if kind=='count':
+  # Generic quantity parsing: a whole number or a number word, optionally followed by what is counted.
+  match=re.fullmatch(r"\s*(?:(\d{1,3})|("+'|'.join(sorted((re.escape(w) for w in NUMBER_WORDS),key=len,reverse=True))+r"))(?:\s+(?:more|new|additional|extra))?(?:\s+[A-Za-z][A-Za-z'-]*){0,2}\s*[.!?]?\s*",low)
+  if not match:raise ClaimError('ambiguous_entity_value')
+  value=int(match[1]) if match[1] else NUMBER_WORDS[match[2]]
+  if not 1<=value<=500:raise ClaimError('invalid_entity_value')
+  return {'value':str(value)}
  if kind=='money':
   values=re.findall(AMOUNT,text,re.I)
   if len(values)!=1 or '%' in text:raise ClaimError('ambiguous_entity_value')
@@ -121,6 +140,13 @@ def scalar(key,quote,*,currency,today,previous=None,question=''):
    return {'value':start.isoformat(),'precision':'month'}
   if low in ('today','tomorrow','now','immediately'):return {'value':(today+timedelta(days=1 if low=='tomorrow' else 0)).isoformat()}
   if low in ('next week','in a week','in one week'):return {'value':(today+timedelta(days=7)).isoformat()}
+  # A bare month for a planned start or payment ("in December", "starting January"): the 1st of its next occurrence.
+  bare=re.fullmatch(r'(?:(?:in|from|starting|start of|beginning of|early)\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:\s+(\d{4}))?',low)
+  if bare and (bare[1] in MONTHS):
+   month=MONTHS[bare[1]];year=int(bare[2]) if bare[2] else today.year+(1 if month<today.month else 0)
+   start=date(year,month,1)
+   if start<today.replace(day=1):raise ClaimError('invalid_entity_value')
+   return {'value':max(start,today).isoformat(),'precision':'month'}
   natural=natural_date(low,today)
   if natural:return {'value':natural.isoformat()}
   try:return {'value':date.fromisoformat(text).isoformat()}
@@ -136,6 +162,10 @@ def scalar(key,quote,*,currency,today,previous=None,question=''):
   elif low in ('last month','previous month'):
    end=today.replace(day=1)-timedelta(days=1);start=end.replace(day=1)
   elif low in ('this month','current month'):start=today.replace(day=1);end=today
+  # A single business day or week ("digital payments received today", "sales yesterday").
+  elif low in ('today','yesterday'):start=end=today-timedelta(days=1 if low=='yesterday' else 0)
+  elif low in ('this week','last week'):
+   start=today-timedelta(days=today.weekday()+(7 if low=='last week' else 0));end=min(today,start+timedelta(days=6))
   elif re.fullmatch(r'(?:q[1-4](?:\s+\d{4})?|last quarter)',low):
    if low=='last quarter':
     q=(today.month-1)//3-1;year=today.year
@@ -213,7 +243,7 @@ def apply_proposal(state,proposal,text,*,currency,today):
  new=copy.deepcopy(state)
  asking=bool(ASKING.search(text))
  # A topic change (short or long) parks the current topic instead of failing the turn.
- correcting=bool(re.search(r'(?:actually|instead|make it|change it|rather)',text,re.I))
+ correcting=bool(re.search(r'\b(?:actually|instead|make it|change it|rather)\b',text,re.I))
  restore=bool(re.search(r'\b(?:return|back|resume|revisit)\b',text,re.I))
  candidates=[t for t in new['topics'] if t['intent']==proposal['intent']]
  restored=copy.deepcopy(candidates[-1]) if restore and candidates else None
@@ -221,12 +251,13 @@ def apply_proposal(state,proposal,text,*,currency,today):
   # "Back to the warehouse": the parked topic returns with its values and open question.
   resume(new);restored=None;proposal={**proposal,'intent':new['intent'],'topic_change':False}
  if proposal['topic_change']:
-  new['topics']=(new['topics']+[{'intent':new['intent'],'entities':new['entities'],'pending':new['pending'],'resolved':new['resolved']}])[-3:]
+  if new.get('entities') or new.get('pending') or new.get('decision'):new['topics']=(new['topics']+[topic_entry(new)])[-5:]
   park(new) # saved, not wiped: answering its question or "back to …" restores it
-  new.update(entities={},pending=None,resolved=[],facts={},scenarios=[],last_requests=[])
+  new.update(entities={},pending=None,resolved=[],facts={},scenarios=[],last_requests=[],decision=None,options=[])
   new.pop('research_scope',None)
  if restored:
-  new.update(entities=restored['entities'],pending=None,resolved=restored['resolved'])
+  new.update(entities=restored['entities'],pending=None,resolved=restored['resolved'],decision=restored.get('decision'),options=restored.get('options',[]),scenarios=restored.get('scenarios',[]))
+  new['topics']=[t for t in new['topics'] if (t.get('decision') or {}).get('id')!=(restored.get('decision') or {}).get('id') or not restored.get('decision')]
  new['intent']=proposal['intent']
  for update in proposal['updates']:
   key,quote=update['entity'],update['quote']
@@ -265,10 +296,12 @@ def apply_proposal(state,proposal,text,*,currency,today):
 def claim_records(state):
  records={}
  for key,entry in state['entities'].items():
-  kind,label=ENTITIES[key];value=entry['value']
+  kind,label={**ENTITIES,**BACKEND_ENTITIES}[key];value=entry['value']
   if kind=='money':display=label+': '+money(value,entry['currency'])+'.'
+  elif kind=='percent' and entry.get('default'):display=label+': unchanged (assumed, because no change was given; tell me if it will change).'
   elif kind=='percent':display=label+': '+value+'% (your assumption).'
   elif kind=='duration':display=label+': '+value+' months (your assumption).'
+  elif kind=='count':display=label+': '+value+' (your assumption; costs are per unit).'
   elif kind=='period':display=label+': '+day(value['start'])+' to '+day(value['end'])+'.'
   elif kind=='date':display=label+': '+(date.fromisoformat(value).strftime('%B %Y') if entry.get('precision')=='month' else day(value))+'.'
   else:display=label+': '+str(value).lower()+' (as you stated).'

@@ -338,6 +338,10 @@
           "required_application_permission": {
             "type": "string",
             "minLength": 1
+          },
+          "delegated_grant": {
+            "type": "string",
+            "pattern": "^view_[a-z_]+$"
           }
         },
         "required": [

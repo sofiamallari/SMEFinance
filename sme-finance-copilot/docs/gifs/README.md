@@ -1,0 +1,43 @@
+# Walkthrough GIFs
+
+Short screen recordings of the SME Finance Copilot running locally (`http://127.0.0.1:8000`, dataset `shenzhen_cny_demo`, synthetic CNY data). All GIFs are 1280×800 and loop. The red dot marks where each click lands.
+
+Recorded on 2026-10-17 with the demo accounts `demo_owner`, `demo_staff` and `demo_bank`, using merchant M002 (Tani Coffee & Tofu House). The server ran with `FINANCIAL_SURVIVAL_SIMULATION_ENABLED=true` so the Survival Simulation tab is available.
+
+## Owner
+
+| File | Shows |
+| --- | --- |
+| [owner-01-dashboard-overview.gif](owner-01-dashboard-overview.gif) | Dashboard → Overview: switches granularity to weekly and applies it, then scrolls through the Average Revenue/Expense cards, Net Income, Digital Capture, Transaction Volume Mix, Revenue Split, Expense Split, the Revenue vs Expense trend, the Transaction Volume trend and the channel contribution bars. |
+| [owner-02-cash-flow.gif](owner-02-cash-flow.gif) | Dashboard → Cash Flow, built from the uploaded AR/AP workbook: cash on hand, 7-day collections/payables, net runway, the 12-month trend and projection, filtering the AR and AP tables by due-window cards, and the Download template button. |
+| [owner-03-survival-simulation.gif](owner-03-survival-simulation.gif) | Dashboard → Survival Simulation (Business Stress Test): sets sales −35% and expenses +15% over 6 months, then runs the simulation. It scrolls through the results: simulated monthly operating result, change from baseline, projected cumulative result, the Baseline vs. Your Scenario chart, the monthly values table, "What This Means for Your Business" and the Detailed Analysis. |
+| [owner-04-financing-overview.gif](owner-04-financing-overview.gif) | Financing → Overview: business maturity summary, ranked financing and support options, and the "Not yet eligible" list. |
+| [owner-05-rbf-calculator.gif](owner-05-rbf-calculator.gif) | Financing → RBF Calculator: moves the advance slider and shows the fee, total repayable, payoff estimate and daily repayment flow updating. |
+| [owner-06-new-financing-application.gif](owner-06-new-financing-application.gif) | Financing → Applications: creates a ¥25,000 RBF application, selects the Demo Bank, saves it as a draft, then uses Submit for Review → Confirm and Submit. |
+| [owner-07-create-sme-staff-user.gif](owner-07-create-sme-staff-user.gif) | User & Access Management → SME Staff → Create User: creates "GIF Demo Staff" linked to M002 with delegated permissions (dashboard, transactions, create transactions, bulk import, simulate payments, AI partner). |
+| [owner-08-create-bank-user.gif](owner-08-create-bank-user.gif) | User & Access Management → Bank Users → Create Bank User: creates "GIF Demo Bank Reviewer" linked to M002. The new user shows "Not authorized" until the owner uses Authorize. |
+| [owner-15-ai-chatbot.gif](owner-15-ai-chatbot.gif) | The AI Financial Partner signed in as owner, where questions get tool-backed answers from the business's data. It asks "How am I doing?" (September sales), "Which payment channel brings in the most revenue?" (cash, 34.23%) and "Do I have any overdue invoices?" (named invoices and the overdue supplier bill, from the Cash Flow workbook). Then it asks the December hiring question ("…same 10,000 RMB salary as mine. Can the business afford it?"). The answer quotes the cash-flow forecast (opening ¥19,800, closing ¥53,822.46 on Nov 16) but doesn't actually weigh the ¥10,000 December salary against it. |
+| [owner-16-chatbot-cashflow-alerts.gif](owner-16-chatbot-cashflow-alerts.gif) | For a "Proactive cashflow alerts" slide (1030×800, sidebar cropped out). The notification bell shows the overdue-invoice warning and cash-buffer info, and both suggested actions are expanded. Then the owner asks the chatbot "Any cash-flow insights?" (forecast low point and closing balance), "Do I have any overdue invoices?" (the named overdue invoices and supplier bill) and "What is my net 7-day runway?" (¥54,650 = cash ¥45,300 + ¥21,750 expected − ¥12,400 bills). |
+| [owner-17-chatbot-action-plan.gif](owner-17-chatbot-action-plan.gif) | For an "Operational action plans" slide (1030×800, sidebar cropped out). The owner asks "Can I afford a warehouse expansion?", and the chatbot asks for the cost. The owner answers "About 150,000 RMB", and the chatbot works out that it leaves a ≈¥128,855 shortfall at the forecast's low point, so the expansion doesn't fit without changes. It then asks when the payment would happen. |
+
+## Staff
+
+| File | Shows |
+| --- | --- |
+| [staff-09-single-transaction.gif](staff-09-single-transaction.gif) | Merchant Transactions → Single Transaction: records a ¥1,288.50 QR Pay sale (ref `GIF-DEMO-0001`), saves it, then opens Transaction History where it appears at the top. |
+| [staff-10-bulk-pos-import.gif](staff-10-bulk-pos-import.gif) | Merchant Transactions → Bulk POS Import: downloads the report template, uploads a filled copy (5 revenue + 3 expense rows, references `GIF-B2-*`), selects both worksheets, confirms the column mappings, runs validation, previews the rows and imports them. Progress bars and the backend-confirmed result are shown. It then opens Merchant Transactions → Transaction History, filters Source = POS Import (Excel) and searches `GIF-B2`. All 8 imported rows (5 revenue, 3 expense) appear with the same Import Batch ID; the sidebar is collapsed so that column fits. |
+| [staff-11-digital-payments-simulator.gif](staff-11-digital-payments-simulator.gif) | Digital Payments Simulator: Pathway 1 creates a ¥128 QR Pay request, confirms it and simulates the customer paying. Pathway 2 builds a POS cart, uses Pay by Tap and simulates the tap. |
+| [staff-12-ai-chatbot.gif](staff-12-ai-chatbot.gif) | The floating robot launcher (bottom right) opens the AI Financial Partner. It asks a suggested question ("What is revenue-based financing?") and two typed ones ("How do I import my Excel report?", "How do I record a refund?"). Last, it asks "What is the status of my financing application?", and the chatbot replies "Financing details are restricted for your account." because financing is denied for the Staff role. |
+| [staff-13-alerts-notifications.gif](staff-13-alerts-notifications.gif) | The bell icon opens business notifications (overdue invoices, cash buffer) and expands their suggested actions. Then Data Quality & Monitoring → Overview and the Alerts tab. |
+
+## Bank
+
+| File | Shows |
+| --- | --- |
+| [bank-14-review-financing-application.gif](bank-14-review-financing-application.gif) | Bank portal → Financing Applications: opens the ¥25,000 application from GIF 06, checks the Financial Review tab, then records the outcome "Ready for Further Assessment" with review notes and shows the review history. The Approve · Simulated and Deny · Simulated buttons are hidden in this recording (a style rule injected into the recording browser only; the app is unchanged), so only Save Bank Review appears. |
+
+## Notes
+
+- **Chatbot as Staff:** for `demo_staff`, financial-data questions are mostly refused. Examples are "How am I doing?", "What is my average monthly revenue?" and "How much cash do I have on hand?". The API returns `classification: DENIED`, `fallback_reason: authorization`, `failure_stage: tools` with no tools used. This happens even though the user has every delegated permission on M002. Other questions like "Show my payment channel mix" are answered as "not available in your records". The same questions work for `demo_owner`, with live tool-backed answers. GIF 12 therefore uses guidance questions that Staff can answer. The cause is in `copilot/governance_policy.py` (`capability()`): every data capability is "conditional" for Staff and needs a granular `finance.*` permission (e.g. `finance.payments.channels.read`). The app never grants those, so no Staff data tool can run. A Staff question like "I plan to hire 1 more staff in December at 10,000 RMB — can the business afford it?" is refused the same way.
+- The Approve · Simulated / Deny · Simulated buttons in the Bank review dialog are still enabled in the app. GIF 14 hides them in the recording only and records a review outcome instead.
+- Recording these flows created test data in the local dataset: a ¥25,000 submitted application and an extra ¥20,000 draft for M002, two bank reviews on that application, users `gif_demo_staff` and `gif_demo_bank`, transaction `GIF-DEMO-0001`, two imported batches of 8 rows each (`GIF-R-*`/`GIF-E-*` from the first take, `GIF-B2-*` from the one shown in GIF 10), and two simulator payments.
