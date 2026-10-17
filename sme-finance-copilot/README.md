@@ -35,7 +35,6 @@ The standard-library HTTP server serves the static UI, JSON API and authenticate
 - [Hackathon overview, six scenarios and end-to-end journey](docs/hackathon/README.md)
 - [Evidence and verification scope](docs/hackathon/evidence.md)
 - [Known limitations](docs/technical/known-limitations.md)
-- [Historical archive](docs/archive/README.md)
 - [Full documentation navigation](docs/README.md)
 
 Do not publish .env, API keys, session/reset tokens, credential files or private DB/backups. Seed code and reviewed synthetic examples can be distributed; recipients initialize their own password. General storage/hosting variables require process/service configuration; only the supported LLM/feature allowlist auto-loads from .env. Runtime dependencies are in requirements.txt. Node/Playwright are optional verification tools.

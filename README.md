@@ -1,51 +1,27 @@
 # SMEFinance
 
-SME Finance Copilot v1.2 for the Shenzhen International FinTechathon.
+SME Finance Copilot ("Shifu") for the Shenzhen International FinTechathon (International Track, Topic E: SME Finance Copilot).
 
-The complete application is in [sme-finance-copilot](sme-finance-copilot).
+The application is in [sme-finance-copilot](sme-finance-copilot). Start with [its README](sme-finance-copilot/README.md) for setup, modules and documentation.
 
-## Run
+## Run locally
 
-Requires Python 3.10 or later. No runtime dependencies.
+Requires Python 3.12.
 
 ```bash
 git clone https://github.com/sofiamallari/SMEFinance.git
 cd SMEFinance/sme-finance-copilot
-python -m copilot.auth migrate
-python -m copilot.auth bootstrap --username admin --email your-email@example.com  # first install only; password prompt
-python -m copilot.server
+python -m pip install -r requirements.txt
+python -m copilot.server --host 127.0.0.1 --port 8000
 ```
 
-Open http://127.0.0.1:8000.
+Then open http://127.0.0.1:8000/login. A fresh clone must seed the synthetic CNY dataset first: follow [local setup](sme-finance-copilot/docs/operations/local-setup.md).
 
 ## Test
 
 ```bash
+cd sme-finance-copilot
 python -m unittest discover -s tests -v
 ```
 
-Run the complete regression suite with the command above. Security tests use isolated temporary databases and synthetic data.
-
-## Included
-
-- Business Owner, Staff and consent-scoped Financing Agent roles
-- Single income/expense entry and persistent transaction management
-- CSV and Excel (.xlsx) upload previews, validation, duplicate checks and explicit confirmation
-- Merchant Intelligence Dashboard with revenue, expenses and net income
-- Digital Payments Simulator and Revenue-Based Financing Calculator
-- Permission-checked AI reports, risk alerts, revenue projections and financing recommendations
-
-Read [the application guide](sme-finance-copilot/README.md) and [transaction limitations](sme-finance-copilot/docs/TRANSACTIONS.md). Default authentication uses local SQLite accounts and server sessions. Financial data remains synthetic with fixed date 2026-09-30 and sandbox payments. External OAuth/MFA and production certification remain outside this MVP.
-
-[Download the packaged project](downloads/SME-Finance-Copilot-v1.2-FinTechathon.zip).
-
-Security Administration includes seven sections and portable, validated JSON policy sharing between local installations. Read the [team configuration guide](sme-finance-copilot/docs/SECURITY_CONFIGURATION.md). Import never copies user credentials or financial records.
-
-The complete regression suite passes **188 tests**. See the [implementation report](sme-finance-copilot/docs/SECURITY_ADMIN_REPORT.md) for actual unit/API/browser results and review limits.
-
-
-## Merchant Transactions (Task 02)
-
-The sixth sidebar module contains Single Transaction, Bulk POS Import, Transaction History and Data Quality & Monitoring. The five-step wizard supports multi-file/folder CSV/XLSX acquisition, explicit mapping, decimal normalization, duplicate detection, count/financial reconciliation, signed staging and durable confirmation. Scoped grants protect Staff actions; administrator roles do not inherit business access. See the [complete workflow, APIs, guarantees and demo guide](sme-finance-copilot/docs/POS_TRANSACTION_IMPORT.md). New canonical records are intentionally prepared for Task 03 downstream integration; existing demo financial calculations remain unchanged.
-
-[Task 02 verified implementation report](sme-finance-copilot/docs/TASK02_REPORT.md).
+Financial data is synthetic (CNY) and payments are sandbox-only. No real payments, credit decisions or production certification are implied.

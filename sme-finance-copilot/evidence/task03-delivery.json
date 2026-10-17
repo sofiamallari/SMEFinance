@@ -1,9 +1,0 @@
-{
-  "branch": "feature/ai-financial-partner",
-  "head": "32deb7034acd9e90b04011e9a7164c4a79adb6ba",
-  "zip": "C:\\Users\\User\\source\\repos\\SMEFinance\\SME-Finance-Copilot-Task03-20261014-134708.zip",
-  "sha256": "c9fa458c3e81be6a68c1b20ffa5a27b013a72156401afd3a8a380b99889a15cc",
-  "files": 136,
-  "secret_scan": "PASS",
-  "contains_live_databases": false
-}

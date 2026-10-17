@@ -1,9 +1,0 @@
-{
-  "tests_run": 10,
-  "failures": 0,
-  "errors": 0,
-  "skipped": 0,
-  "seconds": 38.696,
-  "pattern": "test_financing_journey.py",
-  "isolated": true
-}

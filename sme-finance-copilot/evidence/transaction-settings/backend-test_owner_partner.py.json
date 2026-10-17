@@ -1,9 +1,0 @@
-{
-  "tests_run": 20,
-  "failures": 0,
-  "errors": 0,
-  "skipped": 0,
-  "seconds": 71.748,
-  "pattern": "test_owner_partner.py",
-  "isolated": true
-}

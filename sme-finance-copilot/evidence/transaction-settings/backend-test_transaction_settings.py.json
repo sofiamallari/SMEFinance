@@ -1,9 +1,0 @@
-{
-  "tests_run": 19,
-  "failures": 0,
-  "errors": 0,
-  "skipped": 0,
-  "seconds": 10.928,
-  "pattern": "test_transaction_settings.py",
-  "isolated": true
-}
