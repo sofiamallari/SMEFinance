@@ -261,6 +261,20 @@ class Orchestrator(unittest.TestCase):
   args=ev.scenario_args(state,date(2026,10,17))
   self.assertEqual(args['monthly_cost'],20000.0);self.assertEqual(args['start_date'],'2026-12-01')
 
+ def test_day_of_a_date_is_never_a_quantity(self):
+  # "Paid on December 15" once became "15 × ¥60,000"; the day of a date is rejected as a quantity, a real count is kept.
+  from datetime import date
+  from copilot import conversation_state as cs
+  text='I want to buy a new oven for about ¥60,000, paid on December 15.'
+  for sentence in ('Paid on December 15.','Paid on the 15th of December.','Due 12/15.'):self.assertTrue(cs.date_part(sentence,'15'))
+  self.assertFalse(cs.date_part('Hire 2 staff from December.','2'))
+  with self.assertRaises(ClaimError):
+   cs.apply_proposal(cs.fresh(),{'intent':'decision_support','topic_change':False,'updates':[{'entity':'quantity','quote':'15'}],'question':None},text,currency='CNY',today=date(2026,10,18))
+  spans={'s0':text,'s1':'15','s2':'¥60,000'}
+  schema=__import__('copilot.conversation_review',fromlist=['plan_schema']).plan_schema(spans,{**cs.fresh(),'intent':'decision_support'},text=text,today=date(2026,10,18))
+  offered={o['properties']['entity']['enum'][0]:o['properties']['source']['enum'] for o in schema['properties']['updates']['items'].get('anyOf',[])}
+  self.assertNotIn('s1',offered.get('quantity',[]))
+
  def test_material_change_keeps_previous_scenario_version(self):
   from copilot import conversation_state as cs
   previous={**cs.fresh(),'intent':'decision_support','turn':3,'entities':{'recurring_expense':self.entity('recurring_expense','10,000',2),'start_date':self.entity('start_date','December',3)}}

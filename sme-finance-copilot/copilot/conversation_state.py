@@ -237,6 +237,17 @@ def answer_pending_value(state,text,*,currency,today):
  state['last_answer']={'entity':key,'text':text,'turn':state['turn']}
  return True
 
+MONTH_WORD=r'(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?'
+
+def date_part(text,quote):
+ """True when every occurrence of the quoted number is the day of a date ("December 15", "15th", "the 3rd of May", "12/15")."""
+ spots=[m.start() for m in re.finditer(re.escape(quote.strip()),text,re.I)]
+ def dated(i):
+  before=text[max(0,i-15):i];after=text[i+len(quote.strip()):][:15]
+  return bool(re.search(MONTH_WORD+r'\s*$',before,re.I) or re.match(r'(?:st|nd|rd|th)\b',after,re.I)
+              or re.match(r'\s*(?:of\s+)'+MONTH_WORD,after,re.I) or re.match(r'\s*[/-]\s*\d',after) or re.search(r'\d\s*[/-]\s*$',before))
+ return bool(spots) and all(dated(i) for i in spots)
+
 def apply_proposal(state,proposal,text,*,currency,today):
  from jsonschema import Draft202012Validator
  Draft202012Validator(CONTEXT_SCHEMA).validate(proposal)
@@ -264,6 +275,8 @@ def apply_proposal(state,proposal,text,*,currency,today):
   if not quote or quote.casefold() not in text.casefold():raise ClaimError('entity_without_user_source')
   offset=text.casefold().find(quote.casefold());before=text[max(0,offset-25):offset]
   if re.search(r'\bnot\s*$',before,re.I):raise ClaimError('negated_entity_source')
+  # "Paid on December 15": the day of a date is never a quantity.
+  if ENTITIES[key][0]=='count' and date_part(text,quote):raise ClaimError('quantity_is_a_date')
   old=new['entities'].get(key)
   answered=state.get('last_answer',{})
   if answered.get('turn')==state['turn'] and answered.get('text')==text and key!=answered['entity']:raise ClaimError('entity_pending_mismatch')

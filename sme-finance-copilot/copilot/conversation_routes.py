@@ -291,6 +291,7 @@ def updates(text,spans,intent,state):
         # A count of what is bought or hired ("two", "3 machines"): costs stay per unit and the backend multiplies.
         for value in spans.values():
             if len(value.split())>2 or SMALL_COUNT.fullmatch(value) and re.search(r'(?:RMB|CNY|[¥￥])\s*$',text[:max(0,text.find(value))]):continue
+            if cs.date_part(text,value):continue # "paid on December 15": the day is not a quantity
             try:cs.scalar('quantity',value,currency='CNY',today=None)
             except Exception:continue
             after=text[text.find(value)+len(value):][:20]

@@ -859,12 +859,13 @@ def funding_claims(results,plan):
     else:parts.append('The indicative RBF quote is for the full '+cash(quote['advance'],c)+' '+plan['subject']+' cost (the calculator allows up to '+cash(maximum,c)+').')
     requires=[]
     if scenario:
-        prefix,v=scenario;row=v['adjusted'];low=Decimal(row['min_balance'])
-        with_base=_shared_text(plan.get('base') or [],plan.get('changes') or {},plan.get('missing') or [],c).replace('Each option includes','It includes').replace('Each option also assumes','It also assumes')
+        # The low point after the payment, as in the scenario and comparison answers (not an earlier low before it).
+        prefix,v=scenario;row=v['adjusted'];low=Decimal(row.get('min_after_change') or row['min_balance'])
+        with_base=_shared_text(plan.get('base') or [],plan.get('changes') or {},plan.get('missing') or [],c).replace('Each option includes','It includes').replace('Each option also assumes','It also assumes').replace('No sales or expense change is applied.','').strip()
         shortfall=-low if low<0 else Decimal('0')
         if row['first_negative_date']:parts.append('If the full '+cash(need,c)+' were paid from business cash on '+day(plan['date'])+', the projection goes negative on '+day(row['first_negative_date'])+' and reaches '+cash(low,c)+', a shortfall of about '+cash(shortfall,c)+'.')
         else:parts.append('If the full '+cash(need,c)+' were paid from business cash on '+day(plan['date'])+', the projection stays positive (lowest '+cash(low,c)+').')
-        parts.append(with_base)
+        if with_base:parts.append(with_base)
         if quote and shortfall>0:parts.append('The quoted advance is '+('larger' if Decimal(str(quote['advance']))>=shortfall else 'smaller')+' than that shortfall, but the advance and its repayments from daily sales are not modelled in this projection.')
         requires.append(prefix+'.scenario_basis')
     if quote:requires.append(next(p for p,n,v in reversed(results) if n=='get_rbf_quote')+'.rbf_basis')
