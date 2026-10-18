@@ -2,6 +2,8 @@
 
 Local delivery report · 16 October 2026
 
+> **Superseded (18 October 2026):** the simulated Approve / Reject decisions described in this report have been removed from the app. Banks now record reviews only (Reviewed, More Information Needed, Ready for Further Assessment); `approved` and `rejected` are no longer accepted outcomes, and the app does not simulate underwriting. Older records saved as approved or rejected are shown as Review Closed. The current behaviour is in [Bank review](../user-guide/bank-review.md) and [security permissions](security-permissions.md); the rest of this report is kept as a dated record.
+
 Repository: `C:\Users\User\source\repos\SMEFinance\sme-finance-copilot`. Branch: `feature/ai-governance-chatbot-v2`. HEAD unchanged: `60cb1224ab099e52cbab9268ea210705bf73cf73`. The existing uncommitted generalized AI work was preserved. No feature flag, second application, commit, push, merge or deployment was introduced.
 
 ## Implemented

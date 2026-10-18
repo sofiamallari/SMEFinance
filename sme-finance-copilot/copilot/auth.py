@@ -58,6 +58,17 @@ ACCOUNT_EVENTS = {'account_created','account_updated','account_suspended','sessi
                   'password_reset_issued','password_reset','password_changed','role_changed','staff_access_requested',
                   'merchant_assignment_changed','permission_changed'}
 
+# Banks record reviews only; the app never simulates underwriting (no approval or rejection).
+REVIEW_OUTCOMES = ('reviewed','more_information_needed','ready_for_further_assessment')
+# Applications or reviews saved by an older version as approved or rejected are shown as a closed review.
+LEGACY_DECISION_FIELDS = ('decision_at','decision_by','decision_note','simulated_decision')
+
+def neutral_status(status):
+    return 'REVIEW_CLOSED' if status in ('APPROVED','REJECTED') else status
+
+def neutral_outcome(outcome):
+    return 'review_closed' if outcome in ('approved','rejected') else outcome
+
 class AuthStore:
     def __init__(self, path, merchants, clock=time.time):
         self.path, self.merchants, self.clock = str(path), set(merchants), clock
@@ -576,6 +587,8 @@ class AuthStore:
                 if p.role=='lender_analyst':
                     try:self._authorize(db,token,'view_assessment',mid)
                     except AccessDenied:packet={k:v for k,v in packet.items() if k not in ('scores','stage')}
+                packet['status']=neutral_status(packet.get('status'))
+                for key in LEGACY_DECISION_FIELDS:packet.pop(key,None)
                 packet['submitted_at']=row['created_at']
                 packet['reviews']=self.application_reviews(db,row['application_id'])
                 result.append(packet)
@@ -586,7 +599,7 @@ class AuthStore:
         return BankWorkflow(self,None).record_review(token,aid,body)
 
     def application_reviews(self,db,aid):
-        return [dict(row) for row in db.execute("SELECT r.outcome,r.note,r.created_at,u.display_name AS reviewer,u.organization AS bank_name FROM application_reviews r LEFT JOIN users u ON u.user_id=r.actor_id WHERE r.application_id=? ORDER BY r.created_at,r.review_id",(aid,))]
+        return [{**dict(row),'outcome':neutral_outcome(row['outcome'])} for row in db.execute("SELECT r.outcome,r.note,r.created_at,u.display_name AS reviewer,u.organization AS bank_name FROM application_reviews r LEFT JOIN users u ON u.user_id=r.actor_id WHERE r.application_id=? ORDER BY r.created_at,r.review_id",(aid,))]
 
 
 def main():

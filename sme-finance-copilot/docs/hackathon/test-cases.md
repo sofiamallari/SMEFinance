@@ -74,7 +74,9 @@ Cases below marked ⚠️ cite one of these failing tests; the letter gives the 
 |---|---|---|---|---|
 | B-01 | Happy | Bank opens an application routed to it, within active consent | Can view it | `test_four_role_workflow.py::test_bank_authorization_without_case_assignment` |
 | B-02 | Unhappy | Bank opens an application or merchant it was not given | Refused | `test_ai_governance.py::test_bank_unrelated_application_and_merchant_denied` |
-| B-03 | Unhappy | Bank tries to approve, reject or disburse through the POC | Refused; outcomes are simulated only | `test_four_role_workflow.py::test_bank_cannot_mutate_decision_or_payment` |
+| B-03 | Unhappy | Bank tries to record `approved` or `rejected` | Refused: only the three review outcomes exist; the app does not approve, reject or disburse financing | `test_bank_delivery.py::test_decisions_owner_visibility_and_no_financial_effect`, `test_four_role_workflow.py::test_bank_cannot_mutate_decision_or_payment` |
+| B-05 | Happy | Bank records "More Information Needed" with a note | Review is added to the history; the application stays Submitted for Review | `test_bank_delivery.py::test_decisions_owner_visibility_and_no_financial_effect` |
+| B-06 | Happy | An older record saved as approved or rejected | Shown to the owner and bank as Review Closed, without decision fields | `test_bank_delivery.py::test_legacy_decisions_are_shown_as_closed_reviews` |
 | B-04 | Unhappy | Consent expires or is revoked | New exports and AI access are blocked | `test_four_role_workflow.py::test_expiry_revocation_block_new_exports_and_ai` |
 
 ## 4. System administrator
