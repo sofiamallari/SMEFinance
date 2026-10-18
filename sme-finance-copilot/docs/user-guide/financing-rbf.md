@@ -33,7 +33,7 @@ A missing active assigned Bank, missing applications-category authorization, sta
 
 ## Important limitations
 
-No separate Progression Engine/Financing Journey menu is part of current Financing navigation. Bank can record simulated approval/rejection, visible with reviewer, time and remarks in Applications. No actual loan approval, rejection, remittance deduction or disbursement occurs.
+No separate Progression Engine/Financing Journey menu is part of current Financing navigation. The Bank can record a review (Reviewed, More Information Needed or Ready for Further Assessment), visible with reviewer, time and remarks in Applications. Banks record reviews only. The app does not approve, reject or disburse financing, and it does not simulate underwriting; any credit decision happens outside the app.
 
 ## Related guides
 

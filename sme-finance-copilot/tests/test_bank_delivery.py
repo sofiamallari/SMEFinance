@@ -44,10 +44,10 @@ class BankDelivery(unittest.TestCase):
   for role in ('owner','staff','security_admin'):
    with self.assertRaises(AccessDenied):self.w.record_review(self.tokens[role],aid,{'outcome':'approved'})
   with self.assertRaises(InputError):self.w.record_review(self.tokens['lender_analyst'],aid,{'outcome':'approved','actor_id':'forged'})
-  # Approval and rejection are disabled for bank users; review outcomes still work.
+  # The app never simulates underwriting: approval and rejection are not review outcomes; review outcomes still work.
   for outcome in ('approved','rejected'):
    with self.assertRaises(InputError) as ctx:self.w.record_review(self.tokens['lender_analyst'],aid,{'outcome':outcome,'note':'Synthetic decision'})
-   self.assertEqual(ctx.exception.status,403)
+   self.assertEqual(ctx.exception.status,400);self.assertIn('do not approve or reject',str(ctx.exception))
   result=self.auth.application_list(self.tokens['owner'],'M002')[0];self.assertEqual(result['status'],'SUBMITTED_FOR_LENDER_REVIEW');self.assertFalse(result.get('simulated_decision'))
   self.w.record_review(self.tokens['lender_analyst'],aid,{'outcome':'more_information_needed','note':'Insufficient supplied evidence'})
   result=self.auth.application_list(self.tokens['owner'],'M002')[0];self.assertEqual(result['status'],'SUBMITTED_FOR_LENDER_REVIEW');self.assertEqual(result['reviews'][-1]['note'],'Insufficient supplied evidence')
@@ -68,16 +68,29 @@ class BankDelivery(unittest.TestCase):
   with self.auth.db() as db:db.execute('UPDATE consents SET expires_at=?',(self.auth.clock()-1,))
   self.assertEqual(self.w.applications(bank),[])
  def test_concurrent_decisions_one_final_state(self):
-  # With approval and rejection disabled, concurrent decision attempts both fail and leave no review or status change.
+  # Approval and rejection are not supported outcomes: concurrent attempts both fail and leave no review or status change.
   aid=self.submit()['application_id'];gate=threading.Barrier(2)
   def decide(outcome):
    gate.wait()
    try:self.w.record_review(self.tokens['lender_analyst'],aid,{'outcome':outcome,'note':'Concurrent synthetic decision'});return 'ok'
    except InputError as e:return e.status
   with ThreadPoolExecutor(2) as pool:result=list(pool.map(decide,['approved','rejected']))
-  self.assertEqual(result,[403,403])
+  self.assertEqual(result,[400,400])
   self.assertEqual(self.auth.application_list(self.tokens['owner'],'M002')[0]['status'],'SUBMITTED_FOR_LENDER_REVIEW')
   with self.auth.db() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM application_reviews WHERE application_id=?',(aid,)).fetchone()[0],0)
+ def test_legacy_decisions_are_shown_as_closed_reviews(self):
+  # Records saved by an older version that approved or rejected are shown as a closed review, without decision fields.
+  aid=self.submit()['application_id']
+  with self.auth.db() as db:
+   packet=json.loads(db.execute('SELECT packet FROM applications WHERE application_id=?',(aid,)).fetchone()[0])
+   packet.update(status='APPROVED',decision_at=1,decision_by='bank',decision_note='Legacy',simulated_decision=True)
+   db.execute('UPDATE applications SET packet=? WHERE application_id=?',(json.dumps(packet),aid))
+   db.execute('INSERT INTO application_reviews VALUES (?,?,?,?,?,?)',('legacy',aid,self.ids['lender_analyst'],'approved','Legacy',1))
+  owner=self.auth.application_list(self.tokens['owner'],'M002')[0]
+  self.assertEqual(owner['status'],'REVIEW_CLOSED');self.assertEqual(owner['reviews'][-1]['outcome'],'review_closed')
+  self.assertFalse({'decision_at','decision_by','decision_note','simulated_decision'}&set(owner))
+  bank=self.w.applications(self.tokens['lender_analyst'],aid)
+  self.assertEqual(bank['status'],'REVIEW_CLOSED');self.assertEqual(bank['reviews'][-1]['outcome'],'review_closed')
  def metrics(self):
   result=self.c.financial_data.aggregate('M002');result.pop('as_of',None);return result
  def test_simulator_isolated_success_failure_refund_and_restart(self):

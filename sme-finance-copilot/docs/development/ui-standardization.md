@@ -36,7 +36,7 @@ Icon conversion depends on recognized visible labels. New/localized labels must 
 
 1. Owner: exercise Create, exact-email Link, View/Edit, More > Remove confirmation; verify independent merchant permissions and cancellation.
 2. Bank authorization: all three tabs by keyboard; missing category/purpose/expiry/consent prevents saving; independent merchant scope and download grants persist.
-3. Financing: Owner View Details; Bank Request Details and Financial Review, simulated approve/deny confirmations, required denial notes and Owner status tracking.
+3. Financing: Owner View Details; Bank Request Details and Financial Review, review outcomes with a required note for More Information Needed, and Owner status tracking. There are no approve or deny actions.
 4. Tables: filters, page sizes, Previous/Next, long emails/references, disclosures and More near the right edge on mobile.
 5. Owner/Staff: merchant switching, restricted APIs, Cash Flow and Survival tabs; ensure no stale merchant values.
 6. Admin: User Management, Merchant Management and Security Controls, all edit/create/reset/revoke dialogs, Escape and focus return.

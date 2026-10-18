@@ -1,7 +1,7 @@
 """Four-role POC workflows. Existing financial tools remain authoritative."""
 import csv,io,json,secrets
 from decimal import Decimal,InvalidOperation
-from copilot.auth import InputError
+from copilot.auth import InputError,REVIEW_OUTCOMES,neutral_status
 from copilot.security import AccessDenied,Principal
 from copilot.authorization import STAFF_ACTIONS
 
@@ -89,6 +89,7 @@ class BankWorkflow:
                 packet=json.loads(row['packet'])
                 # Explicit safe request metadata; assessment snapshots are never exposed here.
                 item={k:packet.get(k) for k in ('product_id','requested_amount','currency','status')}
+                item['status']=neutral_status(item['status'])
                 merchant=self.c.merchants.get(row['merchant_id'])
                 bank=db.execute('SELECT display_name,organization FROM users WHERE user_id=?',(row['recipient_id'],)).fetchone()
                 item.update(application_id=row['application_id'],merchant_id=row['merchant_id'],merchant_name=merchant.name if merchant else row['merchant_id'],created_at=row['created_at'],submitted_at=row['created_at'],bank_name=(bank['organization'] or bank['display_name']) if bank else 'Bank',reviews=self.a.application_reviews(db,row['application_id']))
@@ -98,23 +99,19 @@ class BankWorkflow:
     def record_review(self,token,aid,body):
         if not isinstance(body,dict) or set(body)-{'outcome','note'}:raise InputError('Unsupported review fields')
         outcome=body.get('outcome');note=body.get('note','')
-        if outcome not in ('reviewed','more_information_needed','ready_for_further_assessment','approved','rejected'):raise InputError('Select a supported simulated review outcome')
         if not isinstance(note,str) or len(note.strip())>1000:raise InputError('Review notes must be text, at most 1000 characters')
         note=note.strip()
-        if outcome in ('more_information_needed','rejected') and not note:raise InputError('Review notes are required when more information is needed')
         with self.a.db() as db:
             db.execute('BEGIN IMMEDIATE');actor,rows=self._routed(db,token,aid,'record_bank_review');row=rows[0];packet=json.loads(row['packet'])
-            # Bank users record review outcomes only; approval and rejection are disabled (checked after authorization).
-            if outcome in ('approved','rejected'):raise InputError('Approval and rejection are disabled. Record a review outcome instead.',403)
+            # The app does not simulate underwriting: a bank records a review, never an approval or rejection.
+            # The outcome is checked after authorization, so an unauthorized caller learns nothing about it.
+            if outcome not in REVIEW_OUTCOMES:raise InputError('Select a supported review outcome. Banks do not approve or reject financing in this app.')
+            if outcome=='more_information_needed' and not note:raise InputError('Review notes are required when more information is needed')
             if packet.get('status')!='SUBMITTED_FOR_LENDER_REVIEW':raise InputError('Application is not in a reviewable submitted state',409)
             stamp=self.a.clock()
-            if outcome in ('approved','rejected'):
-                packet.update(status=outcome.upper(),decision_at=stamp,decision_by=actor.user_id,decision_note=note,simulated_decision=True)
-                db.execute('UPDATE applications SET packet=? WHERE application_id=?',(json.dumps(packet),aid))
-                self.a.audit('financing_simulated_'+outcome,actor,row['merchant_id'],aid,db=db,reason=outcome)
             db.execute('INSERT INTO application_reviews VALUES (?,?,?,?,?,?)',(secrets.token_hex(12),aid,actor.user_id,outcome,note,stamp))
             self.a.audit('financing_review_recorded',actor,row['merchant_id'],aid,db=db,reason=outcome)
-            return {'ok':True,'outcome':outcome,'created_at':stamp,'sandbox':True,'disclaimer':'Simulated decision/review only; no real credit approval, loan or disbursement'}
+            return {'ok':True,'outcome':outcome,'created_at':stamp,'sandbox':True,'disclaimer':'Bank review recorded only. Banks do not approve, reject or disburse financing in this app.'}
 
     def staff(self,token,mid,uid=None,body=None):
         self.a.authorize(token,'manage_merchant_staff',mid);p=self.a.principal(token)
