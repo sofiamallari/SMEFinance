@@ -380,8 +380,35 @@ class Orchestrator(unittest.TestCase):
   results=[]
   for i,option in enumerate(plan['options']):option['prefix']='fact'+str(i);results.append(('fact'+str(i),'run_cash_impact_scenario',run(self.c,'M002',option['args'])))
   brief=alternatives_claims(results,plan)['analysis.scenario_comparison']['brief']
-  for label in ('Paying the full warehouse expansion cost now','Reducing the warehouse expansion budget','Postponing the warehouse expansion','2 × ¥10,000.00 per month','No sales or expense change is applied','does not cancel the cost'):self.assertIn(label,brief)
+  for label in ('Paying the full warehouse expansion cost now','Reducing the warehouse expansion budget','Postponing the warehouse expansion','2 × ¥10,000.00 per month','does not cancel the cost'):self.assertIn(label,brief)
   self.assertNotIn('?',brief)
+  # Concise layout: a heading line, one bullet per option, then one summary line; no-change detail stays in Sources.
+  lines=brief.split('\n');self.assertEqual(len(lines),len(plan['options'])+2);self.assertTrue(all(l.startswith('• ') for l in lines[1:-1]))
+  self.assertNotIn('No sales or expense change',brief)
+
+ def test_reply_layout_answer_first_list_block_and_note(self):
+  # Concise layout: the answer first, a comparison list as its own paragraph, mandatory qualifications in one closing note.
+  from copilot.governed_claims import verify_response
+  basis={'kind':'data_limitation','value':'','display':'Basis.','brief':'This is a hypothetical projection.'}
+  adjusted={'kind':'simulation_result','value':'1','display':'Adjusted.','brief':'With the cost, the balance first goes negative on January 1, 2027 (lowest -¥1.00).','requires':['fact0.scenario_basis']}
+  comparison={'kind':'derived_calculation','value':'','display':'Comparison.','brief':'Over the same 90-day projection:\n• Option A: stays positive\n• Option B: goes negative\nOption A keeps the most cash.','requires':['fact0.scenario_basis']}
+  records={'fact0.scenario_basis':basis,'fact0.adjusted':adjusted,'analysis.scenario_comparison':comparison}
+  payload={'segments':[{'claim':'fact0.scenario_basis','kind':'data_limitation'},{'claim':'fact0.adjusted','kind':'simulation_result'},{'claim':'analysis.scenario_comparison','kind':'derived_calculation'}]}
+  reply,_=verify_response(json.dumps(payload),records,inline=True)
+  self.assertEqual(reply.split('\n\n'),[adjusted['brief'],comparison['brief'],'Note: This is a hypothetical projection.'])
+
+ def test_composed_recommendation_carries_the_comparison_basis(self):
+  # When the model's wording is rejected, the backend reply for "what would you recommend?" must still pass verification:
+  # the recommendation requires the comparison, which requires its projection basis.
+  from copilot.conversation_review import compose
+  basis={'kind':'data_limitation','value':'','display':'Basis.','brief':'This is a hypothetical projection.'}
+  comparison={'kind':'derived_calculation','value':'','display':'Comparison.','brief':'Over the same 90-day projection:\n• Option A: stays positive\n• Option B: goes negative\nOption A keeps the most cash.','requires':['fact0.scenario_basis']}
+  advice={'kind':'recommendation','value':'','display':'Advice.','brief':'Recommendation: Option A is the safer choice for cash flow.','requires':['analysis.scenario_comparison']}
+  records={'fact0.scenario_basis':basis,'analysis.scenario_comparison':comparison,'advice.alternatives':advice}
+  keys=compose(records,'Which is safer: option A or option B? What would you recommend?','decision_support')
+  self.assertEqual(keys,['analysis.scenario_comparison','fact0.scenario_basis','advice.alternatives'])
+  reply,_=verify_response(json.dumps({'segments':[{'claim':k,'kind':records[k]['kind']} for k in keys]}),records,inline=True)
+  self.assertEqual(reply.split('\n\n'),[comparison['brief'],advice['brief'],'Note: This is a hypothetical projection.'])
 
  def test_rbf_navigation_vs_funding_decision(self):
   self.assertFalse(ev.funding_question('How do I open the RBF calculator?'))
