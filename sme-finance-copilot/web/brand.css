@@ -109,3 +109,13 @@ body .ui-icon-action.ui-trash-action{color:var(--brand-primary)!important}body .
 .access-info{display:flex;align-items:flex-start;gap:10px;padding:14px 16px;margin:14px 0 20px;border:1px solid #c4dfcf;border-radius:8px;background:#eaf5ef;color:#164b32;font-size:.9rem;line-height:1.5}
 .access-info-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:20px;height:20px;margin-top:1px;border:1.5px solid currentColor;border-radius:50%;font-weight:700;font-style:normal;font-family:Georgia,serif}
 #access-link-form [data-candidates-status]:not(:empty){padding:12px 14px;background:#f2f7f4;border:1px solid var(--ui-border);border-radius:8px;color:#365343}
+/* Bank portal keeps the original navy/teal palette; other portals use the green brand above. */
+body.bank-portal{--brand-primary:#0b3b5c;--brand-hover:#082c45;--brand-focus:#bfe3ea;--brand:#0b3b5c;--brand2:#127a8a;--teal:#127a8a;--soft:#e6f4f6;--bs-primary:#0b3b5c;--bs-primary-rgb:11,59,92;--bs-link-color:#0b3b5c;--ui-border:#e2e8f0;--ui-muted:#64748b}
+body.bank-portal .bank-header{background:linear-gradient(120deg,var(--brand),var(--teal))}
+body.bank-portal button:focus-visible,body.bank-portal a:focus-visible,body.bank-portal summary:focus-visible{outline-color:#127a8a!important}
+body.bank-portal [role=tablist] [aria-selected=true],body.bank-portal .dashboard-tabs>[aria-selected=true],body.bank-portal .dashboard-tabs>button.active,body.bank-portal .bank-tabs>button.active{color:#0b3b5c!important;border-bottom-color:#127a8a!important}
+body.bank-portal [role=tablist] [role=tab]:hover,body.bank-portal .dashboard-tabs>button:hover{background:#e6f4f6!important}
+body.bank-portal th{background:#f1f5f9;color:#0f172a}
+body.bank-portal .card{box-shadow:0 2px 8px #0f172a0a}
+body.bank-portal .ui-icon-action,body.bank-portal button.ui-secondary,body.bank-portal .ui-more>summary,body.bank-portal .channel-legend span:first-child{color:#0b3b5c!important}
+body.bank-portal .ui-icon-action:hover{background:#e6f4f6!important;border-color:#b6dde3!important}
