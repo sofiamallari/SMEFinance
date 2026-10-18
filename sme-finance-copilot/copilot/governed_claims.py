@@ -461,7 +461,7 @@ def verify_response(content,records,*,inline=False):
     try:payload=json.loads(content)
     except (ValueError,TypeError):payload={'segments':[{'text':content}]}
     if not isinstance(payload,dict) or set(payload)!={'segments'} or not isinstance(payload['segments'],list) or not 1<=len(payload['segments'])<=16:raise ClaimError('invalid_claim_envelope')
-    output=[];used=[]
+    output=[];used=[];origin=[]
     for segment in payload['segments']:
         if not isinstance(segment,dict):raise ClaimError('invalid_claim_segment')
         if 'claim' in segment:
@@ -483,7 +483,7 @@ def verify_response(content,records,*,inline=False):
                 if not equal:raise ClaimError('claim_source_mismatch')
             if record['kind']=='external_fact' and not all(record.get(k) for k in ('approved_search','source_url','retrieved_at')):raise ClaimError('external_claim_without_approved_provenance')
             # An empty brief deliberately renders nothing inline (the record stays in Sources & Tools).
-            output.append((record['brief'] if 'brief' in record else record['display']) if inline else record['display']);used.append(key)
+            output.append((record['brief'] if 'brief' in record else record['display']) if inline else record['display']);used.append(key);origin.append(key)
         elif set(segment)=={'text'} and isinstance(segment['text'],str):
             text=segment['text'].strip()
             # Text is connective explanation/clarification. Numeric assertions use
@@ -505,15 +505,33 @@ def verify_response(content,records,*,inline=False):
                 # "your cash flow forecast" names a report, not a cash position; "your cash", "your balance" still need evidence.
                 risky=re.search(r'(?:your|our|recorded|the business).{0,35}(?:profitable|healthy|strong|cash(?![- ]?(?:flow|impact))|balance|profit|reserves|grew|increased|decreased)|you have (?:enough|sufficient)|you (?:have|hold|possess).{0,20}(?:cash|balance)|available cash is|bank balance is|profit is|\bverified (?:available )?cash|sales (?:are|is|equals?|means?) (?:your )?(?:available )?cash|spend (?:your |the )?(?:net )?sales|sales.{0,20}spendable|(?:our|your).{0,25}(?:loan|financing application)|afford(?:able|ability)?',clause,re.I)
                 if risky and not uncertain:raise ClaimError('unsupported_business_fact')
-            output.append(text)
+            output.append(text);origin.append(None)
         else:raise ClaimError('invalid_claim_segment')
     if inline:
         for key in used:
             missing=[r for r in records[key].get('requires',[]) if r not in used]
             if missing:
                 error=ClaimError('missing_required_qualification');error.detail={'claim':key,'required':missing[0]};raise error
-        return ' '.join(part.strip() for part in output if part.strip()),used
+        return inline_layout(output,origin,records),used
     return '\n\n'.join(part for part in output if part),used
+
+
+def inline_layout(output,origin,records):
+    """Concise reply layout: the answer first, a multi-line claim (a comparison list) as its own paragraph, and the
+    mandatory qualifications of cited claims gathered into one closing 'Note:' paragraph."""
+    required={r for key in origin if key for r in records[key].get('requires',[])}
+    paragraphs,current,notes=[],[],[]
+    for part,key in zip(output,origin):
+        part=part.strip()
+        if not part:continue
+        if key in required and records[key].get('kind')=='data_limitation':notes.append(part);continue
+        if '\n' in part:
+            if current:paragraphs.append(' '.join(current));current=[]
+            paragraphs.append(part)
+        else:current.append(part)
+    if current:paragraphs.append(' '.join(current))
+    if notes:paragraphs.append('Note: '+' '.join(dict.fromkeys(notes)))
+    return '\n\n'.join(paragraphs)
 
 
 def affordability_guidance(context):
@@ -799,7 +817,11 @@ def alternatives_claims(results,plan):
         amounts=' or '.join(dict.fromkeys(cash(a,currency) for a in plan.get('deferred') or []))
         notes.append('Postponing does not cancel the cost: the '+plan['subject']+' payment'+(' ('+amounts+')' if amounts else '')+' would still fall due after '+day(end)+', outside this projection.')
     shared=_shared_text(plan.get('base') or [],plan.get('changes') or {},plan.get('missing') or [],currency)
-    brief='Over the same '+str(first['horizon_days'])+'-day projection ('+day(start)+' to '+day(end)+'): '+lines+'. '+shared+' '+('' if tie else 'Of these, '+ordered[0][0]['label'][0].lower()+ordered[0][0]['label'][1:]+(' keeps the most cash in this projection. ' if ordered[0][1]['first_negative_date'] is None or max(rows,key=lambda r:Decimal(r[1]['min_balance']))[0] is ordered[0][0] else ' goes negative latest in this projection. '))+' '.join(notes)
+    best='' if tie else ordered[0][0]['label'][0].upper()+ordered[0][0]['label'][1:]+(' keeps the most cash.' if ordered[0][1]['first_negative_date'] is None or max(rows,key=lambda r:Decimal(r[1]['min_balance']))[0] is ordered[0][0] else ' goes negative latest.')
+    # Short form for the reply: one line per option, then the result and what every option shares. "No sales or
+    # expense change" is left to Sources & Tools; an assumed change is still stated because it alters every option.
+    brief_shared=shared.replace('No sales or expense change is applied.','').strip()
+    brief='Over the same '+str(first['horizon_days'])+'-day projection ('+day(start)+' to '+day(end)+'):\n'+'\n'.join('• '+label+': '+_outcome(row,currency) for option,row,label in rows)+'\n'+' '.join(x for x in (best,brief_shared,*notes) if x)
     prefixes=[o.get('prefix') for o,_,_ in rows if o.get('prefix')]
     out={}
     # The recommendation follows the recalculated ranking only; it never adds reasons the projections don't show.
@@ -816,11 +838,11 @@ def alternatives_claims(results,plan):
             step+=' '+best[0].upper()+best[1:]+' pushes the first negative balance furthest out ('+day(ordered[0][1]['first_negative_date'])+'), while '+other+' keeps the smallest shortfall (lowest '+cash(shallow[1]['min_balance'],currency)+').'
         elif not positive:step+=' '+best[0].upper()+best[1:]+' does least harm.'
         out['advice.alternatives']={'kind':'recommendation','metric':'alternatives_recommendation','value':'','source':'backend_recommendation','basis':['analysis.scenario_comparison'],
-            'display':'Recommended (from the recalculated comparison): '+step,'brief':step+' Check this against your bank balance before committing.','requires':['analysis.scenario_comparison']}
+            'display':'Recommended (from the recalculated comparison): '+step,'brief':'Recommendation: '+step+' Check this against your bank balance before committing.','requires':['analysis.scenario_comparison']}
     out['analysis.scenario_comparison']={'kind':'derived_calculation','metric':'scenario_comparison','value':'' if tie else (ordered[0][0]['value'] or '0'),'currency':currency,'source':'run_cash_impact_scenario',
         'inputs':[p+'.adjusted' for p in prefixes],'formula':'rank by no projected negative balance, later first negative date, higher lowest balance after the change starts, then higher closing balance',
         'display':'Alternatives comparison (hypothetical, recalculated this turn): '+lines+'. '+shared+' Ranking: no projected negative balance first, then the later first negative date, then the higher lowest balance, then the higher closing balance. '+' '.join(notes),
-        'brief':re.sub(r'\s+',' ',brief).strip(),'requires':[prefixes[0]+'.scenario_basis']}
+        'brief':'\n'.join(re.sub(r'[ \t]+',' ',line).strip() for line in brief.split('\n')).strip(),'requires':[prefixes[0]+'.scenario_basis']}
     return out
 
 def funding_claims(results,plan):
@@ -837,12 +859,13 @@ def funding_claims(results,plan):
     else:parts.append('The indicative RBF quote is for the full '+cash(quote['advance'],c)+' '+plan['subject']+' cost (the calculator allows up to '+cash(maximum,c)+').')
     requires=[]
     if scenario:
-        prefix,v=scenario;row=v['adjusted'];low=Decimal(row['min_balance'])
-        with_base=_shared_text(plan.get('base') or [],plan.get('changes') or {},plan.get('missing') or [],c).replace('Each option includes','It includes').replace('Each option also assumes','It also assumes')
+        # The low point after the payment, as in the scenario and comparison answers (not an earlier low before it).
+        prefix,v=scenario;row=v['adjusted'];low=Decimal(row.get('min_after_change') or row['min_balance'])
+        with_base=_shared_text(plan.get('base') or [],plan.get('changes') or {},plan.get('missing') or [],c).replace('Each option includes','It includes').replace('Each option also assumes','It also assumes').replace('No sales or expense change is applied.','').strip()
         shortfall=-low if low<0 else Decimal('0')
         if row['first_negative_date']:parts.append('If the full '+cash(need,c)+' were paid from business cash on '+day(plan['date'])+', the projection goes negative on '+day(row['first_negative_date'])+' and reaches '+cash(low,c)+', a shortfall of about '+cash(shortfall,c)+'.')
         else:parts.append('If the full '+cash(need,c)+' were paid from business cash on '+day(plan['date'])+', the projection stays positive (lowest '+cash(low,c)+').')
-        parts.append(with_base)
+        if with_base:parts.append(with_base)
         if quote and shortfall>0:parts.append('The quoted advance is '+('larger' if Decimal(str(quote['advance']))>=shortfall else 'smaller')+' than that shortfall, but the advance and its repayments from daily sales are not modelled in this projection.')
         requires.append(prefix+'.scenario_basis')
     if quote:requires.append(next(p for p,n,v in reversed(results) if n=='get_rbf_quote')+'.rbf_basis')
@@ -907,7 +930,8 @@ def scenario_claims(value,prefix):
         display+=' This does not establish actual affordability.'
         lead={'baseline':without,'adjusted':'With '+cost_text,'user_cash_baseline':'Starting from the cash you reported, without the new cost','user_cash_adjusted':'Starting from the cash you reported, with '+cost_text}[key]
         low=row.get('min_after_change') or row['min_balance']
-        brief=lead+', the lowest projected balance from '+day(effective)+' is '+cash(low,currency)+(' and the balance first goes negative on '+day(row['first_negative_date'])+'.' if row['first_negative_date'] else ', the projection ends at '+cash(row['closing_balance'],currency)+' on '+day(end)+' with no negative balance.')
+        # One short sentence: the date it first goes negative (if it does) and the low point, or that it stays positive.
+        brief=lead+(', the balance first goes negative on '+day(row['first_negative_date'])+' (lowest '+cash(low,currency)+').' if row['first_negative_date'] else ', the balance stays positive (lowest '+cash(low,currency)+', ending at '+cash(row['closing_balance'],currency)+' on '+day(end)+').')
         add(key,display,row['closing_balance'],inputs=['authorized forecast', 'explicit hypothetical schedule'],formula='existing weekday forecast plus incremental scheduled outflows',brief=brief,requires=requires if key in ('adjusted','user_cash_adjusted') else [basis])
     add('schedule','Incremental hypothetical outflow schedule: '+'; '.join(day(r['date'])+': '+money(r['amount'],currency) for r in schedule)+'. Existing scheduled obligations are included once by the baseline.',
         brief='The projection includes '+cost_text+'.')

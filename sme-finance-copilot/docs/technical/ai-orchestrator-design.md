@@ -269,4 +269,13 @@ Tests: `tests/test_ai_orchestrator.py`. The live replay of the test plan (owner 
 | Alternatives also cover "the original plan" (at its planned date); a recommendation follow-up ("what would you recommend?") re-runs the last compared alternatives and cites `advice.alternatives`, a backend recommendation derived only from the ranking (it states the trade-off when the later shortfall and the smaller shortfall are different options) | `conversation_evidence.alternatives()`, `governed_claims.alternatives_claims()`, `conversation_review.compose()` |
 | Funding scenario pays on the planned date when one exists; `missing_updated_result` accepts the funding claim (it previously rejected every RBF answer after a restated cost) | `conversation_evidence.funding()`, `conversation_review.semantic_checks()` |
 
+### Concise answers (2026-10-18)
+
+| Item | Where |
+| --- | --- |
+| Reply layout: the answer first; a multi-line claim (the comparison list) as its own paragraph; the mandatory qualifications of cited claims gathered into one closing "Note:" paragraph. Replies render line breaks (`white-space: pre-wrap`) | `governed_claims.verify_response()`, `inline_layout()` |
+| Comparison as a list: a heading line, one bullet per option, then one summary line (best option, shared base costs, deferral note); "no sales or expense change" stays in Sources & Tools. The backend recommendation is labelled "Recommendation:" | `governed_claims.alternatives_claims()` |
+| Shorter scenario sentence: "With …, the balance first goes negative on D (lowest X)." or "… stays positive (lowest X, ending at Y on Z)." | `governed_claims.scenario_claims()` |
+| Narration asks for one or two short sentences and at most one connecting sentence of the model's own; default limits lowered to 4 (decision, cash flow), 3 (module answers) and 3 (other); mandatory qualifications still excluded | `conversation_review.NARRATION`, `check()` |
+
 Not done (deferred): a general time-window engine (a change "for the next three months" still runs across the whole 90-day projection, disclosed); postponed dates inside the window ("postpone to December") are not parsed.
