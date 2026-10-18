@@ -36,7 +36,7 @@ Recorded on 2026-10-17 with the demo accounts `demo_owner`, `demo_staff` and `de
 | File | Shows |
 | --- | --- |
 | [bank-14-review-financing-application.gif](bank-14-review-financing-application.gif) | Bank portal → Financing Applications: opens the ¥25,000 application from GIF 06, checks the Financial Review tab, then records the outcome "Ready for Further Assessment" with review notes and shows the review history. Only Save Bank Review appears: the app has no approve or deny actions for banks. |
-| [bank-15-review-financing-application.gif](bank-15-review-financing-application.gif) | Same flow as GIF 14, re-recorded on 18 October 2026 with the restored navy/teal bank theme: Overview → Financing Applications → opens the ¥25,000 application, checks the Financial Review tab, records "Ready for Further Assessment" with review notes, then expands the review history. Recorded with a Playwright script (headless Edge). |
+| [bank-15-review-financing-application.gif](bank-15-review-financing-application.gif) | Same flow as GIF 14, re-recorded on 18 October 2026 with the restored navy/teal bank theme: Overview → Financing Applications → opens the ¥25,000 application, checks the Financial Review tab, records "Ready for Further Assessment" with review notes, then expands the review history. The applications table has no Review Status column, so each row shows only its Application Status (e.g. "Submitted for Review"). Recorded with a Playwright script in headless Chrome. |
 
 ## Notes
 
