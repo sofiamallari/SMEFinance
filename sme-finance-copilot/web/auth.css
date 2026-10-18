@@ -3,6 +3,8 @@
 .auth-page header{padding:22px clamp(20px,5vw,64px)}
 .auth-page header p{margin:6px 0 0;font-size:14px;color:#e2f3f5}
 .auth-page .login{width:100%;max-width:480px;flex:1;display:flex;align-items:center;margin:0 auto;padding:32px 20px}
+.auth-page .login:has(.login-logo){flex-direction:column;justify-content:center}
+.auth-page .login-logo{width:160px;height:160px;object-fit:contain;background:#fff;border-radius:20px;padding:6px;margin:0 auto 24px;box-shadow:0 8px 30px #0b3b5c14}
 .auth-page .card{width:100%;margin:0;padding:28px;box-shadow:0 8px 30px #0b3b5c0a}
 .auth-page h2{font-size:24px;margin-bottom:8px}
 .auth-page .muted{line-height:1.6;margin-top:0}
@@ -16,4 +18,4 @@
 .auth-page .auth-help{margin-top:20px;font-size:13px;line-height:1.6}
 .auth-page :focus-visible{outline:3px solid var(--teal);outline-offset:3px}
 .auth-page .message:empty{display:none}
-@media(max-width:480px){.auth-page header h1{font-size:21px}.auth-page .login{padding:24px 16px}.auth-page .card{padding:22px}.auth-options{gap:16px}}
+@media(max-width:480px){.auth-page header h1{font-size:21px}.auth-page .login-logo{width:120px;height:120px;margin-bottom:18px}.auth-page .login{padding:24px 16px}.auth-page .card{padding:22px}.auth-options{gap:16px}}
